@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16
+    container_name: scheduler_db
+    restart: always
+    environment:
+      POSTGRES_DB: scheduler
+      POSTGRES_USER: chessfighter
+      POSTGRES_PASSWORD: 123456
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    container_name: scheduler_backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://chessfighter:123456@db:5432/scheduler
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: scheduler_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
