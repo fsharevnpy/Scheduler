@@ -11,6 +11,10 @@ from schemas.scheduling import AssignReplacementPayload
 
 router = APIRouter()
 
+SCORE_WEIGHT = 0.4
+CENTER_MATCH_WEIGHT = 0.3
+TIME_MATCH_WEIGHT = 0.3
+
 
 @router.get("/classes/{class_id}/replacement-suggestions")
 def get_replacement_suggestions(
@@ -36,6 +40,16 @@ def get_replacement_suggestions(
 
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
+
+    score_range = db.execute(
+        text("""
+            SELECT MIN(score) AS min_score, MAX(score) AS max_score
+            FROM teachers
+        """)
+    ).mappings().first()
+
+    min_score = score_range["min_score"]
+    max_score = score_range["max_score"]
 
     rows = db.execute(
         text("""
@@ -98,8 +112,21 @@ def get_replacement_suggestions(
         if row["assigned_slots_that_day"] >= row["max_slots_per_day"]:
             continue
 
-        final_score = row["score"] + row["center_match"] * 30 + row["time_match"] * 30
+        if min_score is None or max_score is None:
+            normalized_score = 0.0
+        elif max_score == min_score:
+            normalized_score = 0.5
+        else:
+            normalized_score = (row["score"] - min_score) / (max_score - min_score)
+
+        final_score = (
+            normalized_score * SCORE_WEIGHT
+            + row["center_match"] * CENTER_MATCH_WEIGHT
+            + row["time_match"] * TIME_MATCH_WEIGHT
+        )
+
         item = dict(row)
+        item["normalized_score"] = round(normalized_score, 4)
         item["final_score"] = final_score
         suggestions.append(item)
 
