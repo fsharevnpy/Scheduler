@@ -12,6 +12,14 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Role
+    teacher_id: Optional[str] = None
+    active: bool = True
+
+
 class CurrentUser(BaseModel):
     user_id: UUID
     username: str
