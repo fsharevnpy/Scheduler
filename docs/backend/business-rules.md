@@ -20,13 +20,28 @@
 - A non-`teacher` user must not have a `teacher_id`.
 - One `teacher_id` can only be linked to one user account.
 - A user cannot delete their own account.
-- Password reset is internal and admin-driven. There is no self-service forgot-password flow.
+- Password reset is internal and admin-driven.
 - User creation and internal password reset share the same password policy:
   - minimum 8 characters
   - at least one uppercase letter
   - at least one lowercase letter
   - at least one number
   - at least one special character
+
+## Password Reset Request Rules
+
+- A password reset request can be created publicly with a username.
+- The target username must exist and be active.
+- Only one `REQUESTED` password reset request can exist at a time for the same username.
+- Password reset request status must be one of:
+  - `REQUESTED`
+  - `RESOLVED`
+  - `REJECTED`
+- `teacher` users can only view their own password reset requests.
+- `manager` and `developer` can view password reset requests for roles they are allowed to manage.
+- `manager` and `developer` can resolve or reject password reset requests for roles they are allowed to manage.
+- A processed password reset request cannot be resolved again.
+- When an internal password reset is completed through `/users/{username}/reset-password`, all open `REQUESTED` password reset requests for that username are automatically marked as `RESOLVED`.
 
 ## Teacher Rules
 

@@ -1,4 +1,13 @@
-from schemas.auth import CurrentUser, LoginRequest, PasswordResetRequest, Role, TokenResponse, UserCreate
+from schemas.auth import (
+    CurrentUser,
+    LoginRequest,
+    PasswordResetRequest,
+    PasswordResetRequestCreate,
+    PasswordResetRequestResolve,
+    Role,
+    TokenResponse,
+    UserCreate,
+)
 from schemas.scheduling import (
     AssignReplacementPayload,
     ClassCreate,
@@ -16,6 +25,8 @@ __all__ = [
     "LeaveRequestCreate",
     "LoginRequest",
     "PasswordResetRequest",
+    "PasswordResetRequestCreate",
+    "PasswordResetRequestResolve",
     "Role",
     "TeacherCreate",
     "TeacherUpdate",

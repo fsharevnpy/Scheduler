@@ -50,6 +50,16 @@ class PasswordResetRequest(BaseModel):
         return validate_password_policy(value)
 
 
+class PasswordResetRequestCreate(BaseModel):
+    username: str
+    request_note: Optional[str] = None
+
+
+class PasswordResetRequestResolve(BaseModel):
+    status: Literal["RESOLVED", "REJECTED"]
+    resolution_note: Optional[str] = None
+
+
 class CurrentUser(BaseModel):
     user_id: UUID
     username: str

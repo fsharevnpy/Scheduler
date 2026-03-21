@@ -87,3 +87,18 @@ CREATE TABLE leave_requests (
     status VARCHAR(20) NOT NULL,
     CHECK (status IN ('REQUESTED', 'APPROVED', 'CANCELLED'))
 );
+
+-- =========================
+-- 8. Password Reset Requests
+-- =========================
+CREATE TABLE password_reset_requests (
+    request_id UUID PRIMARY KEY,
+    username VARCHAR(50) NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL,
+    request_note TEXT,
+    resolution_note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
+    resolved_at TIMESTAMP NULL,
+    CHECK (status IN ('REQUESTED', 'RESOLVED', 'REJECTED'))
+);

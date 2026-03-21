@@ -7,12 +7,14 @@
 | `GET` | `/` | Public | Basic backend status message |
 | `GET` | `/health` | Public | Database connectivity check |
 | `POST` | `/auth/login` | Public | Authenticate with username/password and return access token |
+| `POST` | `/password-reset-requests` | Public | Create an internal password reset request by username |
 
 ## Authenticated
 
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/auth/me` | `developer`, `manager`, `teacher` | Return current authenticated user |
+| `GET` | `/password-reset-requests` | `developer`, `manager`, `teacher` | List password reset requests |
 
 ## User Management
 
@@ -21,6 +23,7 @@
 | `POST` | `/users` | `developer`, `manager` | Create a new user |
 | `DELETE` | `/users/{username}` | `developer`, `manager` | Delete a user by username |
 | `PUT` | `/users/{username}/reset-password` | `developer`, `manager` | Reset a user password internally |
+| `PUT` | `/password-reset-requests/{request_id}/resolve` | `developer`, `manager` | Mark a password reset request as resolved or rejected |
 
 Notes:
 - `developer` can create/delete `developer`, `manager`, and `teacher`.
@@ -28,6 +31,8 @@ Notes:
 - `developer` can reset passwords for `developer`, `manager`, and `teacher`.
 - `manager` can reset passwords for `manager` and `teacher`, but not `developer`.
 - A user cannot delete their own account.
+- `teacher` can view only their own password reset requests.
+- `manager` and `developer` can view password reset requests for roles they are allowed to manage.
 
 ## Teacher Management
 

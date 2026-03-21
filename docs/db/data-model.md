@@ -105,6 +105,25 @@ Current statuses:
 - `APPROVED`
 - `CANCELLED`
 
+### `password_reset_requests`
+
+Stores internal forgot-password requests for admin handling.
+
+Key fields:
+- `request_id`
+- `username`
+- `status`
+- `request_note`
+- `resolution_note`
+- `created_at`
+- `resolved_by`
+- `resolved_at`
+
+Current statuses:
+- `REQUESTED`
+- `RESOLVED`
+- `REJECTED`
+
 ## Relationship Summary
 
 - one center has many center slots
@@ -113,6 +132,7 @@ Current statuses:
 - one teacher can have many leave requests
 - one class can have many leave requests over time
 - one teacher can be linked to one user account in practice
+- one user can have many password reset requests over time
 
 ## Source of Truth
 

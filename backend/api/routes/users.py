@@ -138,5 +138,21 @@ def reset_user_password(
             "username": username,
         },
     )
+
+    db.execute(
+        text("""
+            UPDATE password_reset_requests
+            SET status = 'RESOLVED',
+                resolution_note = COALESCE(resolution_note, 'Password reset completed internally'),
+                resolved_by = :resolved_by,
+                resolved_at = NOW()
+            WHERE username = :username
+              AND status = 'REQUESTED'
+        """),
+        {
+            "resolved_by": current_user.username,
+            "username": username,
+        },
+    )
     db.commit()
     return {"message": "password reset", "username": username}
