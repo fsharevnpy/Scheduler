@@ -8,10 +8,21 @@ from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
 from core.security import hash_password
 from db import get_db
-from schemas.auth import CurrentUser, UserCreate
+from schemas.auth import CurrentUser, PasswordResetRequest, UserCreate
 
 
 router = APIRouter()
+
+
+def get_target_user(username: str, db: Session):
+    return db.execute(
+        text("""
+            SELECT user_id, username, role, teacher_id, active
+            FROM users
+            WHERE username = :username
+        """),
+        {"username": username},
+    ).mappings().first()
 
 
 @router.post("/users", response_model=CurrentUser)
@@ -84,14 +95,7 @@ def delete_user(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    target_user = db.execute(
-        text("""
-            SELECT user_id, username, role, teacher_id, active
-            FROM users
-            WHERE username = :username
-        """),
-        {"username": username},
-    ).mappings().first()
+    target_user = get_target_user(username, db)
 
     if not target_user:
         raise HTTPException(status_code=404, detail="user not found")
@@ -106,3 +110,33 @@ def delete_user(
     db.execute(text("DELETE FROM users WHERE username = :username"), {"username": username})
     db.commit()
     return {"message": "user deleted", "username": username}
+
+
+@router.put("/users/{username}/reset-password")
+def reset_user_password(
+    username: str,
+    payload: PasswordResetRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    target_user = get_target_user(username, db)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    allowed_roles = get_manageable_roles(current_user)
+    if target_user["role"] not in allowed_roles:
+        raise HTTPException(status_code=403, detail="forbidden to reset password for this role")
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET password_hash = :password_hash
+            WHERE username = :username
+        """),
+        {
+            "password_hash": hash_password(payload.new_password),
+            "username": username,
+        },
+    )
+    db.commit()
+    return {"message": "password reset", "username": username}

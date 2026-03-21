@@ -12,11 +12,21 @@
 
 - `developer` can create and delete users with roles `developer`, `manager`, and `teacher`.
 - `manager` can create and delete users with roles `manager` and `teacher`.
+- `developer` can reset passwords for `developer`, `manager`, and `teacher`.
+- `manager` can reset passwords for `manager` and `teacher`.
 - `manager` cannot create or delete `developer` users.
+- `manager` cannot reset the password of a `developer`.
 - A `teacher` user must be linked to a valid `teacher_id`.
 - A non-`teacher` user must not have a `teacher_id`.
 - One `teacher_id` can only be linked to one user account.
 - A user cannot delete their own account.
+- Password reset is internal and admin-driven. There is no self-service forgot-password flow.
+- User creation and internal password reset share the same password policy:
+  - minimum 8 characters
+  - at least one uppercase letter
+  - at least one lowercase letter
+  - at least one number
+  - at least one special character
 
 ## Teacher Rules
 

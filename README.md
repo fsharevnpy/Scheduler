@@ -70,11 +70,19 @@ Replacement suggestion scoring:
 
 ## Docs
 
-Overview docs:
-- [`api-matrix.md`](docs/api-matrix.md): endpoint list, roles, and API purpose
-- [`business-rules.md`](docs/business-rules.md): current backend business rules
+### Backend
 
-Flow diagrams:
-- [`backend-auth-flow.drawio`](docs/backend-auth-flow.drawio): login and authorization flow
-- [`leave-request-flow.drawio`](docs/leave-request-flow.drawio): leave request flow
-- [`replacement-flow.drawio`](docs/replacement-flow.drawio): replacement suggestion and assignment flow
+- [`docs/backend/api-matrix.md`](docs/backend/api-matrix.md): endpoint list, roles, and API purpose
+- [`docs/backend/business-rules.md`](docs/backend/business-rules.md): current backend business rules
+- [`docs/backend/backend-auth-flow.drawio`](docs/backend/backend-auth-flow.drawio): login and authorization flow
+- [`docs/backend/leave-request-flow.drawio`](docs/backend/leave-request-flow.drawio): leave request flow
+- [`docs/backend/replacement-flow.drawio`](docs/backend/replacement-flow.drawio): replacement suggestion and assignment flow
+
+### Frontend
+
+- [`docs/frontend/frontend-screen-matrix.md`](docs/frontend/frontend-screen-matrix.md): initial screen plan, route guards, and API mapping
+- [`docs/frontend/ui-flow.md`](docs/frontend/ui-flow.md): basic route and navigation flow for login, register, and monitor
+
+### Database
+
+- [`docs/db/data-model.md`](docs/db/data-model.md): table overview, relationships, and schema entry points

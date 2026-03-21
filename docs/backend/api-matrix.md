@@ -20,10 +20,13 @@
 |---|---|---|---|
 | `POST` | `/users` | `developer`, `manager` | Create a new user |
 | `DELETE` | `/users/{username}` | `developer`, `manager` | Delete a user by username |
+| `PUT` | `/users/{username}/reset-password` | `developer`, `manager` | Reset a user password internally |
 
 Notes:
 - `developer` can create/delete `developer`, `manager`, and `teacher`.
 - `manager` can create/delete `manager` and `teacher`, but not `developer`.
+- `developer` can reset passwords for `developer`, `manager`, and `teacher`.
+- `manager` can reset passwords for `manager` and `teacher`, but not `developer`.
 - A user cannot delete their own account.
 
 ## Teacher Management
