@@ -1,0 +1,100 @@
+:root {
+  --bg: #f2ecdf;
+  --panel: rgba(255, 251, 243, 0.84);
+  --panel-strong: #fff8eb;
+  --ink: #1f1b17;
+  --muted: #675d52;
+  --line: rgba(31, 27, 23, 0.12);
+  --accent: #b44f21;
+  --accent-dark: #8f3811;
+  --success: #2a7b56;
+  --error: #a4372d;
+  --shadow: 0 28px 60px rgba(90, 54, 28, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(180, 79, 33, 0.18), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(49, 109, 89, 0.14), transparent 28%),
+    linear-gradient(135deg, #f6f0e4 0%, #efe1c2 100%);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 4vw, 4rem);
+  line-height: 1;
+  max-width: 12ch;
+  margin-bottom: 0;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+.subtle {
+  color: var(--muted);
+}
+
+.page-status {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -10,6 +10,7 @@ Current roles:
 Main capabilities:
 - authentication with access token
 - role-based API authorization
+- internal forgot-password request flow
 - teacher and class management
 - leave request workflow
 - replacement teacher suggestion and assignment

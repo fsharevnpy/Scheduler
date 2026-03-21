@@ -32,6 +32,8 @@ Main API calls:
 Suggested UI:
 - username input
 - password input
+- show/hide password action
+- forgot-password action
 - login button
 - invalid credential error state
 
@@ -41,13 +43,23 @@ Success flow:
 3. call `GET /auth/me` or use returned user payload
 4. redirect to `/monitor`
 
+Forgot password flow:
+1. user clicks `Forgot password?`
+2. frontend expands an inline support panel
+3. user submits username
+4. frontend calls `POST /password-reset-requests`
+5. frontend shows a message that reset is handled internally by a `manager` or `developer`
+
 ## Register Screen
 
 Purpose:
-- allow `developer` and `manager` to create users
+- allow `developer` and `manager` to manage internal user access
 
 Main API call:
 - `POST /users`
+- `PUT /users/{username}/reset-password`
+- `GET /password-reset-requests`
+- `PUT /password-reset-requests/{request_id}/resolve`
 
 Allowed roles:
 - `developer`: can create `developer`, `manager`, `teacher`
@@ -60,6 +72,8 @@ Suggested UI:
 - `teacher_id` field shown only when role is `teacher`
 - active toggle
 - create button
+- password reset request list
+- internal password reset action
 
 Frontend rules:
 - hide this screen for `teacher`
@@ -80,7 +94,7 @@ Suggested sections:
 - replacement suggestions
 - replacement assignment
 - teacher list
-- optional quick links to create teacher or manage users
+- quick links to create users or review password reset requests
 
 Main APIs:
 - `GET /classes`
@@ -127,5 +141,6 @@ Useful derived values:
 2. auth guard and current user state
 3. role-based monitor layout
 4. register screen for `developer` and `manager`
-5. teacher leave-request actions
-6. manager/developer replacement workflow
+5. manager/developer user management and password reset flow
+6. teacher leave-request actions
+7. manager/developer replacement workflow

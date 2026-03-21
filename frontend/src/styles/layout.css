@@ -1,0 +1,94 @@
+.page-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 32px;
+  padding: 32px;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.dashboard-shell {
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.hero-panel,
+.panel-card,
+.dashboard-card,
+.login-card {
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.login-card {
+  width: min(100%, 520px);
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 239, 0.96), rgba(247, 235, 209, 0.92));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 34px;
+  animation: card-enter 520ms ease-out both;
+}
+
+.hero-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 40px;
+  border-radius: 32px;
+  background:
+    linear-gradient(160deg, rgba(255, 248, 235, 0.95), rgba(244, 229, 198, 0.88));
+}
+
+.panel-card,
+.dashboard-card {
+  width: min(100%, 560px);
+  border-radius: 28px;
+  background: var(--panel);
+  padding: 28px;
+}
+
+.dashboard-card {
+  width: 100%;
+}
+
+.dashboard-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-lockup {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 24px rgba(60, 29, 9, 0.2));
+}
+
+.brand-mark.large {
+  width: 118px;
+  height: 118px;
+}

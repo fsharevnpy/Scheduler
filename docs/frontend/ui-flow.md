@@ -35,6 +35,13 @@ Route: `/login`
    - stay on `/login`
    - show authentication error
 
+Forgot password flow:
+1. User clicks `Forgot password?`
+2. Frontend expands an inline help panel on `/login`
+3. User submits username
+4. Frontend calls `POST /password-reset-requests`
+5. Frontend shows a confirmation that a `manager` or `developer` will handle the reset
+
 ## Register Flow
 
 Route: `/register`
@@ -59,6 +66,14 @@ Create user flow:
 6. On success:
    - show confirmation
    - optionally clear the form or redirect back to `/monitor`
+
+Password reset admin flow:
+1. Current user opens `/register`
+2. Frontend loads password reset requests
+3. Frontend shows only requests the current role is allowed to manage
+4. Current user can either:
+   - reset a password with `PUT /users/{username}/reset-password`
+   - resolve or reject a request with `PUT /password-reset-requests/{request_id}/resolve`
 
 ## Monitor Flow
 

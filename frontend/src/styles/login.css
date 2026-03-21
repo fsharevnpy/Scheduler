@@ -1,0 +1,52 @@
+.login-brand {
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-bottom: 28px;
+  animation: fade-up 620ms ease-out both;
+}
+
+.login-title {
+  max-width: none;
+  margin-bottom: 12px;
+  font-size: clamp(2.1rem, 5vw, 3.25rem);
+}
+
+.login-copy {
+  max-width: 32ch;
+  margin: 0 auto;
+  color: var(--muted);
+}
+
+.support-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.support-panel,
+.info-card {
+  border-radius: 22px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  padding: 20px;
+}
+
+.support-panel.compact {
+  padding: 16px;
+}
+
+.support-form {
+  margin-bottom: 0;
+}
+
+.login-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -2px 0 14px;
+}
+
+.support-trigger {
+  letter-spacing: 0.01em;
+}

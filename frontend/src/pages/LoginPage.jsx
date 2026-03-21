@@ -1,20 +1,17 @@
 import { useState } from "react";
 import logo from "../../chesslogo.svg";
-
-const SEEDED_ACCOUNTS = [
-  { username: "developer", password: "dev123" },
-  { username: "manager", password: "manager123" },
-  { username: "gv0", password: "teacher123" },
-  { username: "gv1", password: "teacher123" },
-  { username: "gv2", password: "teacher123" },
-];
+import { requestJson } from "../lib/http.js";
 
 export default function LoginPage({ auth }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotUsername, setForgotUsername] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [status, setStatus] = useState({ kind: "", message: "" });
+  const [forgotStatus, setForgotStatus] = useState({ kind: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequestingReset, setIsRequestingReset] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -33,10 +30,32 @@ export default function LoginPage({ auth }) {
     }
   }
 
-  function loadSeed(account) {
-    setUsername(account.username);
-    setPassword(account.password);
-    setStatus({ kind: "", message: `Loaded seeded account ${account.username}.` });
+  async function handleForgotPassword(event) {
+    event.preventDefault();
+    setIsRequestingReset(true);
+    setForgotStatus({ kind: "", message: "Submitting reset request..." });
+
+    try {
+      await requestJson(`${auth.apiBase}/password-reset-requests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: forgotUsername.trim(),
+          request_note: "Requested from login screen",
+        }),
+      });
+      setForgotStatus({
+        kind: "success",
+        message: "Reset request sent. Please contact a manager or developer.",
+      });
+      setForgotUsername("");
+    } catch (error) {
+      setForgotStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsRequestingReset(false);
+    }
   }
 
   return (
@@ -44,9 +63,8 @@ export default function LoginPage({ auth }) {
       <section className="login-card">
         <div className="login-brand">
           <img src={logo} alt="Chess Fighter logo" className="brand-mark large" />
-          <p className="eyebrow">Chess Fighter</p>
           <h1 className="login-title">Sign in</h1>
-          <p className="login-copy">Access the internal scheduling workspace for classes, leave requests, and replacement operations.</p>
+          <p className="login-copy">Welcome to the Chess Fighter homepage. Sign in to access the internal scheduling workspace.</p>
         </div>
 
         <form className="auth-form compact" onSubmit={handleSubmit}>
@@ -59,7 +77,7 @@ export default function LoginPage({ auth }) {
               <span>Password</span>
               <button
                 type="button"
-                className="text-button"
+                className="inline-text-action"
                 onClick={() => setShowPassword((value) => !value)}
               >
                 {showPassword ? "Hide" : "Show"}
@@ -82,21 +100,45 @@ export default function LoginPage({ auth }) {
           {status.message}
         </div>
 
-        <section className="seed-panel compact">
-          <p className="eyebrow">Quick Fill</p>
-          <div className="seed-grid">
-            {SEEDED_ACCOUNTS.map((account) => (
-              <button
-                key={account.username}
-                type="button"
-                className="seed-button"
-                onClick={() => loadSeed(account)}
-              >
-                {account.username}
+        <div className="login-actions">
+          <button
+            type="button"
+            className="inline-text-action support-trigger"
+            onClick={() => {
+              setShowForgotPassword((value) => !value);
+              setForgotStatus({ kind: "", message: "" });
+              setForgotUsername(username.trim());
+            }}
+          >
+            {showForgotPassword ? "Close forgot password" : "Forgot password?"}
+          </button>
+        </div>
+
+        {showForgotPassword ? (
+          <section className="support-panel compact">
+            <p className="support-copy">
+              Password reset is handled internally by a manager or developer.
+            </p>
+            <form className="auth-form support-form" onSubmit={handleForgotPassword}>
+              <label className="field">
+                <span>Username</span>
+                <input
+                  value={forgotUsername}
+                  onChange={(event) => setForgotUsername(event.target.value)}
+                  type="text"
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <button className="secondary-button" type="submit" disabled={isRequestingReset}>
+                {isRequestingReset ? "Sending..." : "Send reset request"}
               </button>
-            ))}
-          </div>
-        </section>
+              <div className={`status ${forgotStatus.kind}`.trim()} aria-live="polite">
+                {forgotStatus.message}
+              </div>
+            </form>
+          </section>
+        ) : null}
       </section>
     </main>
   );
