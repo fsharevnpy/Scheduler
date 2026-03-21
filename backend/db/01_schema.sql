@@ -35,7 +35,19 @@ CREATE TABLE teachers (
 );
 
 -- =========================
--- 4. Teacher Preferences
+-- 4. Users
+-- =========================
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('developer', 'manager', 'teacher')),
+    teacher_id VARCHAR(20) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- =========================
+-- 5. Teacher Preferences
 -- =========================
 CREATE TABLE teacher_preferences (
     preference_id BIGSERIAL PRIMARY KEY,
@@ -49,7 +61,7 @@ CREATE TABLE teacher_preferences (
 );
 
 -- =========================
--- 5. Classes
+-- 6. Classes
 -- =========================
 CREATE TABLE classes (
     class_id VARCHAR(20) PRIMARY KEY,
@@ -65,7 +77,7 @@ CREATE TABLE classes (
 );
 
 -- =========================
--- 6. Leave Requests
+-- 7. Leave Requests
 -- =========================
 CREATE TABLE leave_requests (
     request_id VARCHAR(20) PRIMARY KEY,
