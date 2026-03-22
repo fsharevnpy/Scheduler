@@ -25,7 +25,7 @@
 
 Route: `/login`
 
-1. User submits username and password
+1. User submits user code and password
 2. Frontend calls `POST /auth/login`
 3. On success:
    - store `access_token`
@@ -38,7 +38,7 @@ Route: `/login`
 Forgot password flow:
 1. User clicks `Forgot password?`
 2. Frontend expands an inline help panel on `/login`
-3. User submits username
+3. User submits user code
 4. Frontend calls `POST /password-reset-requests`
 5. Frontend shows a confirmation that a `manager` or `developer` will handle the reset
 
@@ -61,19 +61,19 @@ Create user flow:
 3. Frontend limits role options:
    - `developer` can create `developer`, `manager`, `teacher`
    - `manager` can create `manager`, `teacher`
-4. User submits the form
-5. Frontend calls `POST /users`
-6. On success:
+4. If role = `teacher`, frontend collects teacher profile fields and optional preferences
+5. If role != `teacher`, frontend collects staff account fields
+6. User submits the form
+7. Frontend calls `POST /users`
+8. On success:
    - show confirmation
    - optionally clear the form or redirect back to `/monitor`
 
 Password reset admin flow:
-1. Current user opens `/register`
+1. Current user opens `/monitor`
 2. Frontend loads password reset requests
 3. Frontend shows only requests the current role is allowed to manage
-4. Current user can either:
-   - reset a password with `PUT /users/{username}/reset-password`
-   - resolve or reject a request with `PUT /password-reset-requests/{request_id}/resolve`
+4. Current user can reset the requested account directly with `PUT /password-reset-requests/{request_id}/reset-default`
 
 ## Monitor Flow
 
@@ -93,8 +93,11 @@ Rules:
 Suggested content:
 - class list
 - leave request list
-- replacement suggestion action
-- replacement assignment action
+- leave request approve/cancel actions
+- replacement queue for classes in `NEED_REPLACEMENT`
+- load replacement suggestions
+- assign replacement teacher directly from monitor
+- password reset request list
 - teacher management shortcuts
 - optional user management shortcut
 

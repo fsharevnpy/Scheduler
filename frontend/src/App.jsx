@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import LoginPage from "./pages/LoginPage.jsx";
 import MonitorPage from "./pages/MonitorPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
-import { STORAGE_KEYS, clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
+import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
 import { requestJson } from "./lib/http.js";
 
 function ProtectedRoute({ isAuthenticated, isRestoring, children }) {
@@ -99,7 +99,7 @@ export default function App() {
       },
       logout() {
         clearStoredSession();
-        setApiBase(localStorage.getItem(STORAGE_KEYS.apiBase) || `${window.location.protocol}//${window.location.hostname}:8000`);
+        setApiBase(getStoredApiBase());
         setToken("");
         setUser(null);
         navigate("/login", { replace: true });

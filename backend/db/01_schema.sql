@@ -39,11 +39,13 @@ CREATE TABLE teachers (
 -- =========================
 CREATE TABLE users (
     user_id UUID PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
+    user_code VARCHAR(7) NOT NULL UNIQUE,
+    display_name VARCHAR(100) NOT NULL,
     password_hash TEXT NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('developer', 'manager', 'teacher')),
     teacher_id VARCHAR(20) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (user_code ~ '^[0-9]{7}$')
 );
 
 -- =========================
@@ -84,6 +86,7 @@ CREATE TABLE leave_requests (
     class_id VARCHAR(20) NOT NULL REFERENCES classes(class_id) ON DELETE CASCADE,
     teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
     request_date DATE NOT NULL,
+    reason TEXT NOT NULL,
     status VARCHAR(20) NOT NULL,
     CHECK (status IN ('REQUESTED', 'APPROVED', 'CANCELLED'))
 );
@@ -93,12 +96,12 @@ CREATE TABLE leave_requests (
 -- =========================
 CREATE TABLE password_reset_requests (
     request_id UUID PRIMARY KEY,
-    username VARCHAR(50) NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+    user_code VARCHAR(7) NOT NULL REFERENCES users(user_code) ON DELETE CASCADE,
     status VARCHAR(20) NOT NULL,
     request_note TEXT,
     resolution_note TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    resolved_by VARCHAR(50) REFERENCES users(username) ON DELETE SET NULL,
+    resolved_by VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL,
     resolved_at TIMESTAMP NULL,
     CHECK (status IN ('REQUESTED', 'RESOLVED', 'REJECTED'))
 );

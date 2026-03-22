@@ -15,16 +15,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.execute(
         text("""
-            SELECT user_id, username, password_hash, role, teacher_id, active
+            SELECT user_id, user_code, display_name, password_hash, role, teacher_id, active
             FROM users
-            WHERE username = :username
+            WHERE user_code = :user_code
         """),
-        {"username": payload.username},
+        {"user_code": payload.user_code},
     ).mappings().first()
 
     invalid_credentials = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="invalid username or password",
+        detail="invalid user code or password",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
@@ -36,7 +36,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     current_user = CurrentUser(
         user_id=user["user_id"],
-        username=user["username"],
+        user_code=user["user_code"],
+        display_name=user["display_name"],
         role=user["role"],
         teacher_id=user["teacher_id"],
         active=user["active"],
@@ -44,7 +45,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     access_token = create_access_token(
         {
-            "sub": current_user.username,
+            "sub": current_user.user_code,
             "role": current_user.role,
             "teacher_id": current_user.teacher_id,
         }

@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_current_user, require_roles
+from core.security import hash_password
 from db import get_db
-from schemas.auth import CurrentUser, PasswordResetRequestCreate, PasswordResetRequestResolve
+from schemas.auth import CurrentUser, PasswordResetRequestCreate
 
 
 router = APIRouter()
+DEFAULT_RESET_PASSWORD = "123456aA@"
 
 
 def get_password_reset_request(request_id: str, db: Session):
@@ -18,7 +20,8 @@ def get_password_reset_request(request_id: str, db: Session):
         text("""
             SELECT
                 pr.request_id,
-                pr.username,
+                pr.user_code,
+                u.display_name,
                 pr.status,
                 pr.request_note,
                 pr.resolution_note,
@@ -27,7 +30,7 @@ def get_password_reset_request(request_id: str, db: Session):
                 pr.resolved_at,
                 u.role AS user_role
             FROM password_reset_requests pr
-            JOIN users u ON u.username = pr.username
+            JOIN users u ON u.user_code = pr.user_code
             WHERE pr.request_id = :request_id
         """),
         {"request_id": request_id},
@@ -41,11 +44,11 @@ def create_password_reset_request(
 ):
     user = db.execute(
         text("""
-            SELECT username, active
+            SELECT user_code, active
             FROM users
-            WHERE username = :username
+            WHERE user_code = :user_code
         """),
-        {"username": payload.username},
+        {"user_code": payload.user_code},
     ).mappings().first()
 
     if not user:
@@ -58,10 +61,10 @@ def create_password_reset_request(
         text("""
             SELECT request_id
             FROM password_reset_requests
-            WHERE username = :username
+            WHERE user_code = :user_code
               AND status = 'REQUESTED'
         """),
-        {"username": payload.username},
+        {"user_code": payload.user_code},
     ).mappings().first()
 
     if existing_request:
@@ -71,15 +74,15 @@ def create_password_reset_request(
     db.execute(
         text("""
             INSERT INTO password_reset_requests (
-                request_id, username, status, request_note
+                request_id, user_code, status, request_note
             )
             VALUES (
-                :request_id, :username, 'REQUESTED', :request_note
+                :request_id, :user_code, 'REQUESTED', :request_note
             )
         """),
         {
             "request_id": request_id,
-            "username": payload.username,
+            "user_code": payload.user_code,
             "request_note": payload.request_note,
         },
     )
@@ -87,7 +90,7 @@ def create_password_reset_request(
     return {
         "message": "password reset request created",
         "request_id": request_id,
-        "username": payload.username,
+        "user_code": payload.user_code,
     }
 
 
@@ -99,7 +102,8 @@ def get_password_reset_requests(
     query = """
         SELECT
             pr.request_id,
-            pr.username,
+            pr.user_code,
+            u.display_name,
             pr.status,
             pr.request_note,
             pr.resolution_note,
@@ -107,13 +111,13 @@ def get_password_reset_requests(
             pr.resolved_by,
             pr.resolved_at
         FROM password_reset_requests pr
-        JOIN users u ON u.username = pr.username
+        JOIN users u ON u.user_code = pr.user_code
     """
     params = {}
 
     if current_user.role == ROLE_TEACHER:
-        query += " WHERE pr.username = :username"
-        params["username"] = current_user.username
+        query += " WHERE pr.user_code = :user_code"
+        params["user_code"] = current_user.user_code
     elif current_user.role in {ROLE_DEVELOPER, ROLE_MANAGER}:
         manageable_roles = tuple(get_manageable_roles(current_user))
         placeholders = ", ".join([f":role_{index}" for index in range(len(manageable_roles))])
@@ -128,10 +132,9 @@ def get_password_reset_requests(
     return [dict(row) for row in rows]
 
 
-@router.put("/password-reset-requests/{request_id}/resolve")
-def resolve_password_reset_request(
+@router.put("/password-reset-requests/{request_id}/reset-default")
+def reset_password_from_request(
     request_id: str,
-    payload: PasswordResetRequestResolve,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
@@ -144,27 +147,39 @@ def resolve_password_reset_request(
 
     allowed_roles = get_manageable_roles(current_user)
     if target_request["user_role"] not in allowed_roles:
-        raise HTTPException(status_code=403, detail="forbidden to resolve request for this role")
+        raise HTTPException(status_code=403, detail="forbidden to reset password for this role")
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET password_hash = :password_hash
+            WHERE user_code = :user_code
+        """),
+        {
+            "password_hash": hash_password(DEFAULT_RESET_PASSWORD),
+            "user_code": target_request["user_code"],
+        },
+    )
 
     db.execute(
         text("""
             UPDATE password_reset_requests
-            SET status = :status,
+            SET status = 'RESOLVED',
                 resolution_note = :resolution_note,
                 resolved_by = :resolved_by,
                 resolved_at = NOW()
             WHERE request_id = :request_id
         """),
         {
-            "status": payload.status,
-            "resolution_note": payload.resolution_note,
-            "resolved_by": current_user.username,
+            "resolution_note": "Password reset to default password",
+            "resolved_by": current_user.user_code,
             "request_id": request_id,
         },
     )
     db.commit()
     return {
-        "message": "password reset request updated",
+        "message": "password reset to default completed",
         "request_id": request_id,
-        "status": payload.status,
+        "status": "RESOLVED",
+        "default_password": DEFAULT_RESET_PASSWORD,
     }

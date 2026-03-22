@@ -48,7 +48,7 @@ Stores login accounts and role mapping.
 
 Key fields:
 - `user_id`
-- `username`
+- `user_code`
 - `password_hash`
 - `role`
 - `teacher_id`
@@ -56,6 +56,7 @@ Key fields:
 
 Notes:
 - `teacher_id` is optional
+- `user_code` is the generated account code and login identifier in `YYMMNNN` format
 - `teacher` users are linked to a teacher record through `teacher_id`
 
 ### `teacher_preferences`
@@ -111,7 +112,7 @@ Stores internal forgot-password requests for admin handling.
 
 Key fields:
 - `request_id`
-- `username`
+- `user_code`
 - `status`
 - `request_note`
 - `resolution_note`

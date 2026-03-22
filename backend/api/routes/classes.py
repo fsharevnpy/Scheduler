@@ -12,6 +12,21 @@ from schemas.scheduling import ClassCreate, ClassUpdate
 router = APIRouter()
 
 
+@router.get("/centers")
+def get_centers(
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    rows = db.execute(
+        text("""
+            SELECT center_id, name, room_count
+            FROM centers
+            ORDER BY center_id
+        """)
+    ).mappings().all()
+    return [dict(row) for row in rows]
+
+
 @router.get("/classes")
 def get_classes(
     db: Session = Depends(get_db),

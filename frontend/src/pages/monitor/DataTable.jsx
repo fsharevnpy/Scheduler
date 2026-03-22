@@ -1,0 +1,41 @@
+import { formatValue } from "./monitorUtils.js";
+
+export default function DataTable({ title, columns, rows, emptyMessage }) {
+  return (
+    <article className="dashboard-section">
+      <div className="section-head">
+        <div>
+          <p className="eyebrow">{title}</p>
+          <h2>{title}</h2>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="subtle">{emptyMessage}</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th key={column.key}>{column.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.id || row.class_id || row.teacher_id || row.request_id || row.user_code || index}>
+                  {columns.map((column) => (
+                    <td key={column.key}>
+                      {column.render ? column.render(row) : formatValue(row[column.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </article>
+  );
+}

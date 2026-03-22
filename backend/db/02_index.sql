@@ -22,8 +22,11 @@ CREATE INDEX idx_leave_requests_class
 CREATE INDEX idx_leave_requests_teacher
     ON leave_requests(teacher_id);
 
-CREATE INDEX idx_password_reset_requests_username
-    ON password_reset_requests(username);
+CREATE INDEX idx_password_reset_requests_user_code
+    ON password_reset_requests(user_code);
 
 CREATE INDEX idx_password_reset_requests_status_created
     ON password_reset_requests(status, created_at);
+
+CREATE INDEX idx_users_user_code
+    ON users(user_code);

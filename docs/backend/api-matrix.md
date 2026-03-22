@@ -6,8 +6,8 @@
 |---|---|---|---|
 | `GET` | `/` | Public | Basic backend status message |
 | `GET` | `/health` | Public | Database connectivity check |
-| `POST` | `/auth/login` | Public | Authenticate with username/password and return access token |
-| `POST` | `/password-reset-requests` | Public | Create an internal password reset request by username |
+| `POST` | `/auth/login` | Public | Authenticate with user code/password and return access token |
+| `POST` | `/password-reset-requests` | Public | Create an internal password reset request by user code |
 
 ## Authenticated
 
@@ -15,21 +15,21 @@
 |---|---|---|---|
 | `GET` | `/auth/me` | `developer`, `manager`, `teacher` | Return current authenticated user |
 | `GET` | `/password-reset-requests` | `developer`, `manager`, `teacher` | List password reset requests |
+| `GET` | `/centers` | `developer`, `manager` | List centers for teacher preferences and class setup |
 
 ## User Management
 
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
-| `POST` | `/users` | `developer`, `manager` | Create a new user |
-| `DELETE` | `/users/{username}` | `developer`, `manager` | Delete a user by username |
-| `PUT` | `/users/{username}/reset-password` | `developer`, `manager` | Reset a user password internally |
-| `PUT` | `/password-reset-requests/{request_id}/resolve` | `developer`, `manager` | Mark a password reset request as resolved or rejected |
+| `GET` | `/users` | `developer`, `manager` | List manageable users |
+| `POST` | `/users` | `developer`, `manager` | Create a staff user or create a teacher account with teacher profile |
+| `DELETE` | `/users/{user_code}` | `developer`, `manager` | Delete a user by user code |
+| `PUT` | `/users/{user_code}/reset-password` | `developer`, `manager` | Reset a user password internally (legacy/manual admin flow) |
+| `PUT` | `/password-reset-requests/{request_id}/reset-default` | `developer`, `manager` | Reset a requested account back to the default password |
 
 Notes:
 - `developer` can create/delete `developer`, `manager`, and `teacher`.
 - `manager` can create/delete `manager` and `teacher`, but not `developer`.
-- `developer` can reset passwords for `developer`, `manager`, and `teacher`.
-- `manager` can reset passwords for `manager` and `teacher`, but not `developer`.
 - A user cannot delete their own account.
 - `teacher` can view only their own password reset requests.
 - `manager` and `developer` can view password reset requests for roles they are allowed to manage.
@@ -39,7 +39,6 @@ Notes:
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/teachers` | `developer`, `manager` | List all teachers |
-| `POST` | `/teachers` | `developer`, `manager` | Create a teacher |
 | `PUT` | `/teachers/{teacher_id}` | `developer`, `manager` | Update a teacher |
 
 ## Class Management
@@ -59,7 +58,7 @@ Notes:
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/leave-requests` | `developer`, `manager`, `teacher` | List leave requests |
-| `POST` | `/leave-requests` | `developer`, `manager`, `teacher` | Create a leave request |
+| `POST` | `/leave-requests` | `developer`, `manager`, `teacher` | Create a leave request with a required reason |
 | `PUT` | `/leave-requests/{request_id}/approve` | `developer`, `manager` | Approve a leave request |
 | `PUT` | `/leave-requests/{request_id}/cancel` | `developer`, `manager`, `teacher` | Cancel a leave request |
 

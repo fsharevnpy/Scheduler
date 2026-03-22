@@ -1,7 +1,7 @@
 from datetime import date, time
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class TeacherCreate(BaseModel):
@@ -47,7 +47,16 @@ class LeaveRequestCreate(BaseModel):
     class_id: str
     teacher_id: str
     request_date: date
+    reason: str
     status: str = "REQUESTED"
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason is required")
+        return value
 
 
 class AssignReplacementPayload(BaseModel):

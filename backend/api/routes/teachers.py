@@ -32,27 +32,10 @@ def create_teacher(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    existing = db.execute(
-        text("SELECT 1 FROM teachers WHERE teacher_id = :teacher_id"),
-        {"teacher_id": payload.teacher_id},
-    ).first()
-
-    if existing:
-        raise HTTPException(status_code=400, detail="teacher_id already exists")
-
-    db.execute(
-        text("""
-            INSERT INTO teachers (
-                teacher_id, name, contact, score, max_slots_per_day, active
-            )
-            VALUES (
-                :teacher_id, :name, :contact, :score, :max_slots_per_day, :active
-            )
-        """),
-        payload.model_dump(),
+    raise HTTPException(
+        status_code=400,
+        detail="create teacher accounts through /users with role teacher",
     )
-    db.commit()
-    return {"message": "teacher created", "teacher_id": payload.teacher_id}
 
 
 @router.put("/teachers/{teacher_id}")
@@ -78,5 +61,19 @@ def update_teacher(
     data["teacher_id"] = teacher_id
 
     db.execute(text(f"UPDATE teachers SET {fields} WHERE teacher_id = :teacher_id"), data)
+
+    if "name" in data:
+        db.execute(
+            text("""
+                UPDATE users
+                SET display_name = :display_name
+                WHERE teacher_id = :teacher_id
+            """),
+            {
+                "display_name": data["name"],
+                "teacher_id": teacher_id,
+            },
+        )
+
     db.commit()
     return {"message": "teacher updated", "teacher_id": teacher_id}

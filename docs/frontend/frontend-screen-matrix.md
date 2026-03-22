@@ -30,7 +30,7 @@ Main API calls:
 - `GET /auth/me`
 
 Suggested UI:
-- username input
+- user code input
 - password input
 - show/hide password action
 - forgot-password action
@@ -46,7 +46,7 @@ Success flow:
 Forgot password flow:
 1. user clicks `Forgot password?`
 2. frontend expands an inline support panel
-3. user submits username
+3. user submits user code
 4. frontend calls `POST /password-reset-requests`
 5. frontend shows a message that reset is handled internally by a `manager` or `developer`
 
@@ -57,28 +57,35 @@ Purpose:
 
 Main API call:
 - `POST /users`
-- `PUT /users/{username}/reset-password`
-- `GET /password-reset-requests`
-- `PUT /password-reset-requests/{request_id}/resolve`
 
 Allowed roles:
 - `developer`: can create `developer`, `manager`, `teacher`
 - `manager`: can create `manager`, `teacher`
 
 Suggested UI:
-- username
-- password
 - role selector
-- `teacher_id` field shown only when role is `teacher`
 - active toggle
 - create button
-- password reset request list
-- internal password reset action
+- success state showing the generated `user_code`
+
+Teacher account mode:
+- `name`
+- `contact`
+- `score`
+- `max_slots_per_day`
+- optional multiple preference rows
+- center dropdown sourced from backend
+- 24-hour `HH:MM` time inputs for preferences
+- fixed temporary password note
+
+Staff account mode:
+- `display_name`
+- password
 
 Frontend rules:
 - hide this screen for `teacher`
 - if current role is `manager`, do not show `developer` as a selectable role
-- if selected role is not `teacher`, do not send `teacher_id`
+- if selected role is `teacher`, do not ask for `teacher_id` or password
 
 ## Monitor Screen
 
@@ -91,15 +98,23 @@ Purpose:
 Suggested sections:
 - class list
 - leave request list
-- replacement suggestions
-- replacement assignment
+- center shown in class and leave request views
+- leave request approval and cancel actions
+- replacement queue for classes with `NEED_REPLACEMENT`
+- load ranked replacement suggestions
+- assign replacement teacher directly from monitor
+- password reset request inbox
 - teacher list
 - quick links to create users or review password reset requests
 
 Main APIs:
 - `GET /classes`
 - `GET /leave-requests`
+- `PUT /leave-requests/{request_id}/approve`
+- `PUT /leave-requests/{request_id}/cancel`
 - `GET /teachers`
+- `GET /password-reset-requests`
+- `PUT /password-reset-requests/{request_id}/reset-default`
 - `GET /classes/{class_id}/replacement-suggestions`
 - `PUT /classes/{class_id}/assign-replacement`
 
@@ -108,6 +123,7 @@ Main APIs:
 Suggested sections:
 - my classes
 - my leave requests
+- center shown with classes and leave requests
 - create leave request
 - cancel my leave request when status is `REQUESTED`
 

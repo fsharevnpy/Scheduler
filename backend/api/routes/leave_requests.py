@@ -25,7 +25,7 @@ def get_leave_requests(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     query = """
-        SELECT request_id, class_id, teacher_id, request_date, status
+        SELECT request_id, class_id, teacher_id, request_date, reason, status
         FROM leave_requests
     """
     params = {}
@@ -82,14 +82,15 @@ def create_leave_request(
 
     db.execute(
         text("""
-            INSERT INTO leave_requests (request_id, class_id, teacher_id, request_date, status)
-            VALUES (:request_id, :class_id, :teacher_id, :request_date, :status)
+            INSERT INTO leave_requests (request_id, class_id, teacher_id, request_date, reason, status)
+            VALUES (:request_id, :class_id, :teacher_id, :request_date, :reason, :status)
         """),
         {
             "request_id": payload.request_id,
             "class_id": payload.class_id,
             "teacher_id": payload.teacher_id,
             "request_date": payload.request_date,
+            "reason": payload.reason,
             "status": payload.status,
         },
     )
@@ -115,7 +116,7 @@ def approve_leave_request(
 ):
     leave_row = db.execute(
         text("""
-            SELECT request_id, class_id, teacher_id, status
+            SELECT request_id, class_id, teacher_id, reason, status
             FROM leave_requests
             WHERE request_id = :request_id
         """),
@@ -161,7 +162,7 @@ def cancel_leave_request(
 ):
     leave_row = db.execute(
         text("""
-            SELECT request_id, class_id, teacher_id, status
+            SELECT request_id, class_id, teacher_id, reason, status
             FROM leave_requests
             WHERE request_id = :request_id
         """),

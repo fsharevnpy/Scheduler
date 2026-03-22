@@ -34,6 +34,7 @@ export function persistSession(apiBase, token, user) {
 }
 
 export function clearStoredSession() {
+  localStorage.removeItem(STORAGE_KEYS.apiBase);
   localStorage.removeItem(STORAGE_KEYS.token);
   localStorage.removeItem(STORAGE_KEYS.user);
 }

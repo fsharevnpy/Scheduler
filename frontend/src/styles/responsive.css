@@ -22,6 +22,15 @@
     width: 92px;
     height: 92px;
   }
+
+  .preference-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .replacement-suggestion-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 560px) {
@@ -39,5 +48,9 @@
 
   .dashboard-shell {
     padding: 18px;
+  }
+
+  .preference-card {
+    grid-template-columns: 1fr;
   }
 }

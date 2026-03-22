@@ -8,10 +8,12 @@ Current roles:
 - `teacher`
 
 Main capabilities:
-- authentication with access token
+- authentication with generated `user_code` and access token
 - role-based API authorization
 - internal forgot-password request flow
+- approval-based password reset to default password
 - teacher and class management
+- teacher account creation with auto-generated `teacher_id`
 - leave request workflow
 - replacement teacher suggestion and assignment
 
@@ -52,15 +54,59 @@ Notes:
 - PostgreSQL init scripts in [`backend/db`](backend/db) run only when the database volume is created from scratch.
 - If you change schema or seed data and want those changes applied automatically, use `docker compose down -v` first.
 
+## Logs
+
+View logs for the full stack:
+
+```powershell
+docker compose logs
+```
+
+Follow logs in real time:
+
+```powershell
+docker compose logs -f
+```
+
+View logs for a specific service:
+
+```powershell
+docker compose logs backend
+docker compose logs frontend
+docker compose logs db
+```
+
+Follow logs for a specific service:
+
+```powershell
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f db
+```
+
 ## Default Accounts
 
 Available after reseeding the database:
 
-- `developer / dev123`
-- `manager / manager123`
-- `gv0 / teacher123`
-- `gv1 / teacher123`
-- `gv2 / teacher123`
+- `2603000 / dev123` for `developer`
+- `2603001 / manager123` for `manager`
+- `2603002 / teacher123` for `teacher`
+- `2603003 / teacher123` for `teacher`
+- `2603004 / teacher123` for `teacher`
+- `2603005 / teacher123` for `teacher`
+- `2603006 / teacher123` for `teacher`
+- `2603007 / teacher123` for `teacher`
+- `2603008 / teacher123` for `teacher`
+- `2603009 / teacher123` for `teacher`
+
+Use `user_code` and password to sign in.
+Each account also has a `display_name` used across the UI.
+New teacher accounts are created with a generated `teacher_id` and temporary password `123456aA@`.
+
+Seeded centers:
+- `Quan 9 (CS1)`
+- `Thu Duc (CS2)`
+- `Binh Thanh (CS3)`
 
 ## Backend Notes
 

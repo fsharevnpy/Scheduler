@@ -1,8 +1,9 @@
 import re
+from datetime import time
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 Role = Literal["developer", "manager", "teacher"]
@@ -24,21 +25,109 @@ def validate_password_policy(value: str) -> str:
 
 
 class LoginRequest(BaseModel):
-    username: str
+    user_code: str
     password: str
+
+
+class TeacherPreferenceInput(BaseModel):
+    preferred_center_id: str
+    day_of_week: Literal["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+    preferred_start_time: time
+    preferred_end_time: time
+
+    @model_validator(mode="after")
+    def validate_time_range(self):
+        if self.preferred_start_time >= self.preferred_end_time:
+            raise ValueError("preferred_start_time must be earlier than preferred_end_time")
+        return self
 
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
+    display_name: Optional[str] = None
+    password: Optional[str] = None
     role: Role
     teacher_id: Optional[str] = None
+    name: Optional[str] = None
+    contact: Optional[str] = None
+    score: int = 0
+    max_slots_per_day: int = 2
+    preferences: list[TeacherPreferenceInput] = Field(default_factory=list)
     active: bool = True
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("display_name is required")
+        if len(value) > 100:
+            raise ValueError("display_name must be at most 100 characters")
+        return value
 
     @field_validator("password")
     @classmethod
-    def validate_password(cls, value: str) -> str:
+    def validate_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
         return validate_password_policy(value)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("name is required")
+        if len(value) > 100:
+            raise ValueError("name must be at most 100 characters")
+        return value
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("contact is required")
+        if len(value) > 50:
+            raise ValueError("contact must be at most 50 characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_role_specific_fields(self):
+        if self.role == "teacher":
+            if self.teacher_id is not None:
+                raise ValueError("teacher_id is generated automatically for teacher role")
+            if self.password is not None:
+                raise ValueError("password is generated automatically for teacher role")
+            if self.display_name is not None:
+                raise ValueError("display_name is synced automatically for teacher role")
+            if not self.name:
+                raise ValueError("name is required for teacher role")
+            if not self.contact:
+                raise ValueError("contact is required for teacher role")
+        else:
+            if self.teacher_id is not None:
+                raise ValueError("teacher_id is only allowed for teacher role")
+            if self.name is not None:
+                raise ValueError("name is only allowed for teacher role")
+            if self.contact is not None:
+                raise ValueError("contact is only allowed for teacher role")
+            if self.preferences:
+                raise ValueError("preferences are only allowed for teacher role")
+            if self.display_name is None:
+                raise ValueError("display_name is required")
+            if self.password is None:
+                raise ValueError("password is required")
+
+        if self.max_slots_per_day <= 0:
+            raise ValueError("max_slots_per_day must be greater than 0")
+
+        return self
 
 
 class PasswordResetRequest(BaseModel):
@@ -51,7 +140,7 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetRequestCreate(BaseModel):
-    username: str
+    user_code: str
     request_note: Optional[str] = None
 
 
@@ -62,7 +151,8 @@ class PasswordResetRequestResolve(BaseModel):
 
 class CurrentUser(BaseModel):
     user_id: UUID
-    username: str
+    user_code: str
+    display_name: str
     role: Role
     teacher_id: Optional[str] = None
     active: bool = True

@@ -31,11 +31,11 @@ def get_current_user(
     payload = decode_access_token(credentials.credentials)
     user = db.execute(
         text("""
-            SELECT user_id, username, role, teacher_id, active
+            SELECT user_id, user_code, display_name, role, teacher_id, active
             FROM users
-            WHERE username = :username
+            WHERE user_code = :user_code
         """),
-        {"username": payload["sub"]},
+        {"user_code": payload["sub"]},
     ).mappings().first()
 
     if not user or not user["active"]:

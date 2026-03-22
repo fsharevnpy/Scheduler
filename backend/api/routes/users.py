@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,17 +13,73 @@ from schemas.auth import CurrentUser, PasswordResetRequest, UserCreate
 
 
 router = APIRouter()
+TEMP_TEACHER_PASSWORD = "123456aA@"
 
 
-def get_target_user(username: str, db: Session):
+def get_target_user(user_code: str, db: Session):
     return db.execute(
         text("""
-            SELECT user_id, username, role, teacher_id, active
+            SELECT user_id, user_code, display_name, role, teacher_id, active
             FROM users
-            WHERE username = :username
+            WHERE user_code = :user_code
         """),
-        {"username": username},
+        {"user_code": user_code},
     ).mappings().first()
+
+
+def generate_user_code(db: Session) -> str:
+    prefix = datetime.now().strftime("%y%m")
+    latest_user_code = db.execute(
+        text("""
+            SELECT user_code
+            FROM users
+            WHERE user_code LIKE :prefix
+            ORDER BY user_code DESC
+            LIMIT 1
+        """),
+        {"prefix": f"{prefix}%"},
+    ).scalar_one_or_none()
+
+    next_sequence = 0
+    if latest_user_code:
+        next_sequence = int(str(latest_user_code)[-3:]) + 1
+
+    if next_sequence > 999:
+        raise HTTPException(status_code=400, detail="monthly user code limit reached")
+
+    return f"{prefix}{next_sequence:03d}"
+
+
+def generate_teacher_id(db: Session) -> str:
+    latest_sequence = db.execute(
+        text("""
+            SELECT COALESCE(MAX(CAST(SUBSTRING(teacher_id FROM 3) AS INT)), -1)
+            FROM teachers
+            WHERE teacher_id ~ '^GV[0-9]+$'
+        """)
+    ).scalar_one()
+    return f"GV{latest_sequence + 1}"
+
+
+@router.get("/users")
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    allowed_roles = get_manageable_roles(current_user)
+    placeholders = ", ".join([f":role_{index}" for index in range(len(allowed_roles))])
+    params = {f"role_{index}": role for index, role in enumerate(allowed_roles)}
+
+    rows = db.execute(
+        text(f"""
+            SELECT user_id, user_code, display_name, role, teacher_id, active
+            FROM users
+            WHERE role IN ({placeholders})
+            ORDER BY role, user_code
+        """),
+        params,
+    ).mappings().all()
+    return [dict(row) for row in rows]
 
 
 @router.post("/users", response_model=CurrentUser)
@@ -35,46 +92,77 @@ def create_user(
     if payload.role not in allowed_roles:
         raise HTTPException(status_code=403, detail="forbidden to create this role")
 
-    existing = db.execute(
-        text("SELECT 1 FROM users WHERE username = :username"),
-        {"username": payload.username},
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="username already exists")
-
     if payload.role == ROLE_TEACHER:
-        if not payload.teacher_id:
-            raise HTTPException(status_code=400, detail="teacher_id is required for teacher role")
-    elif payload.teacher_id is not None:
-        raise HTTPException(status_code=400, detail="teacher_id is only allowed for teacher role")
+        for preference in payload.preferences:
+            center_exists = db.execute(
+                text("SELECT 1 FROM centers WHERE center_id = :center_id"),
+                {"center_id": preference.preferred_center_id},
+            ).first()
+            if not center_exists:
+                raise HTTPException(status_code=404, detail=f"center not found: {preference.preferred_center_id}")
 
-    if payload.teacher_id:
-        teacher_exists = db.execute(
-            text("SELECT 1 FROM teachers WHERE teacher_id = :teacher_id"),
-            {"teacher_id": payload.teacher_id},
-        ).first()
-        if not teacher_exists:
-            raise HTTPException(status_code=404, detail="teacher not found")
+        teacher_id = generate_teacher_id(db)
+        display_name = payload.name
+        password = TEMP_TEACHER_PASSWORD
 
-        teacher_user_exists = db.execute(
-            text("SELECT 1 FROM users WHERE teacher_id = :teacher_id"),
-            {"teacher_id": payload.teacher_id},
-        ).first()
-        if teacher_user_exists:
-            raise HTTPException(status_code=400, detail="teacher already linked to another user")
+        db.execute(
+            text("""
+                INSERT INTO teachers (
+                    teacher_id, name, contact, score, max_slots_per_day, active
+                )
+                VALUES (
+                    :teacher_id, :name, :contact, :score, :max_slots_per_day, :active
+                )
+            """),
+            {
+                "teacher_id": teacher_id,
+                "name": payload.name,
+                "contact": payload.contact,
+                "score": payload.score,
+                "max_slots_per_day": payload.max_slots_per_day,
+                "active": payload.active,
+            },
+        )
+
+        for preference in payload.preferences:
+            db.execute(
+                text("""
+                    INSERT INTO teacher_preferences (
+                        teacher_id, preferred_center_id, day_of_week,
+                        preferred_start_time, preferred_end_time
+                    )
+                    VALUES (
+                        :teacher_id, :preferred_center_id, :day_of_week,
+                        :preferred_start_time, :preferred_end_time
+                    )
+                """),
+                {
+                    "teacher_id": teacher_id,
+                    "preferred_center_id": preference.preferred_center_id,
+                    "day_of_week": preference.day_of_week,
+                    "preferred_start_time": preference.preferred_start_time,
+                    "preferred_end_time": preference.preferred_end_time,
+                },
+            )
+    else:
+        teacher_id = None
+        display_name = payload.display_name
+        password = payload.password
 
     user_id = uuid4()
+    user_code = generate_user_code(db)
     db.execute(
         text("""
-            INSERT INTO users (user_id, username, password_hash, role, teacher_id, active)
-            VALUES (:user_id, :username, :password_hash, :role, :teacher_id, :active)
+            INSERT INTO users (user_id, user_code, display_name, password_hash, role, teacher_id, active)
+            VALUES (:user_id, :user_code, :display_name, :password_hash, :role, :teacher_id, :active)
         """),
         {
             "user_id": str(user_id),
-            "username": payload.username,
-            "password_hash": hash_password(payload.password),
+            "user_code": user_code,
+            "display_name": display_name,
+            "password_hash": hash_password(password),
             "role": payload.role,
-            "teacher_id": payload.teacher_id,
+            "teacher_id": teacher_id,
             "active": payload.active,
         },
     )
@@ -82,20 +170,21 @@ def create_user(
 
     return CurrentUser(
         user_id=user_id,
-        username=payload.username,
+        user_code=user_code,
+        display_name=display_name,
         role=payload.role,
-        teacher_id=payload.teacher_id,
+        teacher_id=teacher_id,
         active=payload.active,
     )
 
 
-@router.delete("/users/{username}")
+@router.delete("/users/{user_code}")
 def delete_user(
-    username: str,
+    user_code: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    target_user = get_target_user(username, db)
+    target_user = get_target_user(user_code, db)
 
     if not target_user:
         raise HTTPException(status_code=404, detail="user not found")
@@ -104,22 +193,22 @@ def delete_user(
     if target_user["role"] not in allowed_roles:
         raise HTTPException(status_code=403, detail="forbidden to delete this role")
 
-    if target_user["username"] == current_user.username:
+    if target_user["user_code"] == current_user.user_code:
         raise HTTPException(status_code=400, detail="cannot delete current user")
 
-    db.execute(text("DELETE FROM users WHERE username = :username"), {"username": username})
+    db.execute(text("DELETE FROM users WHERE user_code = :user_code"), {"user_code": user_code})
     db.commit()
-    return {"message": "user deleted", "username": username}
+    return {"message": "user deleted", "user_code": user_code}
 
 
-@router.put("/users/{username}/reset-password")
+@router.put("/users/{user_code}/reset-password")
 def reset_user_password(
-    username: str,
+    user_code: str,
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    target_user = get_target_user(username, db)
+    target_user = get_target_user(user_code, db)
     if not target_user:
         raise HTTPException(status_code=404, detail="user not found")
 
@@ -131,11 +220,11 @@ def reset_user_password(
         text("""
             UPDATE users
             SET password_hash = :password_hash
-            WHERE username = :username
+            WHERE user_code = :user_code
         """),
         {
             "password_hash": hash_password(payload.new_password),
-            "username": username,
+            "user_code": user_code,
         },
     )
 
@@ -146,13 +235,13 @@ def reset_user_password(
                 resolution_note = COALESCE(resolution_note, 'Password reset completed internally'),
                 resolved_by = :resolved_by,
                 resolved_at = NOW()
-            WHERE username = :username
+            WHERE user_code = :user_code
               AND status = 'REQUESTED'
         """),
         {
-            "resolved_by": current_user.username,
-            "username": username,
+            "resolved_by": current_user.user_code,
+            "user_code": user_code,
         },
     )
     db.commit()
-    return {"message": "password reset", "username": username}
+    return {"message": "password reset", "user_code": user_code}
