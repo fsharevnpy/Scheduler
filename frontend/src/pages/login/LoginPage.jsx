@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import logo from "../../../chesslogo.svg";
+import logo from "../../../chesslogo.png";
 import PasswordField from "../../components/PasswordField.jsx";
 import { requestJson } from "../../lib/http.js";
 import ForgotPasswordPanel from "./ForgotPasswordPanel.jsx";
@@ -66,7 +66,7 @@ export default function LoginPage({ auth }) {
         <div className="login-brand">
           <img src={logo} alt="Chess Fighter logo" className="brand-mark large" />
           <h1 className="login-title">Sign in</h1>
-          <p className="login-copy">Welcome to the Chess Fighter homepage. Sign in to access the internal scheduling workspace.</p>
+          <p className="login-copy">Welcome to the Chess Fighters homepage. Sign in to access the internal scheduling workspace.</p>
         </div>
 
         <form className="auth-form compact" onSubmit={handleSubmit}>

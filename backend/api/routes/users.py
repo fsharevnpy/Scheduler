@@ -9,11 +9,11 @@ from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
 from core.security import hash_password
 from db import get_db
-from schemas.auth import CurrentUser, PasswordResetRequest, UserCreate
+from schemas.auth import CurrentUser, UserCreate
 
 
 router = APIRouter()
-TEMP_TEACHER_PASSWORD = "123456aA@"
+DEFAULT_NEW_USER_PASSWORD = "123456aA@"
 
 
 def get_target_user(user_code: str, db: Session):
@@ -103,7 +103,7 @@ def create_user(
 
         teacher_id = generate_teacher_id(db)
         display_name = payload.name
-        password = TEMP_TEACHER_PASSWORD
+        password = DEFAULT_NEW_USER_PASSWORD
 
         db.execute(
             text("""
@@ -147,7 +147,7 @@ def create_user(
     else:
         teacher_id = None
         display_name = payload.display_name
-        password = payload.password
+        password = DEFAULT_NEW_USER_PASSWORD
 
     user_id = uuid4()
     user_code = generate_user_code(db)
@@ -199,49 +199,3 @@ def delete_user(
     db.execute(text("DELETE FROM users WHERE user_code = :user_code"), {"user_code": user_code})
     db.commit()
     return {"message": "user deleted", "user_code": user_code}
-
-
-@router.put("/users/{user_code}/reset-password")
-def reset_user_password(
-    user_code: str,
-    payload: PasswordResetRequest,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
-):
-    target_user = get_target_user(user_code, db)
-    if not target_user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    allowed_roles = get_manageable_roles(current_user)
-    if target_user["role"] not in allowed_roles:
-        raise HTTPException(status_code=403, detail="forbidden to reset password for this role")
-
-    db.execute(
-        text("""
-            UPDATE users
-            SET password_hash = :password_hash
-            WHERE user_code = :user_code
-        """),
-        {
-            "password_hash": hash_password(payload.new_password),
-            "user_code": user_code,
-        },
-    )
-
-    db.execute(
-        text("""
-            UPDATE password_reset_requests
-            SET status = 'RESOLVED',
-                resolution_note = COALESCE(resolution_note, 'Password reset completed internally'),
-                resolved_by = :resolved_by,
-                resolved_at = NOW()
-            WHERE user_code = :user_code
-              AND status = 'REQUESTED'
-        """),
-        {
-            "resolved_by": current_user.user_code,
-            "user_code": user_code,
-        },
-    )
-    db.commit()
-    return {"message": "password reset", "user_code": user_code}

@@ -44,7 +44,6 @@ class TeacherPreferenceInput(BaseModel):
 
 class UserCreate(BaseModel):
     display_name: Optional[str] = None
-    password: Optional[str] = None
     role: Role
     teacher_id: Optional[str] = None
     name: Optional[str] = None
@@ -65,13 +64,6 @@ class UserCreate(BaseModel):
         if len(value) > 100:
             raise ValueError("display_name must be at most 100 characters")
         return value
-
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        return validate_password_policy(value)
 
     @field_validator("name")
     @classmethod
@@ -102,8 +94,6 @@ class UserCreate(BaseModel):
         if self.role == "teacher":
             if self.teacher_id is not None:
                 raise ValueError("teacher_id is generated automatically for teacher role")
-            if self.password is not None:
-                raise ValueError("password is generated automatically for teacher role")
             if self.display_name is not None:
                 raise ValueError("display_name is synced automatically for teacher role")
             if not self.name:
@@ -121,8 +111,6 @@ class UserCreate(BaseModel):
                 raise ValueError("preferences are only allowed for teacher role")
             if self.display_name is None:
                 raise ValueError("display_name is required")
-            if self.password is None:
-                raise ValueError("password is required")
 
         if self.max_slots_per_day <= 0:
             raise ValueError("max_slots_per_day must be greater than 0")
@@ -130,23 +118,26 @@ class UserCreate(BaseModel):
         return self
 
 
-class PasswordResetRequest(BaseModel):
+class PasswordResetRequestCreate(BaseModel):
+    user_code: str
+    request_note: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
     new_password: str
+    confirm_new_password: str
 
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value: str) -> str:
         return validate_password_policy(value)
 
-
-class PasswordResetRequestCreate(BaseModel):
-    user_code: str
-    request_note: Optional[str] = None
-
-
-class PasswordResetRequestResolve(BaseModel):
-    status: Literal["RESOLVED", "REJECTED"]
-    resolution_note: Optional[str] = None
+    @model_validator(mode="after")
+    def validate_password_confirmation(self):
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("confirm_new_password must match new_password")
+        return self
 
 
 class CurrentUser(BaseModel):

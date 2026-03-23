@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
 import { requestJson } from "../../lib/http.js";
-import RoleSummaryCards from "./RoleSummaryCards.jsx";
 import UserCreateForm from "./UserCreateForm.jsx";
 
 const EMPTY_PREFERENCE = {
@@ -20,14 +19,12 @@ export default function RegisterPage({ auth }) {
 
   const [form, setForm] = useState({
     display_name: "",
-    password: "",
     role: roleOptions[0],
     name: "",
     contact: "",
     score: 0,
     max_slots_per_day: 2,
     preferences: [{ ...EMPTY_PREFERENCE }],
-    active: true,
   });
   const [status, setStatus] = useState({ kind: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -134,7 +131,6 @@ export default function RegisterPage({ auth }) {
           contact: form.contact.trim(),
           score: Number(form.score),
           max_slots_per_day: Number(form.max_slots_per_day),
-          active: form.active,
           preferences,
         };
 
@@ -149,14 +145,12 @@ export default function RegisterPage({ auth }) {
 
         setStatus({
           kind: "success",
-          message: `Created teacher account ${createdUser.display_name} (${createdUser.user_code}, ${createdUser.teacher_id}). Temporary password: 123456aA@`,
+          message: `Created teacher account ${createdUser.display_name} (${createdUser.user_code}, ${createdUser.teacher_id}).`,
         });
       } else {
         const payload = {
           display_name: form.display_name.trim(),
-          password: form.password,
           role: form.role,
-          active: form.active,
         };
 
         const createdUser = await requestJson(`${auth.apiBase}/users`, {
@@ -170,19 +164,17 @@ export default function RegisterPage({ auth }) {
 
         setStatus({
           kind: "success",
-          message: `Created ${createdUser.role} account ${createdUser.display_name} (${createdUser.user_code}). Use this code to sign in.`,
+          message: `Created ${createdUser.role} account ${createdUser.display_name} (${createdUser.user_code}).`,
         });
       }
       setForm({
         display_name: "",
-        password: "",
         role: roleOptions[0],
         name: "",
         contact: "",
         score: 0,
         max_slots_per_day: 2,
         preferences: [{ ...EMPTY_PREFERENCE }],
-        active: true,
       });
     } catch (error) {
       setStatus({ kind: "error", message: error.message });
@@ -204,13 +196,14 @@ export default function RegisterPage({ auth }) {
             <Link className="inline-link" to="/monitor">
               Back to monitor
             </Link>
+            <Link className="inline-link" to="/change-password">
+              Change password
+            </Link>
             <button type="button" className="secondary-button" onClick={auth.logout}>
               Log out
             </button>
           </div>
         </div>
-
-        <RoleSummaryCards currentRole={auth.user.role} />
 
         <UserCreateForm
           centers={centers}

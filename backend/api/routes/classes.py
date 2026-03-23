@@ -15,7 +15,7 @@ router = APIRouter()
 @router.get("/centers")
 def get_centers(
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER)),
 ):
     rows = db.execute(
         text("""

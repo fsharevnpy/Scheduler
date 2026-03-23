@@ -3,9 +3,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.permissions import get_current_user
-from core.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, verify_password
+from core.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, hash_password, verify_password
 from db import get_db
-from schemas.auth import CurrentUser, LoginRequest, TokenResponse
+from schemas.auth import ChangePasswordRequest, CurrentUser, LoginRequest, TokenResponse
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -60,3 +60,46 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=CurrentUser)
 def get_me(current_user: CurrentUser = Depends(get_current_user)):
     return current_user
+
+
+@router.put("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    user = db.execute(
+        text("""
+            SELECT user_code, password_hash, active
+            FROM users
+            WHERE user_code = :user_code
+        """),
+        {"user_code": current_user.user_code},
+    ).mappings().first()
+
+    if not user or not user["active"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid or inactive user",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="current password is incorrect")
+
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="new password must be different from current password")
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET password_hash = :password_hash
+            WHERE user_code = :user_code
+        """),
+        {
+            "password_hash": hash_password(payload.new_password),
+            "user_code": current_user.user_code,
+        },
+    )
+    db.commit()
+    return {"message": "password changed", "user_code": current_user.user_code}

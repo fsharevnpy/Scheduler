@@ -123,7 +123,6 @@ Key fields:
 Current statuses:
 - `REQUESTED`
 - `RESOLVED`
-- `REJECTED`
 
 ## Relationship Summary
 

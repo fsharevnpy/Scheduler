@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { useEffect, useMemo, useState } from "react";
 
 import LoginPage from "./pages/LoginPage.jsx";
+import ChangePasswordPage from "./pages/ChangePasswordPage.jsx";
 import MonitorPage from "./pages/MonitorPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
 import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
@@ -114,6 +115,14 @@ export default function App() {
         path="/login"
         element={
           auth.isAuthenticated ? <Navigate to="/monitor" replace /> : <LoginPage auth={auth} />
+        }
+      />
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
+            <ChangePasswordPage auth={auth} />
+          </ProtectedRoute>
         }
       />
       <Route

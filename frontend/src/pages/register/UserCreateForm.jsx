@@ -1,5 +1,3 @@
-const PASSWORD_HELP = "Minimum 8 characters, with uppercase, lowercase, number, and special character.";
-
 export default function UserCreateForm({
   centers,
   centersError,
@@ -66,12 +64,6 @@ export default function UserCreateForm({
                 required
               />
             </label>
-
-            <div className="field">
-              <span>Temporary Password</span>
-              <input value="123456aA@" type="text" disabled />
-              <small className="field-help">Teacher accounts are created with a fixed temporary password.</small>
-            </div>
 
             <div className="field">
               <div className="field-head">
@@ -157,24 +149,6 @@ export default function UserCreateForm({
         )}
 
         <label className="field">
-          <span>{form.role === "teacher" ? "Password Policy" : "Password"}</span>
-          {form.role === "teacher" ? (
-            <input value="Teacher password is assigned automatically." type="text" disabled />
-          ) : (
-            <>
-              <input
-                value={form.password}
-                onChange={(event) => onFieldChange("password", event.target.value)}
-                type="password"
-                autoComplete="new-password"
-                required
-              />
-              <small className="field-help">{PASSWORD_HELP}</small>
-            </>
-          )}
-        </label>
-
-        <label className="field">
           <span>Role</span>
           <select value={form.role} onChange={(event) => onFieldChange("role", event.target.value)}>
             {roleOptions.map((role) => (
@@ -183,15 +157,6 @@ export default function UserCreateForm({
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="toggle-field">
-          <input
-            checked={form.active}
-            onChange={(event) => onFieldChange("active", event.target.checked)}
-            type="checkbox"
-          />
-          <span>Account is active</span>
         </label>
 
         <button className="primary-button" type="submit" disabled={isSubmitting}>

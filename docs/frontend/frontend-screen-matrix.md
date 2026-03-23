@@ -6,6 +6,7 @@ Initial frontend scope includes three screens:
 - `Login`
 - `Register`
 - `Monitor`
+- `Change Password`
 
 The `Register` screen is an internal user creation screen, not a public self-signup page.
 
@@ -16,6 +17,7 @@ The `Register` screen is an internal user creation screen, not a public self-sig
 | `/login` | No | Public | Authenticate and receive `access_token` |
 | `/register` | Yes | `developer`, `manager` | Create new users |
 | `/monitor` | Yes | `developer`, `manager`, `teacher` | Main dashboard / working screen |
+| `/change-password` | Yes | `developer`, `manager`, `teacher` | Change the current user's password |
 
 ## Login Screen
 
@@ -64,7 +66,6 @@ Allowed roles:
 
 Suggested UI:
 - role selector
-- active toggle
 - create button
 - success state showing the generated `user_code`
 
@@ -76,16 +77,28 @@ Teacher account mode:
 - optional multiple preference rows
 - center dropdown sourced from backend
 - 24-hour `HH:MM` time inputs for preferences
-- fixed temporary password note
 
 Staff account mode:
 - `display_name`
-- password
 
 Frontend rules:
 - hide this screen for `teacher`
 - if current role is `manager`, do not show `developer` as a selectable role
 - if selected role is `teacher`, do not ask for `teacher_id` or password
+
+## Change Password Screen
+
+Purpose:
+- allow any authenticated user to change their own password
+
+Main API call:
+- `PUT /auth/change-password`
+
+Suggested UI:
+- current password
+- new password
+- confirm new password
+- success or validation error state
 
 ## Monitor Screen
 
@@ -138,6 +151,7 @@ Main APIs:
 - if no token is stored, redirect to `/login`
 - if token is invalid or expired, clear local auth state and redirect to `/login`
 - if a `teacher` attempts to access `/register`, redirect to `/monitor`
+- `/change-password` is available to any authenticated role
 
 ## Recommended Frontend State
 

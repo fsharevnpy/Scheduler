@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
-from schemas.scheduling import TeacherCreate, TeacherUpdate
+from schemas.scheduling import TeacherUpdate
 
 
 router = APIRouter()
@@ -24,18 +24,6 @@ def get_teachers(
         """)
     ).mappings().all()
     return [dict(row) for row in rows]
-
-
-@router.post("/teachers")
-def create_teacher(
-    payload: TeacherCreate,
-    db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
-):
-    raise HTTPException(
-        status_code=400,
-        detail="create teacher accounts through /users with role teacher",
-    )
 
 
 @router.put("/teachers/{teacher_id}")

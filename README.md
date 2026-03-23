@@ -11,7 +11,7 @@ Main capabilities:
 - authentication with generated `user_code` and access token
 - role-based API authorization
 - internal forgot-password request flow
-- approval-based password reset to default password
+- request-based password reset to default password
 - teacher and class management
 - teacher account creation with auto-generated `teacher_id`
 - leave request workflow
@@ -101,7 +101,8 @@ Available after reseeding the database:
 
 Use `user_code` and password to sign in.
 Each account also has a `display_name` used across the UI.
-New teacher accounts are created with a generated `teacher_id` and temporary password `123456aA@`.
+New accounts are created with the default password `123456aA@`.
+New teacher accounts are also created with a generated `teacher_id`.
 
 Seeded centers:
 - `Quan 9 (CS1)`

@@ -103,5 +103,5 @@ CREATE TABLE password_reset_requests (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     resolved_by VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL,
     resolved_at TIMESTAMP NULL,
-    CHECK (status IN ('REQUESTED', 'RESOLVED', 'REJECTED'))
+    CHECK (status IN ('REQUESTED', 'RESOLVED'))
 );

@@ -14,6 +14,7 @@
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/auth/me` | `developer`, `manager`, `teacher` | Return current authenticated user |
+| `PUT` | `/auth/change-password` | `developer`, `manager`, `teacher` | Change the current user's password with current password verification |
 | `GET` | `/password-reset-requests` | `developer`, `manager`, `teacher` | List password reset requests |
 | `GET` | `/centers` | `developer`, `manager` | List centers for teacher preferences and class setup |
 
@@ -24,7 +25,6 @@
 | `GET` | `/users` | `developer`, `manager` | List manageable users |
 | `POST` | `/users` | `developer`, `manager` | Create a staff user or create a teacher account with teacher profile |
 | `DELETE` | `/users/{user_code}` | `developer`, `manager` | Delete a user by user code |
-| `PUT` | `/users/{user_code}/reset-password` | `developer`, `manager` | Reset a user password internally (legacy/manual admin flow) |
 | `PUT` | `/password-reset-requests/{request_id}/reset-default` | `developer`, `manager` | Reset a requested account back to the default password |
 
 Notes:

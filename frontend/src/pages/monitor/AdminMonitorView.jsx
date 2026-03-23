@@ -92,14 +92,22 @@ export default function AdminMonitorView({
                 </div>
 
                 <div className="table-wrap">
-                  <table className="data-table">
+                  <table className="data-table classes-center-table">
+                    <colgroup>
+                      <col className="classes-col-id" />
+                      <col className="classes-col-date" />
+                      <col className="classes-col-time" />
+                      <col className="classes-col-room" />
+                      <col className="classes-col-teacher" />
+                      <col className="classes-col-status" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Class ID</th>
                         <th>Date</th>
                         <th>Time</th>
                         <th>Room</th>
-                        <th>Teacher ID</th>
+                        <th>Teacher</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -110,7 +118,7 @@ export default function AdminMonitorView({
                           <td>{row.class_date}</td>
                           <td>{formatTimeValue(row.start_time)} - {formatTimeValue(row.end_time)}</td>
                           <td>{formatValue(row.room_no)}</td>
-                          <td>{formatValue(row.teacher_id)}</td>
+                          <td>{formatValue(row.teacher_label)}</td>
                           <td>
                             <StatusPill value={row.status} />
                           </td>
@@ -168,7 +176,7 @@ export default function AdminMonitorView({
                         <div key={`${item.class_id}-${suggestion.teacher_id}`} className="replacement-suggestion-row">
                           <div className="replacement-suggestion-meta">
                             <strong>
-                              {suggestion.name} ({suggestion.teacher_id})
+                              {suggestion.teacher_id} - {suggestion.name}
                             </strong>
                             <span className="subtle">
                               Final {suggestion.final_score.toFixed(4)} | Base {suggestion.normalized_score.toFixed(4)}

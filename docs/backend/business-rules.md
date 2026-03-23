@@ -7,6 +7,10 @@
 - Protected APIs require `Authorization: Bearer <token>`.
 - The backend decodes the token, reloads the user from the database, and checks that the user is still active.
 - Authorization is role-based with three roles: `developer`, `manager`, `teacher`.
+- Any authenticated user can change their own password by providing:
+  - current password
+  - new password
+  - confirmation of the new password
 
 ## User Rules
 
@@ -20,18 +24,13 @@
 - Teacher accounts are created through `POST /users`, not `POST /teachers`.
 - When role = `teacher`, the backend creates both the `users` account and the `teachers` profile in one transaction.
 - `teacher_id` is generated automatically in `GVN` format such as `GV0`, `GV1`, `GV2`.
-- Teacher accounts use the fixed temporary password `123456aA@` on creation.
+- New accounts use the fixed default password `123456aA@` on creation.
 - A `teacher` user's `display_name` is synced from `teachers.name`.
 - A non-`teacher` user must not have a `teacher_id`.
 - One `teacher_id` can only be linked to one user account.
 - A user cannot delete their own account.
-- Password reset is request-driven and approved internally.
-- User creation and legacy internal password reset share the same password policy:
-  - minimum 8 characters
-  - at least one uppercase letter
-  - at least one lowercase letter
-  - at least one number
-  - at least one special character
+- Password reset is request-driven and handled internally.
+- User self-service password change uses the same password policy.
 
 ## Password Reset Request Rules
 
@@ -41,13 +40,11 @@
 - Password reset request status must be one of:
   - `REQUESTED`
   - `RESOLVED`
-  - `REJECTED`
 - `teacher` users can only view their own password reset requests.
 - `manager` and `developer` can view password reset requests for roles they are allowed to manage.
 - `manager` and `developer` can reset requested accounts to the default password for roles they are allowed to manage.
 - A processed password reset request cannot be reset again.
 - When a password reset request is handled, the target user's password is reset to the default value `123456aA@`.
-- When an internal password reset is completed through `/users/{user_code}/reset-password`, all open `REQUESTED` password reset requests for that user code are automatically marked as `RESOLVED`.
 
 ## Teacher Rules
 

@@ -4,15 +4,6 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 
-class TeacherCreate(BaseModel):
-    teacher_id: str
-    name: str
-    contact: Optional[str] = None
-    score: int = 0
-    max_slots_per_day: int = 2
-    active: bool = True
-
-
 class TeacherUpdate(BaseModel):
     name: Optional[str] = None
     contact: Optional[str] = None

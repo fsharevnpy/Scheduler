@@ -5,6 +5,7 @@
 - `/login`
 - `/register`
 - `/monitor`
+- `/change-password`
 
 ## Entry Flow
 
@@ -75,6 +76,16 @@ Password reset admin flow:
 3. Frontend shows only requests the current role is allowed to manage
 4. Current user can reset the requested account directly with `PUT /password-reset-requests/{request_id}/reset-default`
 
+Change password flow:
+1. Current user opens `/change-password`
+2. Frontend shows a dedicated change-password page
+3. User enters:
+   - current password
+   - new password
+   - confirm new password
+4. Frontend calls `PUT /auth/change-password`
+5. On success, frontend clears the form and shows a confirmation
+
 ## Monitor Flow
 
 Route: `/monitor`
@@ -121,4 +132,5 @@ Since the current backend does not have a dedicated logout API:
 
 - successful login always goes to `/monitor`
 - registration should be available from `/monitor` for `developer` and `manager`
+- change password should be available from authenticated screens near logout
 - `teacher` should never see navigation to `/register`

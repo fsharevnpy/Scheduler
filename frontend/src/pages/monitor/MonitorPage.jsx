@@ -262,7 +262,12 @@ export default function MonitorPage({ auth }) {
     ...item,
     center_label: formatCenter(item.center_id),
   }));
-  const highlightedClasses = classesWithCenter.filter((item) => item.teacher_id === user.teacher_id);
+  const teachersById = new Map(state.teachers.map((item) => [item.teacher_id, item.name]));
+  const classesWithCenterAndTeacher = classesWithCenter.map((item) => ({
+    ...item,
+    teacher_label: item.teacher_id ? `${item.teacher_id} - ${teachersById.get(item.teacher_id) || "-"}` : "-",
+  }));
+  const highlightedClasses = classesWithCenterAndTeacher.filter((item) => item.teacher_id === user.teacher_id);
   const classesById = new Map(state.classes.map((item) => [item.class_id, item]));
   const leaveRequestsWithCenter = state.leaveRequests.map((item) => ({
     ...item,
@@ -289,6 +294,9 @@ export default function MonitorPage({ auth }) {
                 Open register screen
               </Link>
             )}
+            <Link className="inline-link" to="/change-password">
+              Change password
+            </Link>
             <button type="button" className="secondary-button" onClick={auth.logout}>
               Log out
             </button>
@@ -309,11 +317,11 @@ export default function MonitorPage({ auth }) {
         ) : (
           <AdminMonitorView
             actionStatus={actionStatus}
-            classes={classesWithCenter}
+            classes={classesWithCenterAndTeacher}
             leaveRequests={leaveRequestsWithCenter}
             managerUsers={managerUsers}
             pendingAction={pendingAction}
-            replacementQueue={replacementQueue}
+            replacementQueue={classesWithCenterAndTeacher.filter((item) => item.status === "NEED_REPLACEMENT")}
             replacementSuggestions={replacementSuggestions}
             resetRequests={state.resetRequests}
             role={user.role}
