@@ -24,12 +24,27 @@ services:
     ports:
       - "8000:8000"
 
+  backendgo:
+    build: ./backendGO
+    container_name: scheduler_backendgo
+    restart: always
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://chessfighter:123456@db:5432/scheduler
+      PORT: 8000
+    ports:
+      - "8001:8000"
+
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: http://localhost:8001
     container_name: scheduler_frontend
     restart: always
     depends_on:
-      - backend
+      - backendgo
     ports:
       - "3000:80"
 
