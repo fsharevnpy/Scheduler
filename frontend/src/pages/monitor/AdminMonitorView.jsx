@@ -18,6 +18,7 @@ export default function AdminMonitorView({
   onCancelLeaveRequest,
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
+  onUpdateTeacherActive,
 }) {
   const classesByCenter = classes.reduce((groups, item) => {
     const key = item.center_label || "Unknown Center";
@@ -66,7 +67,21 @@ export default function AdminMonitorView({
           { key: "contact", label: "Contact" },
           { key: "score", label: "Score" },
           { key: "max_slots_per_day", label: "Max Slots" },
-          { key: "active", label: "Active", render: (row) => (row.active ? "Yes" : "No") },
+          {
+            key: "active",
+            label: "Active",
+            render: (row) => (
+              <select
+                className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
+                value={row.active ? "yes" : "no"}
+                disabled={pendingAction === `teacher-active-${row.teacher_id}`}
+                onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            ),
+          },
         ]}
         rows={teachers}
         emptyMessage="No teachers found."
@@ -300,7 +315,6 @@ export default function AdminMonitorView({
             { key: "display_name", label: "Display Name" },
             { key: "role", label: "Role" },
             { key: "teacher_id", label: "Teacher ID" },
-            { key: "active", label: "Active", render: (row) => (row.active ? "Yes" : "No") },
           ]}
           rows={managerUsers}
           emptyMessage="No manager accounts found."

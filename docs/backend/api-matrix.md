@@ -16,7 +16,7 @@
 | `GET` | `/auth/me` | `developer`, `manager`, `teacher` | Return current authenticated user |
 | `PUT` | `/auth/change-password` | `developer`, `manager`, `teacher` | Change the current user's password with current password verification |
 | `GET` | `/password-reset-requests` | `developer`, `manager`, `teacher` | List password reset requests |
-| `GET` | `/centers` | `developer`, `manager` | List centers for teacher preferences and class setup |
+| `GET` | `/centers` | `developer`, `manager`, `teacher` | List centers for teacher preferences and class setup |
 
 ## User Management
 

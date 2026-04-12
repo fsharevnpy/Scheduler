@@ -227,6 +227,48 @@
   background: rgba(164, 55, 45, 0.18);
 }
 
+.table-select {
+  min-width: 84px;
+  border: 1px solid rgba(31, 27, 23, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 8px 10px;
+  color: var(--ink);
+  outline: none;
+}
+
+.table-select:focus {
+  border-color: rgba(180, 79, 33, 0.55);
+  box-shadow: 0 0 0 4px rgba(180, 79, 33, 0.12);
+}
+
+.table-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.table-select-active {
+  background: rgba(42, 123, 86, 0.12);
+  border-color: rgba(42, 123, 86, 0.25);
+  color: var(--success);
+}
+
+.table-select-active option {
+  background: #eef8f1;
+  color: var(--success);
+}
+
+.table-select-inactive {
+  background: rgba(164, 55, 45, 0.12);
+  border-color: rgba(164, 55, 45, 0.25);
+  color: var(--error);
+}
+
+.table-select-inactive option {
+  background: #fdf0ee;
+  color: var(--error);
+}
+
 .inline-link {
   display: inline-flex;
   margin-top: 12px;

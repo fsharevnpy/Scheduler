@@ -11,6 +11,52 @@ const EMPTY_PREFERENCE = {
   preferred_end_time: "",
 };
 
+function formatTimeDraft(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+
+  if (digits.length === 0) {
+    return "";
+  }
+
+  if (digits.length === 1) {
+    return digits;
+  }
+
+  if (digits.length === 2) {
+    const hour = Number.parseInt(digits, 10);
+
+    if (hour <= 23) {
+      return `${digits}:`;
+    }
+
+    return `0${digits[0]}:${digits[1]}`;
+  }
+
+  if (digits.length === 3) {
+    if (digits[0] === "0") {
+      return `${digits.slice(0, 2)}:${digits[2]}`;
+    }
+
+    const hour = Number.parseInt(digits.slice(0, 2), 10);
+    if (hour <= 23) {
+      return `${digits.slice(0, 2)}:${digits[2]}`;
+    }
+
+    return `0${digits[0]}:${digits.slice(1)}`;
+  }
+
+  if (digits[0] === "0") {
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  }
+
+  const hour = Number.parseInt(digits.slice(0, 2), 10);
+  if (hour <= 23) {
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  }
+
+  return `0${digits[0]}:${digits.slice(1, 3)}`;
+}
+
 export default function RegisterPage({ auth }) {
   const roleOptions = useMemo(
     () => (auth.user.role === "developer" ? ["developer", "manager", "teacher"] : ["manager", "teacher"]),
@@ -69,10 +115,15 @@ export default function RegisterPage({ auth }) {
   }
 
   function updatePreference(index, key, value) {
+    const nextValue =
+      key === "preferred_start_time" || key === "preferred_end_time"
+        ? formatTimeDraft(value)
+        : value;
+
     setForm((current) => ({
       ...current,
       preferences: current.preferences.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [key]: value } : item,
+        itemIndex === index ? { ...item, [key]: nextValue } : item,
       ),
     }));
   }

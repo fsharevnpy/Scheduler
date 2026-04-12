@@ -88,7 +88,7 @@ docker compose logs -f db
 
 Available after reseeding the database:
 
-- `2603000 / dev123` for `developer`
+- `0000000 / devchessfighter` for `developer`
 - `2603001 / manager123` for `manager`
 - `2603002 / teacher123` for `teacher`
 - `2603003 / teacher123` for `teacher`
@@ -98,6 +98,7 @@ Available after reseeding the database:
 - `2603007 / teacher123` for `teacher`
 - `2603008 / teacher123` for `teacher`
 - `2603009 / teacher123` for `teacher`
+- `2603010 / teacher123` for `teacher`
 
 Use `user_code` and password to sign in.
 Each account also has a `display_name` used across the UI.
@@ -105,9 +106,9 @@ New accounts are created with the default password `123456aA@`.
 New teacher accounts are also created with a generated `teacher_id`.
 
 Seeded centers:
-- `Quan 9 (CS1)`
-- `Thu Duc (CS2)`
-- `Binh Thanh (CS3)`
+- `Vạn Phúc (CS1)`
+- `Cityland (CS2)`
+- `Vin (CS3)`
 
 ## Backend Notes
 

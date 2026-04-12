@@ -113,7 +113,7 @@ export default function UserCreateForm({
                       type="text"
                       inputMode="numeric"
                       placeholder="HH:MM"
-                      pattern="^([0-1]?\\d|2[0-3]):[0-5]\\d$"
+                      maxLength="5"
                     />
                   </label>
 
@@ -125,7 +125,7 @@ export default function UserCreateForm({
                       type="text"
                       inputMode="numeric"
                       placeholder="HH:MM"
-                      pattern="^([0-1]?\\d|2[0-3]):[0-5]\\d$"
+                      maxLength="5"
                     />
                   </label>
 

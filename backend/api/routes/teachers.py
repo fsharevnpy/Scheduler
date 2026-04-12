@@ -63,5 +63,18 @@ def update_teacher(
             },
         )
 
+    if "active" in data:
+        db.execute(
+            text("""
+                UPDATE users
+                SET active = :active
+                WHERE teacher_id = :teacher_id
+            """),
+            {
+                "active": data["active"],
+                "teacher_id": teacher_id,
+            },
+        )
+
     db.commit()
     return {"message": "teacher updated", "teacher_id": teacher_id}

@@ -51,6 +51,7 @@
 - Only `developer` and `manager` can list and update teachers.
 - `teacher_id` must be unique.
 - When `teachers.name` is updated, the linked teacher account `display_name` is updated as well.
+- When `teachers.active` is updated, the linked teacher account `users.active` is updated as well.
 
 ## Class Rules
 

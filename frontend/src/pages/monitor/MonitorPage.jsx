@@ -251,6 +251,32 @@ export default function MonitorPage({ auth }) {
     }
   }
 
+  async function updateTeacherActive(teacherId, active) {
+    await runAction(
+      `teacher-active-${teacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/teachers/${teacherId}`, {
+          method: "PUT",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ active }),
+        }),
+      `Updated active status for ${teacherId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          teachers: current.teachers.map((item) =>
+            item.teacher_id === teacherId
+              ? {
+                  ...item,
+                  active,
+                }
+              : item,
+          ),
+        }));
+      },
+    );
+  }
+
   const unassignedClasses = state.classes.filter((item) => item.status !== "ASSIGNED");
   const managerUsers = state.users.filter((item) => item.role === "manager");
   const centersById = new Map(state.centers.map((item) => [item.center_id, item]));
@@ -331,6 +357,7 @@ export default function MonitorPage({ auth }) {
             onCancelLeaveRequest={cancelLeaveRequest}
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
+            onUpdateTeacherActive={updateTeacherActive}
           />
         )}
       </section>
