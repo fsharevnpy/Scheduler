@@ -298,8 +298,11 @@ export default function MonitorPage({ auth }) {
   const leaveRequestsWithCenter = state.leaveRequests.map((item) => ({
     ...item,
     center_id: formatCenter(classesById.get(item.class_id)?.center_id),
+    teacher_name: teachersById.get(item.teacher_id) || item.teacher_id || "-",
   }));
-  const replacementQueue = classesWithCenter.filter((item) => item.status === "NEED_REPLACEMENT");
+  const assignmentQueue = classesWithCenterAndTeacher.filter(
+    (item) => item.status === "OPEN" || item.status === "NEED_REPLACEMENT",
+  );
 
   return (
     <main className="dashboard-shell">
@@ -347,7 +350,7 @@ export default function MonitorPage({ auth }) {
             leaveRequests={leaveRequestsWithCenter}
             managerUsers={managerUsers}
             pendingAction={pendingAction}
-            replacementQueue={classesWithCenterAndTeacher.filter((item) => item.status === "NEED_REPLACEMENT")}
+            replacementQueue={assignmentQueue}
             replacementSuggestions={replacementSuggestions}
             resetRequests={state.resetRequests}
             role={user.role}

@@ -86,7 +86,7 @@ def get_replacement_suggestions(
                 END AS time_match
             FROM teachers t
             WHERE t.active = TRUE
-              AND t.teacher_id <> :original_teacher_id
+              AND (:original_teacher_id IS NULL OR t.teacher_id <> :original_teacher_id)
               AND NOT EXISTS (
                   SELECT 1
                   FROM classes c3

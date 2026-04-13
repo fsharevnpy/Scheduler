@@ -105,7 +105,7 @@ Suggested content:
 - class list
 - leave request list
 - leave request approve/cancel actions
-- replacement queue for classes in `NEED_REPLACEMENT`
+- assignment queue for classes in `OPEN` or `NEED_REPLACEMENT`
 - load replacement suggestions
 - assign replacement teacher directly from monitor
 - password reset request list

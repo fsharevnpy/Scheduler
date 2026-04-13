@@ -89,9 +89,12 @@
 
 - Only `developer` and `manager` can view replacement suggestions.
 - The target class must exist.
+- Suggestion lookup supports both:
+  - classes in `OPEN`
+  - classes in `NEED_REPLACEMENT`
 - Candidate teachers must:
   - be active
-  - not be the original teacher of the class
+  - not be the original teacher of the class when the class already has one
   - not have schedule overlap with another class on the same date
   - not exceed `max_slots_per_day`
 - Each candidate gets:

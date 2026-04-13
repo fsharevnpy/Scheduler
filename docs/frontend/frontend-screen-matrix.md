@@ -114,7 +114,7 @@ Suggested sections:
 - center shown in class and leave request views
 - teacher list with inline active `Yes/No` dropdown
 - leave request approval and cancel actions
-- replacement queue for classes with `NEED_REPLACEMENT`
+- assignment queue for classes with `OPEN` or `NEED_REPLACEMENT`
 - load ranked replacement suggestions
 - assign replacement teacher directly from monitor
 - password reset request inbox

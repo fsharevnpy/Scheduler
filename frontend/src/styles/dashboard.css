@@ -337,6 +337,79 @@
   margin-top: 8px;
 }
 
+.floating-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(24, 20, 16, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 30;
+}
+
+.floating-panel {
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  border-radius: 24px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  background: rgba(255, 251, 243, 0.98);
+  box-shadow: 0 28px 70px rgba(31, 27, 23, 0.2);
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.floating-panel-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.floating-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.floating-panel-section {
+  margin-top: 18px;
+}
+
+.floating-panel-section p:last-child {
+  margin-top: 8px;
+}
+
+.floating-panel-reason-box {
+  margin-top: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 14px 16px;
+}
+
+.floating-panel-reason-box p {
+  margin: 0;
+}
+
+.floating-panel-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.floating-panel-status-row p {
+  margin-bottom: 0;
+}
+
+.floating-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
 .center-class-groups {
   display: grid;
   gap: 16px;

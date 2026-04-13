@@ -53,4 +53,8 @@
   .preference-card {
     grid-template-columns: 1fr;
   }
+
+  .floating-panel-grid {
+    grid-template-columns: 1fr;
+  }
 }

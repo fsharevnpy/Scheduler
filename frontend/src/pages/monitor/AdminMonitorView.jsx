@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 import DataTable from "./DataTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
@@ -20,6 +23,17 @@ export default function AdminMonitorView({
   onResetPasswordRequest,
   onUpdateTeacherActive,
 }) {
+  const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
+
+  useEffect(() => {
+    if (!selectedLeaveRequest) {
+      return;
+    }
+
+    const nextSelected = leaveRequests.find((item) => item.request_id === selectedLeaveRequest.request_id) || null;
+    setSelectedLeaveRequest(nextSelected);
+  }, [leaveRequests, selectedLeaveRequest]);
+
   const classesByCenter = classes.reduce((groups, item) => {
     const key = item.center_label || "Unknown Center";
     if (!groups[key]) {
@@ -151,13 +165,13 @@ export default function AdminMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Replacement</p>
-            <h2>Replacement Queue</h2>
+            <p className="eyebrow">Assignment</p>
+            <h2>Assignment Queue</h2>
           </div>
         </div>
 
         {replacementQueue.length === 0 ? (
-          <p className="subtle">No classes currently need replacement.</p>
+          <p className="subtle">No open or replacement classes are waiting for assignment.</p>
         ) : (
           <div className="replacement-queue">
             {replacementQueue.map((item) => {
@@ -172,7 +186,7 @@ export default function AdminMonitorView({
                         {item.class_date} | {item.center_label} | {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                       </p>
                       <p className="subtle">
-                        Room {formatValue(item.room_no)} | Current teacher {formatValue(item.teacher_id)}
+                        Room {formatValue(item.room_no)} | Current teacher {formatValue(item.teacher_id)} | Status {formatValue(item.status)}
                       </p>
                     </div>
                     <button
@@ -215,7 +229,7 @@ export default function AdminMonitorView({
                       ))}
                     </div>
                   ) : (
-                    <p className="subtle replacement-empty">Load suggestions to see eligible replacement teachers.</p>
+                    <p className="subtle replacement-empty">Load suggestions to see eligible teachers for assignment.</p>
                   )}
                 </article>
               );
@@ -230,36 +244,19 @@ export default function AdminMonitorView({
           { key: "request_id", label: "Request ID" },
           { key: "class_id", label: "Class ID" },
           { key: "center_id", label: "Center" },
-          { key: "teacher_id", label: "Teacher ID" },
+          { key: "teacher_name", label: "Teacher" },
           { key: "request_date", label: "Date" },
-          { key: "reason", label: "Reason" },
-          { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
           {
-            key: "actions",
-            label: "Actions",
+            key: "info",
+            label: "Info",
             render: (row) => (
-              <div className="table-actions">
-                {row.status === "REQUESTED" ? (
-                  <button
-                    type="button"
-                    className="table-action-button"
-                    disabled={pendingAction === `approve-${row.request_id}`}
-                    onClick={() => onApproveLeaveRequest(row.request_id)}
-                  >
-                    Approve
-                  </button>
-                ) : null}
-                {row.status !== "CANCELLED" ? (
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    disabled={pendingAction === `cancel-${row.request_id}`}
-                    onClick={() => onCancelLeaveRequest(row.request_id)}
-                  >
-                    Cancel
-                  </button>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                className="table-action-button table-action-button-muted"
+                onClick={() => setSelectedLeaveRequest(row)}
+              >
+                Show
+              </button>
             ),
           },
         ]}
@@ -267,10 +264,92 @@ export default function AdminMonitorView({
         emptyMessage="No leave requests found."
       />
 
+      {selectedLeaveRequest
+        ? createPortal(
+            <div className="floating-panel-backdrop" role="presentation" onClick={() => setSelectedLeaveRequest(null)}>
+              <section
+                className="floating-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="leave-request-info-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="floating-panel-head">
+                  <div>
+                    <p className="eyebrow">Leave Request</p>
+                    <h2 id="leave-request-info-title">{selectedLeaveRequest.request_id}</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    onClick={() => setSelectedLeaveRequest(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="floating-panel-grid">
+                  <div>
+                    <p className="subtle">Teacher</p>
+                    <strong>{formatValue(selectedLeaveRequest.teacher_name)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Class</p>
+                    <strong>{formatValue(selectedLeaveRequest.class_id)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Center</p>
+                    <strong>{formatValue(selectedLeaveRequest.center_id)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Request Date</p>
+                    <strong>{formatValue(selectedLeaveRequest.request_date)}</strong>
+                  </div>
+                </div>
+
+                <div className="floating-panel-section">
+                  <p className="subtle">Reason</p>
+                  <div className="floating-panel-reason-box">
+                    <p>{formatValue(selectedLeaveRequest.reason)}</p>
+                  </div>
+                </div>
+
+                <div className="floating-panel-section floating-panel-status-row">
+                  <p className="subtle">Status</p>
+                  <StatusPill value={selectedLeaveRequest.status} />
+                </div>
+
+                <div className="floating-panel-actions">
+                  {selectedLeaveRequest.status === "REQUESTED" ? (
+                    <button
+                      type="button"
+                      className="table-action-button"
+                      disabled={pendingAction === `approve-${selectedLeaveRequest.request_id}`}
+                      onClick={() => onApproveLeaveRequest(selectedLeaveRequest.request_id)}
+                    >
+                      {pendingAction === `approve-${selectedLeaveRequest.request_id}` ? "Approving..." : "Approve"}
+                    </button>
+                  ) : null}
+                  {selectedLeaveRequest.status !== "CANCELLED" ? (
+                    <button
+                      type="button"
+                      className="table-action-button table-action-button-muted"
+                      disabled={pendingAction === `cancel-${selectedLeaveRequest.request_id}`}
+                      onClick={() => onCancelLeaveRequest(selectedLeaveRequest.request_id)}
+                    >
+                      {pendingAction === `cancel-${selectedLeaveRequest.request_id}` ? "Cancelling..." : "Cancel"}
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
+
       <DataTable
         title="Password Reset Requests"
         columns={[
-          { key: "request_id", label: "Request ID" },
           { key: "user_code", label: "User Code" },
           { key: "display_name", label: "Display Name" },
           { key: "created_at", label: "Created" },
