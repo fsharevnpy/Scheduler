@@ -4,11 +4,14 @@ import { useState } from "react";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import ChangePasswordPanel from "../monitor/ChangePasswordPanel.jsx";
+import ProfileImagePanel from "./ProfileImagePanel.jsx";
 import { requestJson } from "../../lib/http.js";
 
 export default function ChangePasswordPage({ auth }) {
   const [status, setStatus] = useState({ kind: "", message: "" });
+  const [imageStatus, setImageStatus] = useState({ kind: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [form, setForm] = useState({
     current_password: "",
     new_password: "",
@@ -39,6 +42,38 @@ export default function ChangePasswordPage({ auth }) {
       setStatus({ kind: "error", message: error.message });
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleProfileImageChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingImage(true);
+    setImageStatus({ kind: "", message: "Uploading profile image..." });
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const updatedUser = await requestJson(`${auth.apiBase}/auth/profile-image`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: formData,
+      });
+
+      auth.updateUser(updatedUser);
+      setImageStatus({ kind: "success", message: "Profile image updated." });
+    } catch (error) {
+      setImageStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsUploadingImage(false);
     }
   }
 
@@ -80,6 +115,13 @@ export default function ChangePasswordPage({ auth }) {
             </div>
           </div>
         </div>
+
+        <ProfileImagePanel
+          auth={auth}
+          isUploading={isUploadingImage}
+          status={imageStatus}
+          onFileChange={handleProfileImageChange}
+        />
 
         <ChangePasswordPanel
           form={form}

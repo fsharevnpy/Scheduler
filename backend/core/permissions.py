@@ -1,4 +1,3 @@
-import os
 from typing import Callable
 
 from fastapi import Depends, HTTPException, status
@@ -6,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.profile_images import build_profile_image_url
 from core.security import decode_access_token
 from db import get_db
 from schemas.auth import CurrentUser
@@ -16,17 +16,6 @@ ROLE_MANAGER = "manager"
 ROLE_TEACHER = "teacher"
 
 bearer_scheme = HTTPBearer(auto_error=False)
-STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
-
-
-def build_profile_image_url(path: str | None) -> str | None:
-    if not path:
-        return None
-    if path.startswith("http://") or path.startswith("https://"):
-        return path
-    if STATIC_BASE_URL:
-        return f"{STATIC_BASE_URL}{path}"
-    return path
 
 
 def get_current_user(

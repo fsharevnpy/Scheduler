@@ -1,27 +1,22 @@
-import os
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.object_storage import upload_profile_image
 from core.permissions import get_current_user
+from core.profile_images import build_profile_image_url
 from core.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, hash_password, verify_password
 from db import get_db
 from schemas.auth import ChangePasswordRequest, CurrentUser, LoginRequest, TokenResponse
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
-
-
-def build_profile_image_url(path: str | None) -> str | None:
-    if not path:
-        return None
-    if path.startswith("http://") or path.startswith("https://"):
-        return path
-    if STATIC_BASE_URL:
-        return f"{STATIC_BASE_URL}{path}"
-    return path
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+MAX_PROFILE_IMAGE_SIZE = 2 * 1024 * 1024
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -117,3 +112,47 @@ def change_password(
     )
     db.commit()
     return {"message": "password changed", "user_code": current_user.user_code}
+
+
+@router.put("/profile-image", response_model=CurrentUser)
+async def update_profile_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unsupported image type")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image file is empty")
+
+    if len(content) > MAX_PROFILE_IMAGE_SIZE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image file exceeds 2MB limit")
+
+    extension = ALLOWED_IMAGE_TYPES[file.content_type]
+    object_name = f"profile-imgs/{current_user.user_code}{extension}"
+    upload_profile_image(object_name, content, file.content_type)
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET profile_image_url = :profile_image_url
+            WHERE user_code = :user_code
+        """),
+        {
+            "profile_image_url": object_name,
+            "user_code": current_user.user_code,
+        },
+    )
+    db.commit()
+
+    return CurrentUser(
+        user_id=current_user.user_id,
+        user_code=current_user.user_code,
+        display_name=current_user.display_name,
+        profile_image_url=build_profile_image_url(object_name),
+        role=current_user.role,
+        teacher_id=current_user.teacher_id,
+        active=current_user.active,
+    )

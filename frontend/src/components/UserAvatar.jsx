@@ -14,7 +14,7 @@ function resolveImageUrl(imageUrl, apiBase) {
   }
 
   if (imageUrl.startsWith("/")) {
-    return `${apiBase}${imageUrl}`;
+    return imageUrl;
   }
 
   return imageUrl;

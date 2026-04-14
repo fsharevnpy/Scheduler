@@ -62,4 +62,9 @@
   .floating-panel-grid {
     grid-template-columns: 1fr;
   }
+
+  .profile-image-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

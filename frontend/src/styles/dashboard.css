@@ -226,6 +226,27 @@
   gap: 10px;
 }
 
+.profile-image-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.profile-image-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .table-action-button {
   appearance: none;
   border: 0;

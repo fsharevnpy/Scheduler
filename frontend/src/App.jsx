@@ -105,6 +105,10 @@ export default function App() {
         setUser(null);
         navigate("/login", { replace: true });
       },
+      updateUser(nextUser) {
+        persistSession(apiBase, token, nextUser);
+        setUser(nextUser);
+      },
     }),
     [apiBase, navigate, token, user],
   );

@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from uuid import uuid4
 
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
+from core.profile_images import build_profile_image_url
 from core.security import hash_password
 from db import get_db
 from schemas.auth import CurrentUser, UserCreate
@@ -15,17 +15,6 @@ from schemas.auth import CurrentUser, UserCreate
 
 router = APIRouter()
 DEFAULT_NEW_USER_PASSWORD = "123456aA@"
-STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
-
-
-def build_profile_image_url(path: str | None) -> str | None:
-    if not path:
-        return None
-    if path.startswith("http://") or path.startswith("https://"):
-        return path
-    if STATIC_BASE_URL:
-        return f"{STATIC_BASE_URL}{path}"
-    return path
 
 
 def get_target_user(user_code: str, db: Session):

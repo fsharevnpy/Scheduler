@@ -17,9 +17,15 @@ services:
     restart: always
     depends_on:
       - db
+      - minio
     environment:
       DATABASE_URL: postgresql://chessfighter:123456@db:5432/scheduler
-      STATIC_BASE_URL: /api
+      PROFILE_IMAGE_BASE_URL: /storage
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: chessfighter
+      MINIO_SECRET_KEY: chessfighter123
+      MINIO_BUCKET: scheduler-assets
+      MINIO_SECURE: "false"
 
   frontend:
     build: ./frontend
@@ -28,6 +34,37 @@ services:
     depends_on:
       - backend
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: scheduler_minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: chessfighter
+      MINIO_ROOT_PASSWORD: chessfighter123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9101:9001"
+
+  minio_init:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    container_name: scheduler_minio_init
+    depends_on:
+      - minio
+    environment:
+      MINIO_ROOT_USER: chessfighter
+      MINIO_ROOT_PASSWORD: chessfighter123
+    volumes:
+      - ./backend/upload/profile-imgs:/seed/profile-imgs:ro
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 2; done;
+      mc mb -p local/scheduler-assets || true;
+      mc anonymous set public local/scheduler-assets;
+      mc cp --recursive /seed/profile-imgs local/scheduler-assets/profile-imgs;
+      "
+
   gateway:
     image: nginx:1.27-alpine
     container_name: scheduler_gateway
@@ -35,6 +72,7 @@ services:
     depends_on:
       - frontend
       - backend
+      - minio
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
@@ -42,3 +80,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
