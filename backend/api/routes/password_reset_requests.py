@@ -1,3 +1,4 @@
+import os
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,17 @@ from schemas.auth import CurrentUser, PasswordResetRequestCreate
 
 router = APIRouter()
 DEFAULT_RESET_PASSWORD = "123456aA@"
+STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
+
+
+def build_profile_image_url(path: str | None) -> str | None:
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if STATIC_BASE_URL:
+        return f"{STATIC_BASE_URL}{path}"
+    return path
 
 
 def get_password_reset_request(request_id: str, db: Session):
@@ -22,6 +34,7 @@ def get_password_reset_request(request_id: str, db: Session):
                 pr.request_id,
                 pr.user_code,
                 u.display_name,
+                u.profile_image_url,
                 pr.status,
                 pr.request_note,
                 pr.resolution_note,
@@ -104,6 +117,7 @@ def get_password_reset_requests(
             pr.request_id,
             pr.user_code,
             u.display_name,
+            u.profile_image_url,
             pr.status,
             pr.request_note,
             pr.resolution_note,
@@ -129,7 +143,7 @@ def get_password_reset_requests(
 
     query += " ORDER BY pr.created_at DESC"
     rows = db.execute(text(query), params).mappings().all()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "profile_image_url": build_profile_image_url(row["profile_image_url"])} for row in rows]
 
 
 @router.put("/password-reset-requests/{request_id}/reset-default")

@@ -68,6 +68,66 @@
   margin-bottom: 24px;
 }
 
+.user-avatar {
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 27, 23, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.user-avatar-small {
+  width: 36px;
+  height: 36px;
+}
+
+.user-avatar-medium {
+  width: 48px;
+  height: 48px;
+}
+
+.user-avatar-large {
+  width: 72px;
+  height: 72px;
+}
+
+.user-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background:
+    radial-gradient(circle at top left, rgba(180, 79, 33, 0.16), transparent 35%),
+    linear-gradient(180deg, rgba(255, 249, 237, 0.96), rgba(245, 232, 205, 0.92));
+}
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: rgba(255, 251, 243, 0.72);
+  border: 1px solid rgba(31, 27, 23, 0.08);
+}
+
+.account-chip-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.account-chip-copy strong {
+  font-size: 0.95rem;
+}
+
+.account-chip-copy span {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .auth-panel {
   display: flex;
   align-items: center;

@@ -1,14 +1,16 @@
 import { formatValue } from "./monitorUtils.js";
 
-export default function DataTable({ title, columns, rows, emptyMessage }) {
-  return (
-    <article className="dashboard-section">
-      <div className="section-head">
-        <div>
-          <p className="eyebrow">{title}</p>
-          <h2>{title}</h2>
+export default function DataTable({ title, columns, rows, emptyMessage, embedded = false }) {
+  const content = (
+    <>
+      {embedded ? null : (
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">{title}</p>
+            <h2>{title}</h2>
+          </div>
         </div>
-      </div>
+      )}
 
       {rows.length === 0 ? (
         <p className="subtle">{emptyMessage}</p>
@@ -36,6 +38,12 @@ export default function DataTable({ title, columns, rows, emptyMessage }) {
           </table>
         </div>
       )}
-    </article>
+    </>
   );
+
+  if (embedded) {
+    return content;
+  }
+
+  return <article className="dashboard-section">{content}</article>;
 }

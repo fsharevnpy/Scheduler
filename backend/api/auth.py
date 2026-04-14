@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -9,13 +11,24 @@ from schemas.auth import ChangePasswordRequest, CurrentUser, LoginRequest, Token
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
+
+
+def build_profile_image_url(path: str | None) -> str | None:
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if STATIC_BASE_URL:
+        return f"{STATIC_BASE_URL}{path}"
+    return path
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.execute(
         text("""
-            SELECT user_id, user_code, display_name, password_hash, role, teacher_id, active
+            SELECT user_id, user_code, display_name, profile_image_url, password_hash, role, teacher_id, active
             FROM users
             WHERE user_code = :user_code
         """),
@@ -38,6 +51,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         user_id=user["user_id"],
         user_code=user["user_code"],
         display_name=user["display_name"],
+        profile_image_url=build_profile_image_url(user["profile_image_url"]),
         role=user["role"],
         teacher_id=user["teacher_id"],
         active=user["active"],

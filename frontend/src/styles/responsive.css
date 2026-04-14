@@ -46,6 +46,11 @@
     flex-direction: column;
   }
 
+  .account-chip {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .dashboard-shell {
     padding: 18px;
   }

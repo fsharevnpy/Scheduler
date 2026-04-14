@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 
+import UserAvatar from "../../components/UserAvatar.jsx";
+import { getRoleTitle } from "../../lib/roles.js";
 import ChangePasswordPanel from "../monitor/ChangePasswordPanel.jsx";
 import { requestJson } from "../../lib/http.js";
 
@@ -50,17 +52,32 @@ export default function ChangePasswordPage({ auth }) {
             <p className="subtle">Update your account password with your current password for verification.</p>
           </div>
           <div className="dashboard-actions">
-            {(auth.user?.role === "developer" || auth.user?.role === "manager") && (
-              <Link className="inline-link" to="/register">
-                Open register screen
+            <div className="account-chip">
+              <UserAvatar
+                apiBase={auth.apiBase}
+                imageUrl={auth.user?.profile_image_url}
+                name={auth.user?.display_name}
+                fallbackCode={auth.user?.user_code}
+                size="medium"
+              />
+              <div className="account-chip-copy">
+                <strong>{getRoleTitle(auth.user?.role)}</strong>
+                <span>{auth.user?.user_code}</span>
+              </div>
+            </div>
+            <div className="dashboard-action-stack">
+              <button type="button" className="secondary-button" onClick={auth.logout}>
+                Log out
+              </button>
+              <Link className="inline-link" to="/monitor">
+                Back to monitor
               </Link>
-            )}
-            <Link className="inline-link" to="/monitor">
-              Back to monitor
-            </Link>
-            <button type="button" className="secondary-button" onClick={auth.logout}>
-              Log out
-            </button>
+              {(auth.user?.role === "developer" || auth.user?.role === "manager") && (
+                <Link className="inline-link" to="/register">
+                  Open register screen
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 

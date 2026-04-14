@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from uuid import uuid4
 
@@ -14,12 +15,23 @@ from schemas.auth import CurrentUser, UserCreate
 
 router = APIRouter()
 DEFAULT_NEW_USER_PASSWORD = "123456aA@"
+STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
+
+
+def build_profile_image_url(path: str | None) -> str | None:
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if STATIC_BASE_URL:
+        return f"{STATIC_BASE_URL}{path}"
+    return path
 
 
 def get_target_user(user_code: str, db: Session):
     return db.execute(
         text("""
-            SELECT user_id, user_code, display_name, role, teacher_id, active
+            SELECT user_id, user_code, display_name, profile_image_url, role, teacher_id, active
             FROM users
             WHERE user_code = :user_code
         """),
@@ -72,14 +84,14 @@ def get_users(
 
     rows = db.execute(
         text(f"""
-            SELECT user_id, user_code, display_name, role, teacher_id, active
+            SELECT user_id, user_code, display_name, profile_image_url, role, teacher_id, active
             FROM users
             WHERE role IN ({placeholders})
             ORDER BY role, user_code
         """),
         params,
     ).mappings().all()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "profile_image_url": build_profile_image_url(row["profile_image_url"])} for row in rows]
 
 
 @router.post("/users", response_model=CurrentUser)
@@ -153,13 +165,14 @@ def create_user(
     user_code = generate_user_code(db)
     db.execute(
         text("""
-            INSERT INTO users (user_id, user_code, display_name, password_hash, role, teacher_id, active)
-            VALUES (:user_id, :user_code, :display_name, :password_hash, :role, :teacher_id, :active)
+            INSERT INTO users (user_id, user_code, display_name, profile_image_url, password_hash, role, teacher_id, active)
+            VALUES (:user_id, :user_code, :display_name, :profile_image_url, :password_hash, :role, :teacher_id, :active)
         """),
         {
             "user_id": str(user_id),
             "user_code": user_code,
             "display_name": display_name,
+            "profile_image_url": None,
             "password_hash": hash_password(password),
             "role": payload.role,
             "teacher_id": teacher_id,
@@ -172,6 +185,7 @@ def create_user(
         user_id=user_id,
         user_code=user_code,
         display_name=display_name,
+        profile_image_url=None,
         role=payload.role,
         teacher_id=teacher_id,
         active=payload.active,

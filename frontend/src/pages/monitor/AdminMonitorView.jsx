@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import UserAvatar from "../../components/UserAvatar.jsx";
 import DataTable from "./DataTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 
 export default function AdminMonitorView({
   actionStatus,
+  apiBase,
   leaveRequests,
   managerUsers,
   pendingAction,
@@ -24,6 +26,8 @@ export default function AdminMonitorView({
   onUpdateTeacherActive,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
+  const [resourceView, setResourceView] = useState("teachers");
+  const [requestView, setRequestView] = useState("leave");
 
   useEffect(() => {
     if (!selectedLeaveRequest) {
@@ -73,43 +77,60 @@ export default function AdminMonitorView({
         ) : null}
       </section>
 
-      <DataTable
-        title="Teachers"
-        columns={[
-          { key: "teacher_id", label: "Teacher ID" },
-          { key: "name", label: "Name" },
-          { key: "contact", label: "Contact" },
-          { key: "score", label: "Score" },
-          { key: "max_slots_per_day", label: "Max Slots" },
-          {
-            key: "active",
-            label: "Active",
-            render: (row) => (
-              <select
-                className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
-                value={row.active ? "yes" : "no"}
-                disabled={pendingAction === `teacher-active-${row.teacher_id}`}
-                onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            ),
-          },
-        ]}
-        rows={teachers}
-        emptyMessage="No teachers found."
-      />
-
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Classes</p>
-            <h2>Classes by center</h2>
+            <p className="eyebrow">Resources</p>
+            <h2>{resourceView === "teachers" ? "Teachers" : "Classes by center"}</h2>
+          </div>
+          <div className="section-toggle-group" role="tablist" aria-label="Resource view">
+            <button
+              type="button"
+              className={`section-toggle-button ${resourceView === "teachers" ? "active" : ""}`.trim()}
+              onClick={() => setResourceView("teachers")}
+            >
+              Teachers
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${resourceView === "classes" ? "active" : ""}`.trim()}
+              onClick={() => setResourceView("classes")}
+            >
+              Classes
+            </button>
           </div>
         </div>
 
-        {classes.length === 0 ? (
+        {resourceView === "teachers" ? (
+          <DataTable
+            title="Teachers"
+            columns={[
+              { key: "teacher_id", label: "Teacher ID" },
+              { key: "name", label: "Name" },
+              { key: "contact", label: "Contact" },
+              { key: "score", label: "Score" },
+              { key: "max_slots_per_day", label: "Max Slots" },
+              {
+                key: "active",
+                label: "Active",
+                render: (row) => (
+                  <select
+                    className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
+                    value={row.active ? "yes" : "no"}
+                    disabled={pendingAction === `teacher-active-${row.teacher_id}`}
+                    onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                ),
+              },
+            ]}
+            rows={teachers}
+            emptyMessage="No teachers found."
+            embedded
+          />
+        ) : classes.length === 0 ? (
           <p className="subtle">No classes found.</p>
         ) : (
           <div className="center-class-groups">
@@ -238,31 +259,110 @@ export default function AdminMonitorView({
         )}
       </section>
 
-      <DataTable
-        title="Leave Requests"
-        columns={[
-          { key: "request_id", label: "Request ID" },
-          { key: "class_id", label: "Class ID" },
-          { key: "center_id", label: "Center" },
-          { key: "teacher_name", label: "Teacher" },
-          { key: "request_date", label: "Date" },
-          {
-            key: "info",
-            label: "Info",
-            render: (row) => (
-              <button
-                type="button"
-                className="table-action-button table-action-button-muted"
-                onClick={() => setSelectedLeaveRequest(row)}
-              >
-                Show
-              </button>
-            ),
-          },
-        ]}
-        rows={leaveRequests}
-        emptyMessage="No leave requests found."
-      />
+      <section className="dashboard-section">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Requests</p>
+            <h2>{requestView === "leave" ? "Leave Requests" : "Password Reset Requests"}</h2>
+          </div>
+          <div className="section-toggle-group" role="tablist" aria-label="Request view">
+            <button
+              type="button"
+              className={`section-toggle-button ${requestView === "leave" ? "active" : ""}`.trim()}
+              onClick={() => setRequestView("leave")}
+            >
+              Leave
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${requestView === "password" ? "active" : ""}`.trim()}
+              onClick={() => setRequestView("password")}
+            >
+              Password Change
+            </button>
+          </div>
+        </div>
+
+        {requestView === "leave" ? (
+          <DataTable
+            title="Leave Requests"
+            columns={[
+              { key: "request_id", label: "Request ID" },
+              { key: "class_id", label: "Class ID" },
+              { key: "center_id", label: "Center" },
+              { key: "teacher_name", label: "Teacher" },
+              { key: "request_date", label: "Date" },
+              {
+                key: "info",
+                label: "Info",
+                render: (row) => (
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    onClick={() => setSelectedLeaveRequest(row)}
+                  >
+                    Show
+                  </button>
+                ),
+              },
+            ]}
+            rows={leaveRequests}
+            emptyMessage="No leave requests found."
+            embedded
+          />
+        ) : (
+          <DataTable
+            title="Password Reset Requests"
+            columns={[
+              { key: "user_code", label: "User Code" },
+              {
+                key: "display_name",
+                label: "Display Name",
+                render: (row) => (
+                  <div className="user-inline-cell">
+                    <UserAvatar
+                      apiBase={apiBase}
+                      imageUrl={row.profile_image_url}
+                      name={row.display_name}
+                      fallbackCode={row.user_code}
+                      size="small"
+                    />
+                    <span>{formatValue(row.display_name)}</span>
+                  </div>
+                ),
+              },
+              { key: "created_at", label: "Created" },
+              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
+              { key: "request_note", label: "Note", render: (row) => formatValue(row.request_note) },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (row) => (
+                  <div className="table-actions">
+                    {row.status === "REQUESTED" ? (
+                      <>
+                        <button
+                          type="button"
+                          className="table-action-button"
+                          disabled={pendingAction === `reset-request-${row.request_id}`}
+                          onClick={() => onResetPasswordRequest(row.request_id)}
+                        >
+                          Reset to default
+                        </button>
+                      </>
+                    ) : (
+                      <span className="subtle">Processed</span>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            rows={resetRequests}
+            emptyMessage="No password reset requests found."
+            embedded
+          />
+        )}
+      </section>
 
       {selectedLeaveRequest
         ? createPortal(
@@ -347,41 +447,6 @@ export default function AdminMonitorView({
           )
         : null}
 
-      <DataTable
-        title="Password Reset Requests"
-        columns={[
-          { key: "user_code", label: "User Code" },
-          { key: "display_name", label: "Display Name" },
-          { key: "created_at", label: "Created" },
-          { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
-          { key: "request_note", label: "Note", render: (row) => formatValue(row.request_note) },
-          {
-            key: "actions",
-            label: "Actions",
-            render: (row) => (
-              <div className="table-actions">
-                {row.status === "REQUESTED" ? (
-                  <>
-                    <button
-                      type="button"
-                      className="table-action-button"
-                      disabled={pendingAction === `reset-request-${row.request_id}`}
-                      onClick={() => onResetPasswordRequest(row.request_id)}
-                    >
-                      Reset to default
-                    </button>
-                  </>
-                ) : (
-                  <span className="subtle">Processed</span>
-                )}
-              </div>
-            ),
-          },
-        ]}
-        rows={resetRequests}
-        emptyMessage="No password reset requests found."
-      />
-
       <div className={`status ${actionStatus.kind}`.trim()} aria-live="polite">
         {actionStatus.message}
       </div>
@@ -391,7 +456,22 @@ export default function AdminMonitorView({
           title="Managers"
           columns={[
             { key: "user_code", label: "User Code" },
-            { key: "display_name", label: "Display Name" },
+            {
+              key: "display_name",
+              label: "Display Name",
+              render: (row) => (
+                <div className="user-inline-cell">
+                  <UserAvatar
+                    apiBase={apiBase}
+                    imageUrl={row.profile_image_url}
+                    name={row.display_name}
+                    fallbackCode={row.user_code}
+                    size="small"
+                  />
+                  <span>{formatValue(row.display_name)}</span>
+                </div>
+              ),
+            },
             { key: "role", label: "Role" },
             { key: "teacher_id", label: "Teacher ID" },
           ]}

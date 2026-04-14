@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import UserAvatar from "../../components/UserAvatar.jsx";
 import { requestJson } from "../../lib/http.js";
+import { getRoleTitle } from "../../lib/roles.js";
 import UserCreateForm from "./UserCreateForm.jsx";
 
 const EMPTY_PREFERENCE = {
@@ -244,15 +246,30 @@ export default function RegisterPage({ auth }) {
             <p className="subtle">Create new accounts based on the permissions of your current role.</p>
           </div>
           <div className="dashboard-actions">
-            <Link className="inline-link" to="/monitor">
-              Back to monitor
-            </Link>
-            <Link className="inline-link" to="/change-password">
-              Change password
-            </Link>
-            <button type="button" className="secondary-button" onClick={auth.logout}>
-              Log out
-            </button>
+            <div className="account-chip">
+              <UserAvatar
+                apiBase={auth.apiBase}
+                imageUrl={auth.user?.profile_image_url}
+                name={auth.user?.display_name}
+                fallbackCode={auth.user?.user_code}
+                size="medium"
+              />
+              <div className="account-chip-copy">
+                <strong>{getRoleTitle(auth.user?.role)}</strong>
+                <span>{auth.user?.user_code}</span>
+              </div>
+            </div>
+            <div className="dashboard-action-stack">
+              <button type="button" className="secondary-button" onClick={auth.logout}>
+                Log out
+              </button>
+              <Link className="inline-link" to="/change-password">
+                Change password
+              </Link>
+              <Link className="inline-link" to="/monitor">
+                Back to monitor
+              </Link>
+            </div>
           </div>
         </div>
 

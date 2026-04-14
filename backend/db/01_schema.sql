@@ -41,6 +41,7 @@ CREATE TABLE users (
     user_id UUID PRIMARY KEY,
     user_code VARCHAR(7) NOT NULL UNIQUE,
     display_name VARCHAR(100) NOT NULL,
+    profile_image_url VARCHAR(255),
     password_hash TEXT NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('developer', 'manager', 'teacher')),
     teacher_id VARCHAR(20) REFERENCES teachers(teacher_id) ON DELETE SET NULL,

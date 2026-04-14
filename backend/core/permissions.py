@@ -1,3 +1,4 @@
+import os
 from typing import Callable
 
 from fastapi import Depends, HTTPException, status
@@ -15,6 +16,17 @@ ROLE_MANAGER = "manager"
 ROLE_TEACHER = "teacher"
 
 bearer_scheme = HTTPBearer(auto_error=False)
+STATIC_BASE_URL = os.getenv("STATIC_BASE_URL", "").rstrip("/")
+
+
+def build_profile_image_url(path: str | None) -> str | None:
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if STATIC_BASE_URL:
+        return f"{STATIC_BASE_URL}{path}"
+    return path
 
 
 def get_current_user(
@@ -31,7 +43,7 @@ def get_current_user(
     payload = decode_access_token(credentials.credentials)
     user = db.execute(
         text("""
-            SELECT user_id, user_code, display_name, role, teacher_id, active
+            SELECT user_id, user_code, display_name, profile_image_url, role, teacher_id, active
             FROM users
             WHERE user_code = :user_code
         """),
@@ -45,7 +57,7 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return CurrentUser(**dict(user))
+    return CurrentUser(**{**dict(user), "profile_image_url": build_profile_image_url(user["profile_image_url"])})
 
 
 def require_roles(*allowed_roles: str) -> Callable:

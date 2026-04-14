@@ -144,6 +144,7 @@ class CurrentUser(BaseModel):
     user_id: UUID
     user_code: str
     display_name: str
+    profile_image_url: Optional[str] = None
     role: Role
     teacher_id: Optional[str] = None
     active: bool = True

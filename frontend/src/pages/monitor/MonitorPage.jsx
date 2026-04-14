@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import UserAvatar from "../../components/UserAvatar.jsx";
+import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
 import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
@@ -318,17 +320,32 @@ export default function MonitorPage({ auth }) {
             </p>
           </div>
           <div className="dashboard-actions">
-            {(user.role === "developer" || user.role === "manager") && (
-              <Link className="inline-link" to="/register">
-                Open register screen
+            <div className="account-chip">
+              <UserAvatar
+                apiBase={auth.apiBase}
+                imageUrl={user.profile_image_url}
+                name={user.display_name}
+                fallbackCode={user.user_code}
+                size="medium"
+              />
+              <div className="account-chip-copy">
+                <strong>{getRoleTitle(user.role)}</strong>
+                <span>{user.user_code}</span>
+              </div>
+            </div>
+            <div className="dashboard-action-stack">
+              <button type="button" className="secondary-button" onClick={auth.logout}>
+                Log out
+              </button>
+              <Link className="inline-link" to="/change-password">
+                Change password
               </Link>
-            )}
-            <Link className="inline-link" to="/change-password">
-              Change password
-            </Link>
-            <button type="button" className="secondary-button" onClick={auth.logout}>
-              Log out
-            </button>
+              {(user.role === "developer" || user.role === "manager") && (
+                <Link className="inline-link" to="/register">
+                  Open register screen
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 
@@ -346,6 +363,7 @@ export default function MonitorPage({ auth }) {
         ) : (
           <AdminMonitorView
             actionStatus={actionStatus}
+            apiBase={auth.apiBase}
             classes={classesWithCenterAndTeacher}
             leaveRequests={leaveRequestsWithCenter}
             managerUsers={managerUsers}
