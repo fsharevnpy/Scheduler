@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
+const DEFAULT_API_BASE = "/api";
 
 export const STORAGE_KEYS = {
   apiBase: "scheduler.apiBase",

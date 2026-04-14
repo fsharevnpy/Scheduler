@@ -9,6 +9,10 @@ function resolveImageUrl(imageUrl, apiBase) {
     return imageUrl;
   }
 
+  if (apiBase && (imageUrl === apiBase || imageUrl.startsWith(`${apiBase}/`))) {
+    return imageUrl;
+  }
+
   if (imageUrl.startsWith("/")) {
     return `${apiBase}${imageUrl}`;
   }

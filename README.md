@@ -35,12 +35,21 @@ Start the full stack:
 docker compose up -d --build
 ```
 
+Use the gateway URL for normal access:
+
+- app: `http://localhost:8080`
+- API: `http://localhost:8080/api`
+- API docs: `http://localhost:8080/api/docs`
+
+Do not use `localhost:3000` directly after this change. Frontend and backend are now intended to run behind the gateway.
+
 Rebuild only one service:
 
 ```powershell
 docker compose up -d --build backend
 docker compose up -d --build frontend
 docker compose up -d --build db
+docker compose up -d --build gateway
 ```
 
 Reset containers and database volume, then recreate everything:
@@ -74,6 +83,7 @@ View logs for a specific service:
 docker compose logs backend
 docker compose logs frontend
 docker compose logs db
+docker compose logs gateway
 ```
 
 Follow logs for a specific service:
@@ -82,6 +92,7 @@ Follow logs for a specific service:
 docker compose logs -f backend
 docker compose logs -f frontend
 docker compose logs -f db
+docker compose logs -f gateway
 ```
 
 ## Default Accounts
