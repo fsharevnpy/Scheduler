@@ -107,8 +107,10 @@ export default function AdminMonitorView({
             columns={[
               { key: "teacher_id", label: "Teacher ID" },
               { key: "name", label: "Name" },
-              { key: "contact", label: "Contact" },
-              { key: "score", label: "Score" },
+              { key: "contact", label: "Phone" },
+              { key: "email", label: "Email" },
+              { key: "elo", label: "ELO" },
+              { key: "education_score", label: "Education" },
               { key: "max_slots_per_day", label: "Max Slots" },
               {
                 key: "active",
@@ -229,7 +231,7 @@ export default function AdminMonitorView({
                               {suggestion.teacher_id} - {suggestion.name}
                             </strong>
                             <span className="subtle">
-                              Final {suggestion.final_score.toFixed(4)} | Base {suggestion.normalized_score.toFixed(4)}
+                              Final {suggestion.final_score.toFixed(4)} | ELO {suggestion.normalized_score.toFixed(4)} | Education {suggestion.normalized_education_score.toFixed(4)}
                             </span>
                             <span className="subtle">
                               Center match {suggestion.center_match ? "Yes" : "No"} | Time match {suggestion.time_match ? "Yes" : "No"}

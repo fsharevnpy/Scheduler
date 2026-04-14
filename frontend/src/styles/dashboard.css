@@ -243,6 +243,108 @@
   gap: 12px;
 }
 
+.profile-info-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.teacher-profile-card {
+  border-radius: 24px;
+  border: 1px solid rgba(180, 79, 33, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(180, 79, 33, 0.1), transparent 34%),
+    linear-gradient(160deg, rgba(255, 249, 237, 0.94), rgba(248, 240, 224, 0.9));
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.teacher-profile-identity {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+}
+
+.teacher-profile-avatar-trigger {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.teacher-profile-avatar {
+  width: 192px;
+  height: 192px;
+  border-radius: 24px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  box-shadow: 0 14px 28px rgba(90, 54, 28, 0.12);
+}
+
+.teacher-profile-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 27, 23, 0.28);
+  color: #fff;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.teacher-profile-avatar-trigger:hover .teacher-profile-avatar-overlay,
+.teacher-profile-avatar-trigger:focus-within .teacher-profile-avatar-overlay {
+  opacity: 1;
+}
+
+.teacher-profile-identity-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.teacher-profile-identity-copy strong {
+  font-size: 1.15rem;
+}
+
+.teacher-profile-identity-copy span {
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted);
+}
+
+.teacher-profile-details {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(31, 27, 23, 0.08);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.teacher-profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.teacher-profile-row + .teacher-profile-row {
+  border-top: 1px solid rgba(31, 27, 23, 0.08);
+}
+
+.teacher-profile-row span {
+  color: var(--muted);
+}
+
+.teacher-profile-row strong {
+  text-align: right;
+}
+
+
 .hidden-file-input {
   display: none;
 }

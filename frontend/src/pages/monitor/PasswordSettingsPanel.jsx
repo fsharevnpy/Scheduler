@@ -2,7 +2,7 @@ import PasswordField from "../../components/PasswordField.jsx";
 
 const PASSWORD_HELP = "Minimum 8 characters, with uppercase, lowercase, number, and special character.";
 
-export default function ChangePasswordPanel({
+export default function PasswordSettingsPanel({
   form,
   pendingAction,
   status,
@@ -13,8 +13,8 @@ export default function ChangePasswordPanel({
     <section className="dashboard-section">
       <div className="section-head">
         <div>
-          <p className="eyebrow">Account</p>
-          <h2>Change Password</h2>
+          <p className="eyebrow">Security</p>
+          <h2>Password</h2>
         </div>
       </div>
 
@@ -48,7 +48,7 @@ export default function ChangePasswordPanel({
         />
 
         <button className="primary-button form-button-fit" type="submit" disabled={pendingAction === "change-password"}>
-          {pendingAction === "change-password" ? "Updating..." : "Change password"}
+          {pendingAction === "change-password" ? "Updating..." : "Update password"}
         </button>
       </form>
 

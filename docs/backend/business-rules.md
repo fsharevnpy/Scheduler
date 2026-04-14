@@ -49,6 +49,7 @@
 ## Teacher Rules
 
 - Only `developer` and `manager` can list and update teachers.
+- `teacher` can view their own teacher profile through `GET /teachers/me`.
 - `teacher_id` must be unique.
 - When `teachers.name` is updated, the linked teacher account `display_name` is updated as well.
 - When `teachers.active` is updated, the linked teacher account `users.active` is updated as well.
@@ -98,11 +99,12 @@
   - not have schedule overlap with another class on the same date
   - not exceed `max_slots_per_day`
 - Each candidate gets:
-  - `normalized_score` from min-max scaling over the full `teachers.score` range
+  - `normalized_score` from min-max scaling over the full `teachers.elo` range
+  - `normalized_education_score` from min-max scaling over the full `teachers.education_score` range
   - `center_match` = `1` if teacher preference matches the class center, otherwise `0`
   - `time_match` = `1` if teacher preference covers the class day/time, otherwise `0`
 - Final ranking score is:
-  - `normalized_score * 0.4 + center_match * 0.3 + time_match * 0.3`
+  - `normalized_score * 0.3 + normalized_education_score * 0.2 + center_match * 0.25 + time_match * 0.25`
 - Candidates are sorted by `final_score` descending.
 
 ## Replacement Assignment Rules

@@ -70,7 +70,8 @@ export default function RegisterPage({ auth }) {
     role: roleOptions[0],
     name: "",
     contact: "",
-    score: 0,
+    email: "",
+    elo: 0,
     max_slots_per_day: 2,
     preferences: [{ ...EMPTY_PREFERENCE }],
   });
@@ -182,7 +183,8 @@ export default function RegisterPage({ auth }) {
           role: form.role,
           name: form.name.trim(),
           contact: form.contact.trim(),
-          score: Number(form.score),
+          email: form.email.trim(),
+          elo: Number(form.elo),
           max_slots_per_day: Number(form.max_slots_per_day),
           preferences,
         };
@@ -225,7 +227,8 @@ export default function RegisterPage({ auth }) {
         role: roleOptions[0],
         name: "",
         contact: "",
-        score: 0,
+        email: "",
+        elo: 0,
         max_slots_per_day: 2,
         preferences: [{ ...EMPTY_PREFERENCE }],
       });
@@ -263,8 +266,8 @@ export default function RegisterPage({ auth }) {
               <button type="button" className="secondary-button" onClick={auth.logout}>
                 Log out
               </button>
-              <Link className="inline-link" to="/change-password">
-                Change password
+              <Link className="inline-link" to="/profile-settings">
+                Profile Settings
               </Link>
               <Link className="inline-link" to="/monitor">
                 Back to monitor

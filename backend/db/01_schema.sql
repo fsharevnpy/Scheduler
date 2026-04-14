@@ -29,7 +29,9 @@ CREATE TABLE teachers (
     teacher_id VARCHAR(20) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     contact VARCHAR(50),
-    score INT NOT NULL DEFAULT 0,
+    email VARCHAR(100),
+    elo INT NOT NULL DEFAULT 0,
+    education_score NUMERIC(3,1) CHECK (education_score IS NULL OR (education_score >= 0 AND education_score <= 10)),
     max_slots_per_day INT NOT NULL DEFAULT 2 CHECK (max_slots_per_day > 0),
     active BOOLEAN NOT NULL DEFAULT TRUE
 );

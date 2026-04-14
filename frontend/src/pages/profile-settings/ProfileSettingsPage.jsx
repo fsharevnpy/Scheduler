@@ -1,0 +1,240 @@
+import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import UserAvatar from "../../components/UserAvatar.jsx";
+import { getRoleTitle } from "../../lib/roles.js";
+import PasswordSettingsPanel from "../monitor/PasswordSettingsPanel.jsx";
+import { requestJson } from "../../lib/http.js";
+
+export default function ProfileSettingsPage({ auth }) {
+  const [status, setStatus] = useState({ kind: "", message: "" });
+  const [imageStatus, setImageStatus] = useState({ kind: "", message: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [teacherProfile, setTeacherProfile] = useState(null);
+  const [teacherProfileError, setTeacherProfileError] = useState("");
+  const [form, setForm] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_new_password: "",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeacherProfile() {
+      if (auth.user?.role !== "teacher") {
+        setTeacherProfile(null);
+        setTeacherProfileError("");
+        return;
+      }
+
+      try {
+        const profile = await requestJson(`${auth.apiBase}/teachers/me`, {
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+          },
+        });
+
+        if (!cancelled) {
+          setTeacherProfile(profile);
+          setTeacherProfileError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setTeacherProfile(null);
+          setTeacherProfileError(error.message);
+        }
+      }
+    }
+
+    loadTeacherProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.apiBase, auth.token, auth.user?.role]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setStatus({ kind: "", message: "" });
+
+    try {
+      await requestJson(`${auth.apiBase}/auth/profile/password`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
+      setStatus({ kind: "success", message: "Password changed successfully." });
+      setForm({
+        current_password: "",
+        new_password: "",
+        confirm_new_password: "",
+      });
+    } catch (error) {
+      setStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleProfileImageChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingImage(true);
+    setImageStatus({ kind: "", message: "Uploading profile image..." });
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const updatedUser = await requestJson(`${auth.apiBase}/auth/profile/image`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: formData,
+      });
+
+      auth.updateUser(updatedUser);
+      setImageStatus({ kind: "success", message: "Profile image updated." });
+    } catch (error) {
+      setImageStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
+
+  return (
+    <main className="dashboard-shell">
+      <section className="dashboard-card dashboard-card-wide">
+        <div className="dashboard-head">
+          <div>
+            <p className="eyebrow">Account</p>
+            <h1 className="dashboard-title">Profile Settings</h1>
+            <p className="subtle">Manage your profile image, password, and teacher profile basics in one place.</p>
+          </div>
+          <div className="dashboard-actions">
+            <div className="account-chip">
+              <UserAvatar
+                apiBase={auth.apiBase}
+                imageUrl={auth.user?.profile_image_url}
+                name={auth.user?.display_name}
+                fallbackCode={auth.user?.user_code}
+                size="medium"
+              />
+              <div className="account-chip-copy">
+                <strong>{getRoleTitle(auth.user?.role)}</strong>
+                <span>{auth.user?.user_code}</span>
+              </div>
+            </div>
+            <div className="dashboard-action-stack">
+              <button type="button" className="secondary-button" onClick={auth.logout}>
+                Log out
+              </button>
+              <Link className="inline-link" to="/monitor">
+                Back to monitor
+              </Link>
+              {(auth.user?.role === "developer" || auth.user?.role === "manager") && (
+                <Link className="inline-link" to="/register">
+                  Open register screen
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {auth.user?.role === "teacher" ? (
+          <section className="dashboard-section">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Teacher Profile</p>
+                <h2>Basic information</h2>
+              </div>
+            </div>
+
+            {teacherProfileError ? <div className="status error">{teacherProfileError}</div> : null}
+
+            {teacherProfile ? (
+              <article className="teacher-profile-card">
+                <div className="teacher-profile-identity">
+                  <label className="teacher-profile-avatar-trigger">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden-file-input"
+                      onChange={handleProfileImageChange}
+                    />
+                    <UserAvatar
+                      apiBase={auth.apiBase}
+                      imageUrl={auth.user?.profile_image_url}
+                      name={teacherProfile.name || auth.user?.display_name}
+                      fallbackCode={auth.user?.user_code}
+                      size="large"
+                      className="teacher-profile-avatar"
+                    />
+                    <span className="teacher-profile-avatar-overlay">
+                      {isUploadingImage ? "Uploading..." : "Update photo"}
+                    </span>
+                  </label>
+                  <div className="teacher-profile-identity-copy">
+                    <strong>{teacherProfile.name || auth.user?.display_name || "-"}</strong>
+                    <span>{auth.user?.user_code || "-"}</span>
+                  </div>
+                  <div className={`status ${imageStatus.kind}`.trim()} aria-live="polite">
+                    {imageStatus.message}
+                  </div>
+                </div>
+
+                <div className="teacher-profile-details">
+                  <div className="teacher-profile-row">
+                    <span>Teacher ID</span>
+                    <strong>{teacherProfile.teacher_id || auth.user?.teacher_id || "-"}</strong>
+                  </div>
+                  <div className="teacher-profile-row">
+                    <span>Phone</span>
+                    <strong>{teacherProfile.contact || "-"}</strong>
+                  </div>
+                  <div className="teacher-profile-row">
+                    <span>Personal Email</span>
+                    <strong>{teacherProfile.email || "-"}</strong>
+                  </div>
+                  <div className="teacher-profile-row">
+                    <span>ELO</span>
+                    <strong>{teacherProfile.elo ?? "-"}</strong>
+                  </div>
+                  <div className="teacher-profile-row">
+                    <span>Education Score</span>
+                    <strong>
+                      {teacherProfile.education_score == null
+                        ? "Pending / 10"
+                        : `${teacherProfile.education_score}/10`}
+                    </strong>
+                  </div>
+                </div>
+              </article>
+            ) : (
+              <p className="subtle">Teacher profile information is not available.</p>
+            )}
+          </section>
+        ) : null}
+
+        <PasswordSettingsPanel
+          form={form}
+          pendingAction={isSubmitting ? "change-password" : ""}
+          status={status}
+          onFieldChange={(key, value) => setForm((current) => ({ ...current, [key]: value }))}
+          onSubmit={handleSubmit}
+        />
+      </section>
+    </main>
+  );
+}

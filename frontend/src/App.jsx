@@ -2,7 +2,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { useEffect, useMemo, useState } from "react";
 
 import LoginPage from "./pages/LoginPage.jsx";
-import ChangePasswordPage from "./pages/ChangePasswordPage.jsx";
+import ProfileSettingsPage from "./pages/ProfileSettingsPage.jsx";
 import MonitorPage from "./pages/MonitorPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
 import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
@@ -122,10 +122,10 @@ export default function App() {
         }
       />
       <Route
-        path="/change-password"
+        path="/profile-settings"
         element={
           <ProtectedRoute isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
-            <ChangePasswordPage auth={auth} />
+            <ProfileSettingsPage auth={auth} />
           </ProtectedRoute>
         }
       />

@@ -109,17 +109,18 @@ def create_user(
         db.execute(
             text("""
                 INSERT INTO teachers (
-                    teacher_id, name, contact, score, max_slots_per_day, active
+                    teacher_id, name, contact, email, elo, max_slots_per_day, active
                 )
                 VALUES (
-                    :teacher_id, :name, :contact, :score, :max_slots_per_day, :active
+                    :teacher_id, :name, :contact, :email, :elo, :max_slots_per_day, :active
                 )
             """),
             {
                 "teacher_id": teacher_id,
                 "name": payload.name,
                 "contact": payload.contact,
-                "score": payload.score,
+                "email": payload.email,
+                "elo": payload.elo,
                 "max_slots_per_day": payload.max_slots_per_day,
                 "active": payload.active,
             },

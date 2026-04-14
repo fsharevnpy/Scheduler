@@ -71,7 +71,7 @@ def get_me(current_user: CurrentUser = Depends(get_current_user)):
     return current_user
 
 
-@router.put("/change-password")
+@router.put("/profile/password")
 def change_password(
     payload: ChangePasswordRequest,
     db: Session = Depends(get_db),
@@ -114,7 +114,7 @@ def change_password(
     return {"message": "password changed", "user_code": current_user.user_code}
 
 
-@router.put("/profile-image", response_model=CurrentUser)
+@router.put("/profile/image", response_model=CurrentUser)
 async def update_profile_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),

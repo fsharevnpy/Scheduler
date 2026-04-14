@@ -44,10 +44,20 @@ export default function UserCreateForm({
             </label>
 
             <label className="field">
-              <span>Score</span>
+              <span>Personal Email</span>
               <input
-                value={form.score}
-                onChange={(event) => onFieldChange("score", event.target.value)}
+                value={form.email}
+                onChange={(event) => onFieldChange("email", event.target.value)}
+                type="email"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>ELO</span>
+              <input
+                value={form.elo}
+                onChange={(event) => onFieldChange("elo", event.target.value)}
                 type="number"
                 min="0"
                 required

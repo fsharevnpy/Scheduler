@@ -130,8 +130,8 @@ Seeded centers:
 ## Backend Notes
 
 Replacement suggestion scoring:
-- teacher score is normalized to `[0, 1]` using min-max scaling across the full `teachers` table
-- final score = `normalized_score * 0.4 + center_match * 0.3 + time_match * 0.3`
+- teacher ELO is normalized to `[0, 1]` using min-max scaling across the full `teachers` table
+- final score = `normalized_score * 0.3 + normalized_education_score * 0.2 + center_match * 0.25 + time_match * 0.25`
 - `center_match` and `time_match` are binary values (`0` or `1`)
 
 ## Docs

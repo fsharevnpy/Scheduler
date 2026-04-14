@@ -7,9 +7,55 @@ from pydantic import BaseModel, field_validator
 class TeacherUpdate(BaseModel):
     name: Optional[str] = None
     contact: Optional[str] = None
-    score: Optional[int] = None
+    email: Optional[str] = None
+    elo: Optional[int] = None
+    education_score: Optional[float] = None
     max_slots_per_day: Optional[int] = None
     active: Optional[bool] = None
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("contact is required")
+        if len(value) > 50:
+            raise ValueError("contact must be at most 50 characters")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("email is required")
+        if len(value) > 100:
+            raise ValueError("email must be at most 100 characters")
+        if "@" not in value:
+            raise ValueError("email must be valid")
+        return value
+
+    @field_validator("elo")
+    @classmethod
+    def validate_elo(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return value
+        if value < 0:
+            raise ValueError("elo must be at least 0")
+        return value
+
+    @field_validator("education_score")
+    @classmethod
+    def validate_education_score(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return value
+        if value < 0 or value > 10:
+            raise ValueError("education_score must be between 0 and 10")
+        return value
 
 
 class ClassCreate(BaseModel):

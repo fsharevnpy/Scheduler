@@ -337,8 +337,8 @@ export default function MonitorPage({ auth }) {
               <button type="button" className="secondary-button" onClick={auth.logout}>
                 Log out
               </button>
-              <Link className="inline-link" to="/change-password">
-                Change password
+              <Link className="inline-link" to="/profile-settings">
+                Profile Settings
               </Link>
               {(user.role === "developer" || user.role === "manager") && (
                 <Link className="inline-link" to="/register">

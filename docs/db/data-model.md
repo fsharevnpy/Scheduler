@@ -38,7 +38,9 @@ Key fields:
 - `teacher_id`
 - `name`
 - `contact`
-- `score`
+- `email`
+- `elo`
+- `education_score`
 - `max_slots_per_day`
 - `active`
 

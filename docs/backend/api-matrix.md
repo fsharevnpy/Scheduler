@@ -14,7 +14,8 @@
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/auth/me` | `developer`, `manager`, `teacher` | Return current authenticated user |
-| `PUT` | `/auth/change-password` | `developer`, `manager`, `teacher` | Change the current user's password with current password verification |
+| `PUT` | `/auth/profile/password` | `developer`, `manager`, `teacher` | Change the current user's password with current password verification |
+| `PUT` | `/auth/profile/image` | `developer`, `manager`, `teacher` | Upload and replace the current user's profile image |
 | `GET` | `/password-reset-requests` | `developer`, `manager`, `teacher` | List password reset requests |
 | `GET` | `/centers` | `developer`, `manager`, `teacher` | List centers for teacher preferences and class setup |
 
@@ -39,6 +40,7 @@ Notes:
 | Method | Path | Allowed roles | Purpose |
 |---|---|---|---|
 | `GET` | `/teachers` | `developer`, `manager` | List all teachers |
+| `GET` | `/teachers/me` | `teacher` | Return the current teacher profile |
 | `PUT` | `/teachers/{teacher_id}` | `developer`, `manager` | Update a teacher |
 
 ## Class Management

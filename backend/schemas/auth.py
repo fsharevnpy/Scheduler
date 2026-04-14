@@ -48,7 +48,8 @@ class UserCreate(BaseModel):
     teacher_id: Optional[str] = None
     name: Optional[str] = None
     contact: Optional[str] = None
-    score: int = 0
+    email: Optional[str] = None
+    elo: int = 0
     max_slots_per_day: int = 2
     preferences: list[TeacherPreferenceInput] = Field(default_factory=list)
     active: bool = True
@@ -89,6 +90,27 @@ class UserCreate(BaseModel):
             raise ValueError("contact must be at most 50 characters")
         return value
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("email is required")
+        if len(value) > 100:
+            raise ValueError("email must be at most 100 characters")
+        if "@" not in value:
+            raise ValueError("email must be valid")
+        return value
+
+    @field_validator("elo")
+    @classmethod
+    def validate_elo(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("elo must be at least 0")
+        return value
+
     @model_validator(mode="after")
     def validate_role_specific_fields(self):
         if self.role == "teacher":
@@ -100,6 +122,8 @@ class UserCreate(BaseModel):
                 raise ValueError("name is required for teacher role")
             if not self.contact:
                 raise ValueError("contact is required for teacher role")
+            if not self.email:
+                raise ValueError("email is required for teacher role")
         else:
             if self.teacher_id is not None:
                 raise ValueError("teacher_id is only allowed for teacher role")
@@ -107,6 +131,8 @@ class UserCreate(BaseModel):
                 raise ValueError("name is only allowed for teacher role")
             if self.contact is not None:
                 raise ValueError("contact is only allowed for teacher role")
+            if self.email is not None:
+                raise ValueError("email is only allowed for teacher role")
             if self.preferences:
                 raise ValueError("preferences are only allowed for teacher role")
             if self.display_name is None:

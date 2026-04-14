@@ -11,9 +11,10 @@ from schemas.scheduling import AssignReplacementPayload
 
 router = APIRouter()
 
-SCORE_WEIGHT = 0.4
-CENTER_MATCH_WEIGHT = 0.3
-TIME_MATCH_WEIGHT = 0.3
+ELO_WEIGHT = 0.3
+EDUCATION_WEIGHT = 0.2
+CENTER_MATCH_WEIGHT = 0.25
+TIME_MATCH_WEIGHT = 0.25
 
 
 @router.get("/classes/{class_id}/replacement-suggestions")
@@ -41,22 +42,34 @@ def get_replacement_suggestions(
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
 
-    score_range = db.execute(
+    elo_range = db.execute(
         text("""
-            SELECT MIN(score) AS min_score, MAX(score) AS max_score
+            SELECT MIN(elo) AS min_elo, MAX(elo) AS max_elo
             FROM teachers
         """)
     ).mappings().first()
 
-    min_score = score_range["min_score"]
-    max_score = score_range["max_score"]
+    min_elo = elo_range["min_elo"]
+    max_elo = elo_range["max_elo"]
+
+    education_range = db.execute(
+        text("""
+            SELECT MIN(COALESCE(education_score, 0)) AS min_education_score,
+                   MAX(COALESCE(education_score, 0)) AS max_education_score
+            FROM teachers
+        """)
+    ).mappings().first()
+
+    min_education_score = education_range["min_education_score"]
+    max_education_score = education_range["max_education_score"]
 
     rows = db.execute(
         text("""
             SELECT
                 t.teacher_id,
                 t.name,
-                t.score,
+                t.elo,
+                COALESCE(t.education_score, 0) AS education_score,
                 t.max_slots_per_day,
                 t.active,
                 COALESCE((
@@ -112,21 +125,30 @@ def get_replacement_suggestions(
         if row["assigned_slots_that_day"] >= row["max_slots_per_day"]:
             continue
 
-        if min_score is None or max_score is None:
+        if min_elo is None or max_elo is None:
             normalized_score = 0.0
-        elif max_score == min_score:
+        elif max_elo == min_elo:
             normalized_score = 0.5
         else:
-            normalized_score = (row["score"] - min_score) / (max_score - min_score)
+            normalized_score = (row["elo"] - min_elo) / (max_elo - min_elo)
+
+        if min_education_score is None or max_education_score is None:
+            normalized_education_score = 0.0
+        elif max_education_score == min_education_score:
+            normalized_education_score = 0.5
+        else:
+            normalized_education_score = (row["education_score"] - min_education_score) / (max_education_score - min_education_score)
 
         final_score = (
-            normalized_score * SCORE_WEIGHT
+            normalized_score * ELO_WEIGHT
+            + normalized_education_score * EDUCATION_WEIGHT
             + row["center_match"] * CENTER_MATCH_WEIGHT
             + row["time_match"] * TIME_MATCH_WEIGHT
         )
 
         item = dict(row)
         item["normalized_score"] = round(normalized_score, 4)
+        item["normalized_education_score"] = round(normalized_education_score, 4)
         item["final_score"] = final_score
         suggestions.append(item)
 
@@ -163,7 +185,7 @@ def assign_replacement(
 
     teacher_row = db.execute(
         text("""
-            SELECT teacher_id, name, active, max_slots_per_day, score
+            SELECT teacher_id, name, active, max_slots_per_day, elo
             FROM teachers
             WHERE teacher_id = :teacher_id
         """),

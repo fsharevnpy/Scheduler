@@ -6,7 +6,7 @@ Initial frontend scope includes three screens:
 - `Login`
 - `Register`
 - `Monitor`
-- `Change Password`
+- `Profile Settings`
 
 The `Register` screen is an internal user creation screen, not a public self-signup page.
 
@@ -17,7 +17,7 @@ The `Register` screen is an internal user creation screen, not a public self-sig
 | `/login` | No | Public | Authenticate and receive `access_token` |
 | `/register` | Yes | `developer`, `manager` | Create new users |
 | `/monitor` | Yes | `developer`, `manager`, `teacher` | Main dashboard / working screen |
-| `/change-password` | Yes | `developer`, `manager`, `teacher` | Change the current user's password |
+| `/profile-settings` | Yes | `developer`, `manager`, `teacher` | Manage profile image, password, and teacher basic profile info such as phone, email, ELO, and education score |
 
 ## Login Screen
 
@@ -72,7 +72,8 @@ Suggested UI:
 Teacher account mode:
 - `name`
 - `contact`
-- `score`
+- `email`
+- `elo`
 - `max_slots_per_day`
 - optional multiple preference rows
 - center dropdown sourced from backend
@@ -86,15 +87,17 @@ Frontend rules:
 - if current role is `manager`, do not show `developer` as a selectable role
 - if selected role is `teacher`, do not ask for `teacher_id` or password
 
-## Change Password Screen
+## Profile Settings Screen
 
 Purpose:
-- allow any authenticated user to change their own password
+- allow any authenticated user to manage their own profile settings
 
 Main API call:
-- `PUT /auth/change-password`
+- `PUT /auth/profile/image`
+- `PUT /auth/profile/password`
 
 Suggested UI:
+- profile image upload
 - current password
 - new password
 - confirm new password
@@ -127,6 +130,7 @@ Main APIs:
 - `PUT /leave-requests/{request_id}/approve`
 - `PUT /leave-requests/{request_id}/cancel`
 - `GET /teachers`
+- `GET /teachers/me`
 - `PUT /teachers/{teacher_id}`
 - `GET /password-reset-requests`
 - `PUT /password-reset-requests/{request_id}/reset-default`
@@ -153,7 +157,7 @@ Main APIs:
 - if no token is stored, redirect to `/login`
 - if token is invalid or expired, clear local auth state and redirect to `/login`
 - if a `teacher` attempts to access `/register`, redirect to `/monitor`
-- `/change-password` is available to any authenticated role
+- `/profile-settings` is available to any authenticated role
 
 ## Recommended Frontend State
 

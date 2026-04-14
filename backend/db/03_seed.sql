@@ -15,17 +15,17 @@ VALUES
     ('CS3', 'T4', '17:00', '18:30', 2),
     ('CS3', 'T6', '18:30', '20:00', 2);
 
-INSERT INTO teachers (teacher_id, name, contact, score, max_slots_per_day, active)
+INSERT INTO teachers (teacher_id, name, contact, email, elo, education_score, max_slots_per_day, active)
 VALUES
-    ('GV0', 'Nguyễn Công Thành',     '0355718871', 1350, 2, TRUE),
-    ('GV1', 'Nguyễn Đình Ngọc Ân',   '0912627404', 1800, 2, TRUE),
-    ('GV2', 'Vũ Hoàng Nhật Trường',  '0966163026', 2200, 1, TRUE),
-    ('GV3', 'Nguyễn Vũ Minh Trí',    '0816706228', 1890, 2, TRUE),
-    ('GV4', 'Trịnh Quán Lâm',        '0853271771', 1400, 2, TRUE),
-    ('GV5', 'Nguyễn Tiến Hiếu',      '0962450531', 1821, 3, TRUE),
-    ('GV6', 'Nguyễn Thị Thuý Quyên', '0794337990', 1772, 2, TRUE),
-    ('GV7', 'Đỗ Đinh Hồng Chinh',    '0949217359', 1810, 2, TRUE),
-    ('GV8', 'Nguyễn Trí Thịnh',      '0913699745', 1738, 2, TRUE);
+    ('GV0', 'Nguyễn Công Thành',     '0355718871', 'gv0@gmail.com', 1350, 7.8, 2, TRUE),
+    ('GV1', 'Nguyễn Đình Ngọc Ân',   '0912627404', 'gv1@gmail.com', 1800, 8.5, 2, TRUE),
+    ('GV2', 'Vũ Hoàng Nhật Trường',  '0966163026', 'gv2@gmail.com', 2200, 9.1, 1, TRUE),
+    ('GV3', 'Nguyễn Vũ Minh Trí',    '0816706228', 'gv3@gmail.com', 1890, 8.3, 2, TRUE),
+    ('GV4', 'Trịnh Quán Lâm',        '0853271771', 'gv4@gmail.com', 1400, 7.2, 2, TRUE),
+    ('GV5', 'Nguyễn Tiến Hiếu',      '0962450531', 'gv5@gmail.com', 1821, 8.7, 3, TRUE),
+    ('GV6', 'Nguyễn Thị Thuý Quyên', '0794337990', 'gv6@gmail.com', 1772, 8.1, 2, TRUE),
+    ('GV7', 'Đỗ Đinh Hồng Chinh',    '0949217359', 'gv7@gmail.com', 1810, 8.9, 2, TRUE),
+    ('GV8', 'Nguyễn Trí Thịnh',      '0913699745', 'gv8@gmail.com', 1738, 7.6, 2, TRUE);
 
 INSERT INTO users (user_id, user_code, display_name, profile_image_url, password_hash, role, teacher_id, active)
 VALUES
