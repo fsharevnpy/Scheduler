@@ -62,12 +62,14 @@ Notes:
 | `GET` | `/leave-requests` | `developer`, `manager`, `teacher` | List leave requests |
 | `POST` | `/leave-requests` | `developer`, `manager`, `teacher` | Create a leave request with a required reason |
 | `PUT` | `/leave-requests/{request_id}/approve` | `developer`, `manager` | Approve a leave request |
-| `PUT` | `/leave-requests/{request_id}/cancel` | `developer`, `manager`, `teacher` | Cancel a leave request |
+| `PUT` | `/leave-requests/{request_id}/reject` | `developer`, `manager` | Reject a leave request |
+| `PUT` | `/leave-requests/{request_id}/cancel` | `teacher` | Cancel the current teacher's own requested leave request |
 
 Notes:
 - `teacher` only sees leave requests where `leave_requests.teacher_id == current_user.teacher_id`.
 - `teacher` can only create leave requests for their own `teacher_id`.
 - `teacher` can only cancel their own leave requests, and only when status is `REQUESTED`.
+- only `REQUESTED` leave requests can be approved or rejected.
 
 ## Replacement
 

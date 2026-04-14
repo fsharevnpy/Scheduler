@@ -116,7 +116,7 @@ Suggested sections:
 - leave request list
 - center shown in class and leave request views
 - teacher list with inline active `Yes/No` dropdown
-- leave request approval and cancel actions
+- leave request approval and reject actions
 - assignment queue for classes with `OPEN` or `NEED_REPLACEMENT`
 - load ranked replacement suggestions
 - assign replacement teacher directly from monitor
@@ -128,7 +128,7 @@ Main APIs:
 - `GET /classes`
 - `GET /leave-requests`
 - `PUT /leave-requests/{request_id}/approve`
-- `PUT /leave-requests/{request_id}/cancel`
+- `PUT /leave-requests/{request_id}/reject`
 - `GET /teachers`
 - `GET /teachers/me`
 - `PUT /teachers/{teacher_id}`

@@ -7,6 +7,19 @@ import { requestJson } from "../../lib/http.js";
 import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
 
+function generateLeaveRequestId(leaveRequests) {
+  const maxSequence = leaveRequests.reduce((currentMax, item) => {
+    const match = /^LR(\d+)$/.exec(item.request_id || "");
+    if (!match) {
+      return currentMax;
+    }
+
+    return Math.max(currentMax, Number(match[1]));
+  }, -1);
+
+  return `LR${maxSequence + 1}`;
+}
+
 export default function MonitorPage({ auth }) {
   const user = auth.user;
   const [state, setState] = useState({
@@ -135,6 +148,46 @@ export default function MonitorPage({ auth }) {
     );
   }
 
+  async function rejectLeaveRequest(requestId) {
+    const leaveRequest = state.leaveRequests.find((item) => item.request_id === requestId);
+
+    await runAction(
+      `reject-${requestId}`,
+      () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/reject`, { method: "PUT", headers }),
+      `Rejected leave request ${requestId}.`,
+      () => {
+        setState((current) => {
+          const nextLeaveRequests = current.leaveRequests.map((item) =>
+            item.request_id === requestId ? { ...item, status: "REJECTED" } : item,
+          );
+
+          const shouldResetClassStatus = leaveRequest
+            ? nextLeaveRequests.every(
+                (item) =>
+                  item.class_id !== leaveRequest.class_id ||
+                  !["REQUESTED", "APPROVED"].includes(item.status),
+              )
+            : false;
+
+          return {
+            ...current,
+            leaveRequests: nextLeaveRequests,
+            classes: current.classes.map((item) => {
+              if (!leaveRequest || item.class_id !== leaveRequest.class_id || !shouldResetClassStatus) {
+                return item;
+              }
+
+              return {
+                ...item,
+                status: item.teacher_id ? "ASSIGNED" : "OPEN",
+              };
+            }),
+          };
+        });
+      },
+    );
+  }
+
   async function cancelLeaveRequest(requestId) {
     const leaveRequest = state.leaveRequests.find((item) => item.request_id === requestId);
 
@@ -171,6 +224,52 @@ export default function MonitorPage({ auth }) {
             }),
           };
         });
+      },
+    );
+  }
+
+  async function createLeaveRequest({ classId, requestDate, reason }) {
+    const requestId = generateLeaveRequestId(state.leaveRequests);
+
+    return runAction(
+      "create-leave-request",
+      () =>
+        requestJson(`${auth.apiBase}/leave-requests`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: requestId,
+            class_id: classId,
+            teacher_id: user.teacher_id,
+            request_date: requestDate,
+            reason,
+            status: "REQUESTED",
+          }),
+        }),
+      `Created leave request ${requestId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          leaveRequests: [
+            ...current.leaveRequests,
+            {
+              request_id: requestId,
+              class_id: classId,
+              teacher_id: user.teacher_id,
+              request_date: requestDate,
+              reason,
+              status: "REQUESTED",
+            },
+          ],
+          classes: current.classes.map((item) =>
+            item.class_id === classId
+              ? {
+                  ...item,
+                  status: "NEED_REPLACEMENT",
+                }
+              : item,
+          ),
+        }));
       },
     );
   }
@@ -359,6 +458,9 @@ export default function MonitorPage({ auth }) {
             leaveRequests={leaveRequestsWithCenter}
             teacherId={user.teacher_id}
             unassignedCount={unassignedClasses.length}
+            pendingAction={pendingAction}
+            onCreateLeaveRequest={createLeaveRequest}
+            onCancelLeaveRequest={cancelLeaveRequest}
           />
         ) : (
           <AdminMonitorView
@@ -375,7 +477,7 @@ export default function MonitorPage({ auth }) {
             teachers={state.teachers}
             onApproveLeaveRequest={approveLeaveRequest}
             onAssignReplacement={assignReplacement}
-            onCancelLeaveRequest={cancelLeaveRequest}
+            onRejectLeaveRequest={rejectLeaveRequest}
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
             onUpdateTeacherActive={updateTeacherActive}

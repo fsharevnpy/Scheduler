@@ -106,6 +106,7 @@ Key fields:
 Current statuses:
 - `REQUESTED`
 - `APPROVED`
+- `REJECTED`
 - `CANCELLED`
 
 ### `password_reset_requests`

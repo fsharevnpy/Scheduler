@@ -104,7 +104,14 @@ export default function ProfileSettingsPage({ auth }) {
         body: formData,
       });
 
-      auth.updateUser(updatedUser);
+      const cacheBustedUser = {
+        ...updatedUser,
+        profile_image_url: updatedUser.profile_image_url
+          ? `${updatedUser.profile_image_url}${updatedUser.profile_image_url.includes("?") ? "&" : "?"}v=${Date.now()}`
+          : updatedUser.profile_image_url,
+      };
+
+      auth.updateUser(cacheBustedUser);
       setImageStatus({ kind: "success", message: "Profile image updated." });
     } catch (error) {
       setImageStatus({ kind: "error", message: error.message });

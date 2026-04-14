@@ -91,7 +91,7 @@ CREATE TABLE leave_requests (
     request_date DATE NOT NULL,
     reason TEXT NOT NULL,
     status VARCHAR(20) NOT NULL,
-    CHECK (status IN ('REQUESTED', 'APPROVED', 'CANCELLED'))
+    CHECK (status IN ('REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED'))
 );
 
 -- =========================

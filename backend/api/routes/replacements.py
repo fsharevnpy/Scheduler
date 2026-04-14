@@ -63,6 +63,11 @@ def get_replacement_suggestions(
     min_education_score = education_range["min_education_score"]
     max_education_score = education_range["max_education_score"]
 
+    if min_education_score is not None:
+        min_education_score = float(min_education_score)
+    if max_education_score is not None:
+        max_education_score = float(max_education_score)
+
     rows = db.execute(
         text("""
             SELECT
@@ -102,6 +107,13 @@ def get_replacement_suggestions(
               AND (:original_teacher_id IS NULL OR t.teacher_id <> :original_teacher_id)
               AND NOT EXISTS (
                   SELECT 1
+                  FROM leave_requests lr
+                  WHERE lr.teacher_id = t.teacher_id
+                    AND lr.request_date = :class_date
+                    AND lr.status IN ('REQUESTED', 'APPROVED')
+              )
+              AND NOT EXISTS (
+                  SELECT 1
                   FROM classes c3
                   WHERE c3.teacher_id = t.teacher_id
                     AND c3.class_date = :class_date
@@ -122,6 +134,8 @@ def get_replacement_suggestions(
 
     suggestions = []
     for row in rows:
+        education_score = float(row["education_score"])
+
         if row["assigned_slots_that_day"] >= row["max_slots_per_day"]:
             continue
 
@@ -137,7 +151,7 @@ def get_replacement_suggestions(
         elif max_education_score == min_education_score:
             normalized_education_score = 0.5
         else:
-            normalized_education_score = (row["education_score"] - min_education_score) / (max_education_score - min_education_score)
+            normalized_education_score = (education_score - min_education_score) / (max_education_score - min_education_score)
 
         final_score = (
             normalized_score * ELO_WEIGHT
@@ -147,6 +161,7 @@ def get_replacement_suggestions(
         )
 
         item = dict(row)
+        item["education_score"] = education_score
         item["normalized_score"] = round(normalized_score, 4)
         item["normalized_education_score"] = round(normalized_education_score, 4)
         item["final_score"] = final_score
@@ -197,6 +212,23 @@ def assign_replacement(
 
     if not teacher_row["active"]:
         raise HTTPException(status_code=400, detail="replacement teacher is inactive")
+
+    active_leave_request = db.execute(
+        text("""
+            SELECT 1
+            FROM leave_requests
+            WHERE teacher_id = :teacher_id
+              AND request_date = :class_date
+              AND status IN ('REQUESTED', 'APPROVED')
+        """),
+        {
+            "teacher_id": payload.teacher_id,
+            "class_date": target_class["class_date"],
+        },
+    ).first()
+
+    if active_leave_request:
+        raise HTTPException(status_code=400, detail="replacement teacher already has a leave request on that date")
 
     overlap = db.execute(
         text("""

@@ -20,12 +20,13 @@ export default function AdminMonitorView({
   classes,
   onApproveLeaveRequest,
   onAssignReplacement,
-  onCancelLeaveRequest,
+  onRejectLeaveRequest,
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
   onUpdateTeacherActive,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
+  const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
   const [resourceView, setResourceView] = useState("teachers");
   const [requestView, setRequestView] = useState("leave");
 
@@ -46,6 +47,7 @@ export default function AdminMonitorView({
     groups[key].push(item);
     return groups;
   }, {});
+  const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
 
   return (
     <>
@@ -109,9 +111,21 @@ export default function AdminMonitorView({
               { key: "name", label: "Name" },
               { key: "contact", label: "Phone" },
               { key: "email", label: "Email" },
-              { key: "elo", label: "ELO" },
-              { key: "education_score", label: "Education" },
-              { key: "max_slots_per_day", label: "Max Slots" },
+              {
+                key: "elo",
+                label: <span className="table-value-center">ELO</span>,
+                render: (row) => <span className="table-value-center">{formatValue(row.elo)}</span>,
+              },
+              {
+                key: "education_score",
+                label: <span className="table-value-center">Education</span>,
+                render: (row) => <span className="table-value-center">{formatValue(row.education_score)}</span>,
+              },
+              {
+                key: "max_slots_per_day",
+                label: <span className="table-value-center">Max Slots</span>,
+                render: (row) => <span className="table-value-center">{formatValue(row.max_slots_per_day)}</span>,
+              },
               {
                 key: "active",
                 label: "Active",
@@ -227,9 +241,24 @@ export default function AdminMonitorView({
                       {suggestions.map((suggestion) => (
                         <div key={`${item.class_id}-${suggestion.teacher_id}`} className="replacement-suggestion-row">
                           <div className="replacement-suggestion-meta">
-                            <strong>
+                            <button
+                              type="button"
+                              className="suggestion-teacher-button"
+                              onClick={() =>
+                                setSelectedSuggestionTeacher(
+                                  teachersById.get(suggestion.teacher_id) || {
+                                    teacher_id: suggestion.teacher_id,
+                                    name: suggestion.name,
+                                    contact: "",
+                                    email: "",
+                                    elo: suggestion.elo,
+                                    education_score: suggestion.education_score,
+                                  },
+                                )
+                              }
+                            >
                               {suggestion.teacher_id} - {suggestion.name}
-                            </strong>
+                            </button>
                             <span className="subtle">
                               Final {suggestion.final_score.toFixed(4)} | ELO {suggestion.normalized_score.toFixed(4)} | Education {suggestion.normalized_education_score.toFixed(4)}
                             </span>
@@ -432,16 +461,70 @@ export default function AdminMonitorView({
                       {pendingAction === `approve-${selectedLeaveRequest.request_id}` ? "Approving..." : "Approve"}
                     </button>
                   ) : null}
-                  {selectedLeaveRequest.status !== "CANCELLED" ? (
+                  {selectedLeaveRequest.status === "REQUESTED" ? (
                     <button
                       type="button"
                       className="table-action-button table-action-button-muted"
-                      disabled={pendingAction === `cancel-${selectedLeaveRequest.request_id}`}
-                      onClick={() => onCancelLeaveRequest(selectedLeaveRequest.request_id)}
+                      disabled={pendingAction === `reject-${selectedLeaveRequest.request_id}`}
+                      onClick={() => onRejectLeaveRequest(selectedLeaveRequest.request_id)}
                     >
-                      {pendingAction === `cancel-${selectedLeaveRequest.request_id}` ? "Cancelling..." : "Cancel"}
+                      {pendingAction === `reject-${selectedLeaveRequest.request_id}` ? "Rejecting..." : "Reject"}
                     </button>
                   ) : null}
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {selectedSuggestionTeacher
+        ? createPortal(
+            <div
+              className="floating-panel-backdrop"
+              role="presentation"
+              onClick={() => setSelectedSuggestionTeacher(null)}
+            >
+              <section
+                className="floating-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="suggestion-teacher-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="floating-panel-head">
+                  <div>
+                    <p className="eyebrow">Teacher Contact</p>
+                    <h2 id="suggestion-teacher-title">
+                      {selectedSuggestionTeacher.teacher_id} - {selectedSuggestionTeacher.name}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    onClick={() => setSelectedSuggestionTeacher(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="floating-panel-grid">
+                  <div>
+                    <p className="subtle">Phone</p>
+                    <strong>{formatValue(selectedSuggestionTeacher.contact)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Personal Email</p>
+                    <strong>{formatValue(selectedSuggestionTeacher.email)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">ELO</p>
+                    <strong>{formatValue(selectedSuggestionTeacher.elo)}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Education Score</p>
+                    <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
+                  </div>
                 </div>
               </section>
             </div>,

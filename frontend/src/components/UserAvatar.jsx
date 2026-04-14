@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function resolveImageUrl(imageUrl, apiBase) {
   if (!imageUrl) {
@@ -46,6 +46,10 @@ export default function UserAvatar({
   const src = useMemo(() => resolveImageUrl(imageUrl, apiBase), [apiBase, imageUrl]);
   const initials = useMemo(() => buildInitials(name, fallbackCode), [fallbackCode, name]);
   const mergedClassName = `user-avatar user-avatar-${size} ${className}`.trim();
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
 
   if (!src || hasError) {
     return (

@@ -71,17 +71,23 @@
 - Leave request status must be one of:
   - `REQUESTED`
   - `APPROVED`
+  - `REJECTED`
   - `CANCELLED`
 - `teacher` users can only create leave requests for themselves.
 - The class in the leave request must exist.
 - The `teacher_id` in the leave request must match the current teacher assigned to the class.
 - Every leave request must include a non-empty `reason`.
 - Creating a leave request updates the related class status to `NEED_REPLACEMENT`.
-- Only `developer` and `manager` can approve leave requests.
-- Approved leave requests also keep the related class in `NEED_REPLACEMENT`.
 - `teacher` users can cancel only their own leave requests and only when the request is still `REQUESTED`.
-- `manager` and `developer` can cancel any leave request.
+- Only `developer` and `manager` can approve leave requests.
+- Only `developer` and `manager` can reject leave requests.
+- Approved leave requests also keep the related class in `NEED_REPLACEMENT`.
+- Only leave requests in `REQUESTED` status can be approved or rejected.
 - When a leave request is cancelled:
+  - if the class has no remaining leave requests in `REQUESTED` or `APPROVED`, class status is reset to:
+    - `ASSIGNED` if the class still has a teacher
+    - `OPEN` if the class has no teacher
+- When a leave request is rejected:
   - if the class has no remaining leave requests in `REQUESTED` or `APPROVED`, class status is reset to:
     - `ASSIGNED` if the class still has a teacher
     - `OPEN` if the class has no teacher
@@ -95,6 +101,7 @@
   - classes in `NEED_REPLACEMENT`
 - Candidate teachers must:
   - be active
+  - not have any leave request in `REQUESTED` or `APPROVED` on the target class date
   - not be the original teacher of the class when the class already has one
   - not have schedule overlap with another class on the same date
   - not exceed `max_slots_per_day`
@@ -114,6 +121,7 @@
 - The replacement teacher must:
   - exist
   - be active
+  - not have any leave request in `REQUESTED` or `APPROVED` on the target class date
   - not have schedule conflict
   - not exceed `max_slots_per_day`
 - On successful assignment:

@@ -220,6 +220,11 @@
   gap: 8px;
 }
 
+.table-value-center {
+  display: block;
+  text-align: center;
+}
+
 .user-inline-cell {
   display: flex;
   align-items: center;
@@ -264,8 +269,9 @@
 
 .teacher-profile-identity {
   display: grid;
-  justify-items: start;
+  justify-items: center;
   gap: 14px;
+  text-align: center;
 }
 
 .teacher-profile-avatar-trigger {
@@ -304,6 +310,7 @@
 .teacher-profile-identity-copy {
   display: grid;
   gap: 4px;
+  justify-items: center;
 }
 
 .teacher-profile-identity-copy strong {
@@ -496,6 +503,27 @@
   gap: 4px;
 }
 
+.suggestion-teacher-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion-teacher-button:hover {
+  color: var(--accent-dark);
+}
+
+.suggestion-teacher-button:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}
+
 .replacement-empty {
   margin-top: 8px;
 }
@@ -564,6 +592,31 @@
 
 .floating-panel-status-row p {
   margin-bottom: 0;
+}
+
+.floating-panel-form {
+  display: grid;
+  gap: 16px;
+}
+
+.floating-panel-summary {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.floating-panel-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.floating-panel-summary-row span {
+  color: var(--muted);
 }
 
 .floating-panel-actions {

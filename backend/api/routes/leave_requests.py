@@ -129,8 +129,11 @@ def approve_leave_request(
     if leave_row["status"] == "APPROVED":
         return {"message": "leave request already approved", "request_id": request_id}
 
-    if leave_row["status"] == "CANCELLED":
-        raise HTTPException(status_code=400, detail="cannot approve a cancelled leave request")
+    if leave_row["status"] == "REJECTED":
+        raise HTTPException(status_code=400, detail="cannot approve a rejected leave request")
+
+    if leave_row["status"] != "REQUESTED":
+        raise HTTPException(status_code=400, detail="only requested leave requests can be approved")
 
     db.execute(
         text("""
@@ -154,11 +157,11 @@ def approve_leave_request(
     return {"message": "leave request approved", "request_id": request_id}
 
 
-@router.put("/leave-requests/{request_id}/cancel")
-def cancel_leave_request(
+@router.put("/leave-requests/{request_id}/reject")
+def reject_leave_request(
     request_id: str,
     db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     leave_row = db.execute(
         text("""
@@ -172,17 +175,76 @@ def cancel_leave_request(
     if not leave_row:
         raise HTTPException(status_code=404, detail="leave request not found")
 
+    if leave_row["status"] == "REJECTED":
+        return {"message": "leave request already rejected", "request_id": request_id}
+
+    if leave_row["status"] != "REQUESTED":
+        raise HTTPException(status_code=400, detail="only requested leave requests can be rejected")
+
+    db.execute(
+        text("""
+            UPDATE leave_requests
+            SET status = 'REJECTED'
+            WHERE request_id = :request_id
+        """),
+        {"request_id": request_id},
+    )
+
+    remaining_active_requests = db.execute(
+        text("""
+            SELECT COUNT(*)
+            FROM leave_requests
+            WHERE class_id = :class_id
+              AND status IN ('REQUESTED', 'APPROVED')
+        """),
+        {"class_id": leave_row["class_id"]},
+    ).scalar_one()
+
+    if remaining_active_requests == 0:
+        db.execute(
+            text("""
+                UPDATE classes
+                SET status = CASE
+                    WHEN teacher_id IS NULL THEN 'OPEN'
+                    ELSE 'ASSIGNED'
+                END
+                WHERE class_id = :class_id
+            """),
+            {"class_id": leave_row["class_id"]},
+        )
+
+    db.commit()
+    return {"message": "leave request rejected", "request_id": request_id}
+
+
+@router.put("/leave-requests/{request_id}/cancel")
+def cancel_leave_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_TEACHER)),
+):
+    teacher_user = require_teacher_identity(current_user)
+
+    leave_row = db.execute(
+        text("""
+            SELECT request_id, class_id, teacher_id, reason, status
+            FROM leave_requests
+            WHERE request_id = :request_id
+        """),
+        {"request_id": request_id},
+    ).mappings().first()
+
+    if not leave_row:
+        raise HTTPException(status_code=404, detail="leave request not found")
+
+    if leave_row["teacher_id"] != teacher_user.teacher_id:
+        raise HTTPException(status_code=403, detail="teachers can only cancel their own leave requests")
+
     if leave_row["status"] == "CANCELLED":
         return {"message": "leave request already cancelled", "request_id": request_id}
 
-    if current_user.role == ROLE_TEACHER:
-        teacher_user = require_teacher_identity(current_user)
-        if leave_row["teacher_id"] != teacher_user.teacher_id:
-            raise HTTPException(status_code=403, detail="teachers can only cancel their own leave requests")
-        if leave_row["status"] != "REQUESTED":
-            raise HTTPException(status_code=400, detail="teachers can only cancel requested leave requests")
-    elif current_user.role not in {ROLE_DEVELOPER, ROLE_MANAGER}:
-        raise HTTPException(status_code=403, detail="forbidden")
+    if leave_row["status"] != "REQUESTED":
+        raise HTTPException(status_code=400, detail="teachers can only cancel requested leave requests")
 
     db.execute(
         text("""
