@@ -163,15 +163,18 @@ export default function TeacherMonitorView({
           title="Attendance Records"
           columns={[
             { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
-            { key: "latitude", label: "Latitude" },
-            { key: "longitude", label: "Longitude" },
             {
-              key: "accuracy_meters",
-              label: "Accuracy",
+              key: "nearest_center_name",
+              label: "Location",
               render: (row) =>
-                row.accuracy_meters === null || row.accuracy_meters === undefined
-                  ? "-"
-                  : `${Math.round(Number(row.accuracy_meters))} m`,
+                row.status === "VALID"
+                  ? row.nearest_center_name || "Nearest center"
+                  : "Outside valid area",
+            },
+            {
+              key: "status",
+              label: "Status",
+              render: (row) => <StatusPill value={row.status || "INVALID"} />,
             },
           ]}
           rows={attendanceRecords}

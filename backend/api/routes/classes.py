@@ -19,7 +19,7 @@ def get_centers(
 ):
     rows = db.execute(
         text("""
-            SELECT center_id, name, room_count
+            SELECT center_id, name, room_count, latitude, longitude
             FROM centers
             ORDER BY center_id
         """)

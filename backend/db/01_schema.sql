@@ -4,7 +4,9 @@
 CREATE TABLE centers (
     center_id VARCHAR(20) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    room_count INT NOT NULL CHECK (room_count > 0)
+    room_count INT NOT NULL CHECK (room_count > 0),
+    latitude NUMERIC(9,6) NOT NULL CHECK (latitude >= -90 AND latitude <= 90),
+    longitude NUMERIC(9,6) NOT NULL CHECK (longitude >= -180 AND longitude <= 180)
 );
 
 -- =========================
@@ -119,5 +121,7 @@ CREATE TABLE attendance_records (
     checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     latitude NUMERIC(9,6) NOT NULL,
     longitude NUMERIC(9,6) NOT NULL,
-    accuracy_meters NUMERIC(10,2)
+    accuracy_meters NUMERIC(10,2),
+    status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
+    nearest_center_name VARCHAR(100)
 );

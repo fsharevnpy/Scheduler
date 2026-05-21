@@ -185,6 +185,16 @@
   color: var(--ink);
 }
 
+.status-pill-valid {
+  background: rgba(42, 123, 86, 0.12);
+  color: var(--success);
+}
+
+.status-pill-invalid {
+  background: rgba(164, 55, 45, 0.12);
+  color: var(--error);
+}
+
 .table-wrap {
   overflow-x: auto;
 }

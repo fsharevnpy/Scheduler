@@ -104,6 +104,11 @@ export default function AdminMonitorView({
             { key: "latitude", label: "Latitude" },
             { key: "longitude", label: "Longitude" },
             {
+              key: "status",
+              label: "Status",
+              render: (row) => <StatusPill value={row.status || "INVALID"} />,
+            },
+            {
               key: "accuracy_meters",
               label: "Accuracy",
               render: (row) =>

@@ -1,8 +1,8 @@
-INSERT INTO centers (center_id, name, room_count)
+INSERT INTO centers (center_id, name, room_count, latitude, longitude)
 VALUES
-    ('CS1', 'Vạn Phúc', 2),
-    ('CS2', 'Cityland', 3),
-    ('CS3', 'Vin', 2);
+    ('CS1', 'Vạn Phúc', 2, 10.801027, 106.651300),
+    ('CS2', 'Cityland', 3, 21.006200, 105.832000),
+    ('CS3', 'Vin', 2, 21.036700, 105.780300);
 
 INSERT INTO center_slots (center_id, day_of_week, start_time, end_time, max_room)
 VALUES

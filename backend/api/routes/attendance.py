@@ -1,3 +1,4 @@
+from math import atan2, cos, radians, sin, sqrt
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
@@ -29,9 +30,23 @@ def ensure_attendance_table(db: Session) -> None:
                 checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 latitude NUMERIC(9,6) NOT NULL,
                 longitude NUMERIC(9,6) NOT NULL,
-                accuracy_meters NUMERIC(10,2)
+                accuracy_meters NUMERIC(10,2),
+                status VARCHAR(10) NOT NULL DEFAULT 'INVALID'
             )
         """)
+    )
+    db.execute(
+        text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'INVALID'
+        """)
+    )
+    db.execute(
+        text("""
+            UPDATE attendance_records
+            SET status = 'INVALID'
+            WHERE status = 'NON_VALID'
+        """),
     )
     db.execute(
         text("""
@@ -65,7 +80,9 @@ def get_attendance_records(
             ar.checked_at,
             ar.latitude,
             ar.longitude,
-            ar.accuracy_meters
+            ar.accuracy_meters,
+            ar.status,
+            ar.nearest_center_name
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
@@ -89,13 +106,38 @@ def check_in_attendance(
     ensure_attendance_table(db)
 
     record_id = str(uuid4())
+    centers = db.execute(text("SELECT center_id, name, latitude, longitude FROM centers")).mappings().all()
+
+    def haversine_distance(lat1, lon1, lat2, lon2):
+        r = 6371000.0
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return r * c
+
+    closest_distance = None
+    closest_center_name = None
+    for center in centers:
+        distance = haversine_distance(
+            payload.latitude,
+            payload.longitude,
+            float(center["latitude"]),
+            float(center["longitude"]),
+        )
+        if closest_distance is None or distance < closest_distance:
+            closest_distance = distance
+            closest_center_name = center.get("name")
+
+    check_in_status = "VALID" if closest_distance is not None and closest_distance <= 200 else "INVALID"
+
     record = db.execute(
         text("""
             INSERT INTO attendance_records (
-                record_id, user_code, teacher_id, latitude, longitude, accuracy_meters
+                record_id, user_code, teacher_id, latitude, longitude, accuracy_meters, status, nearest_center_name
             )
             VALUES (
-                :record_id, :user_code, :teacher_id, :latitude, :longitude, :accuracy_meters
+                :record_id, :user_code, :teacher_id, :latitude, :longitude, :accuracy_meters, :status, :nearest_center_name
             )
             RETURNING
                 record_id,
@@ -104,7 +146,9 @@ def check_in_attendance(
                 checked_at,
                 latitude,
                 longitude,
-                accuracy_meters
+                accuracy_meters,
+                status,
+                nearest_center_name
         """),
         {
             "record_id": record_id,
@@ -113,6 +157,8 @@ def check_in_attendance(
             "latitude": payload.latitude,
             "longitude": payload.longitude,
             "accuracy_meters": payload.accuracy_meters,
+            "status": check_in_status,
+            "nearest_center_name": closest_center_name,
         },
     ).mappings().first()
     db.commit()
