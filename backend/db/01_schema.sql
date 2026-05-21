@@ -108,3 +108,16 @@ CREATE TABLE password_reset_requests (
     resolved_at TIMESTAMP NULL,
     CHECK (status IN ('REQUESTED', 'RESOLVED'))
 );
+
+-- =========================
+-- 9. Attendance Records
+-- =========================
+CREATE TABLE attendance_records (
+    record_id UUID PRIMARY KEY,
+    user_code VARCHAR(7) NOT NULL REFERENCES users(user_code) ON DELETE CASCADE,
+    teacher_id VARCHAR(20) REFERENCES teachers(teacher_id) ON DELETE SET NULL,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    latitude NUMERIC(9,6) NOT NULL,
+    longitude NUMERIC(9,6) NOT NULL,
+    accuracy_meters NUMERIC(10,2)
+);

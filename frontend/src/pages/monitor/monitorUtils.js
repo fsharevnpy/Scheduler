@@ -18,3 +18,16 @@ export function formatTimeValue(value) {
   const stringValue = String(value);
   return /^\d{2}:\d{2}:\d{2}$/.test(stringValue) ? stringValue.slice(0, 5) : stringValue;
 }
+
+export function formatDateTimeValue(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return formatValue(value);
+  }
+
+  return date.toLocaleString();
+}

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from api.routes.attendance import router as attendance_router
 from api.routes.classes import router as classes_router
 from api.routes.leave_requests import router as leave_requests_router
 from api.routes.password_reset_requests import router as password_reset_requests_router
@@ -17,5 +18,6 @@ router.include_router(teachers_router)
 router.include_router(classes_router)
 router.include_router(leave_requests_router)
 router.include_router(replacements_router)
+router.include_router(attendance_router)
 
 __all__ = ["router"]

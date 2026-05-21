@@ -4,10 +4,11 @@ import { createPortal } from "react-dom";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import DataTable from "./DataTable.jsx";
 import StatusPill from "./StatusPill.jsx";
-import { formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
 export default function AdminMonitorView({
   actionStatus,
+  attendanceRecords,
   apiBase,
   leaveRequests,
   managerUsers,
@@ -70,6 +71,12 @@ export default function AdminMonitorView({
           <p className="subtle">All leave request records.</p>
         </article>
 
+        <article className="info-card">
+          <p className="eyebrow">Attendance</p>
+          <h2>{attendanceRecords.length}</h2>
+          <p className="subtle">Recorded check-ins from users.</p>
+        </article>
+
         {role === "developer" ? (
           <article className="info-card">
             <p className="eyebrow">Managers</p>
@@ -77,6 +84,38 @@ export default function AdminMonitorView({
             <p className="subtle">Manager accounts visible to developer.</p>
           </article>
         ) : null}
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Attendance</p>
+            <h2>Check-in records</h2>
+          </div>
+        </div>
+
+        <DataTable
+          title="Attendance Records"
+          columns={[
+            { key: "display_name", label: "User" },
+            { key: "user_code", label: "User Code" },
+            { key: "teacher_id", label: "Teacher ID" },
+            { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
+            { key: "latitude", label: "Latitude" },
+            { key: "longitude", label: "Longitude" },
+            {
+              key: "accuracy_meters",
+              label: "Accuracy",
+              render: (row) =>
+                row.accuracy_meters === null || row.accuracy_meters === undefined
+                  ? "-"
+                  : `${Math.round(Number(row.accuracy_meters))} m`,
+            },
+          ]}
+          rows={attendanceRecords}
+          emptyMessage="No attendance records found."
+          embedded
+        />
       </section>
 
       <section className="dashboard-section">

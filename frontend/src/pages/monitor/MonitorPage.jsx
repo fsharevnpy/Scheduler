@@ -29,6 +29,7 @@ export default function MonitorPage({ auth }) {
     teachers: [],
     classes: [],
     leaveRequests: [],
+    attendanceRecords: [],
     resetRequests: [],
     users: [],
   });
@@ -48,6 +49,7 @@ export default function MonitorPage({ auth }) {
           current.teachers.length > 0 ||
           current.classes.length > 0 ||
           current.leaveRequests.length > 0 ||
+          current.attendanceRecords.length > 0 ||
           current.resetRequests.length > 0 ||
           current.users.length > 0;
 
@@ -63,6 +65,7 @@ export default function MonitorPage({ auth }) {
           requestJson(`${auth.apiBase}/centers`, { headers }),
           requestJson(`${auth.apiBase}/classes`, { headers }),
           requestJson(`${auth.apiBase}/leave-requests`, { headers }),
+          requestJson(`${auth.apiBase}/attendance-records`, { headers }),
         ];
 
         if (user.role === "manager" || user.role === "developer") {
@@ -75,7 +78,7 @@ export default function MonitorPage({ auth }) {
         }
 
         const results = await Promise.all(requests);
-        const [centers, classes, leaveRequests, teachers = [], resetRequests = [], users = []] = results;
+        const [centers, classes, leaveRequests, attendanceRecords, teachers = [], resetRequests = [], users = []] = results;
 
         if (!cancelled) {
           setState({
@@ -85,6 +88,7 @@ export default function MonitorPage({ auth }) {
             teachers,
             classes,
             leaveRequests,
+            attendanceRecords,
             resetRequests,
             users,
           });
@@ -98,6 +102,7 @@ export default function MonitorPage({ auth }) {
             teachers: [],
             classes: [],
             leaveRequests: [],
+            attendanceRecords: [],
             resetRequests: [],
             users: [],
           });
@@ -116,9 +121,9 @@ export default function MonitorPage({ auth }) {
     setActionStatus({ kind: "", message: "" });
 
     try {
-      await action();
+      const result = await action();
       if (onSuccess) {
-        onSuccess();
+        onSuccess(result);
       }
       if (successMessage) {
         setActionStatus({ kind: "success", message: successMessage });
@@ -269,6 +274,29 @@ export default function MonitorPage({ auth }) {
                 }
               : item,
           ),
+        }));
+      },
+    );
+  }
+
+  async function checkInAttendance({ latitude, longitude, accuracy }) {
+    return runAction(
+      "attendance-check-in",
+      () =>
+        requestJson(`${auth.apiBase}/attendance-records/check-in`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude,
+            longitude,
+            accuracy_meters: accuracy ?? null,
+          }),
+        }),
+      "Attendance recorded.",
+      (record) => {
+        setState((current) => ({
+          ...current,
+          attendanceRecords: [record, ...current.attendanceRecords],
         }));
       },
     );
@@ -455,16 +483,20 @@ export default function MonitorPage({ auth }) {
         ) : user.role === "teacher" ? (
           <TeacherMonitorView
             highlightedClasses={highlightedClasses}
+            attendanceRecords={state.attendanceRecords}
             leaveRequests={leaveRequestsWithCenter}
             teacherId={user.teacher_id}
             unassignedCount={unassignedClasses.length}
             pendingAction={pendingAction}
+            actionStatus={actionStatus}
+            onCheckInAttendance={checkInAttendance}
             onCreateLeaveRequest={createLeaveRequest}
             onCancelLeaveRequest={cancelLeaveRequest}
           />
         ) : (
           <AdminMonitorView
             actionStatus={actionStatus}
+            attendanceRecords={state.attendanceRecords}
             apiBase={auth.apiBase}
             classes={classesWithCenterAndTeacher}
             leaveRequests={leaveRequestsWithCenter}

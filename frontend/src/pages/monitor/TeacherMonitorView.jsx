@@ -4,20 +4,25 @@ import { createPortal } from "react-dom";
 import DataTable from "./DataTable.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
-import { formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
 export default function TeacherMonitorView({
   highlightedClasses,
+  attendanceRecords,
   leaveRequests,
   teacherId,
   unassignedCount,
   pendingAction,
+  actionStatus,
+  onCheckInAttendance,
   onCreateLeaveRequest,
   onCancelLeaveRequest,
 }) {
   const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
+  const [isAttendancePanelOpen, setIsAttendancePanelOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [reason, setReason] = useState("");
+  const [attendanceError, setAttendanceError] = useState("");
 
   const activeLeaveClassIds = useMemo(
     () =>
@@ -65,6 +70,36 @@ export default function TeacherMonitorView({
     }
   }
 
+  function handleConfirmAttendance() {
+    if (!navigator.geolocation) {
+      setAttendanceError("This browser does not support location access.");
+      return;
+    }
+
+    setAttendanceError("");
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const success = await onCheckInAttendance({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+
+        if (success) {
+          setIsAttendancePanelOpen(false);
+        }
+      },
+      (error) => {
+        setAttendanceError(error.message || "Unable to read current location.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      },
+    );
+  }
+
   return (
     <>
       <section className="monitor-grid monitor-grid-summary">
@@ -85,6 +120,64 @@ export default function TeacherMonitorView({
           <h2>{leaveRequests.length}</h2>
           <p className="subtle">Your personal leave request records.</p>
         </article>
+
+        <article className="info-card">
+          <p className="eyebrow">Attendance</p>
+          <h2>{attendanceRecords.length}</h2>
+          <p className="subtle">Your recorded check-in entries.</p>
+        </article>
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-head">
+          <div>
+            <p className="eyebrow">Attendance</p>
+            <h2>Check in with current location</h2>
+          </div>
+          <button
+            type="button"
+            className="table-action-button"
+            disabled={pendingAction === "attendance-check-in"}
+            onClick={() => {
+              setAttendanceError("");
+              setIsAttendancePanelOpen(true);
+            }}
+          >
+            {pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}
+          </button>
+        </div>
+
+        {!window.isSecureContext ? (
+          <p className="status error">
+            Location access may be blocked on mobile over HTTP. Use HTTPS, localhost, or allow location manually if
+            your browser supports it.
+          </p>
+        ) : null}
+
+        <div className={`status ${actionStatus.kind}`.trim()} aria-live="polite">
+          {actionStatus.message}
+        </div>
+        {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+
+        <DataTable
+          title="Attendance Records"
+          columns={[
+            { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
+            { key: "latitude", label: "Latitude" },
+            { key: "longitude", label: "Longitude" },
+            {
+              key: "accuracy_meters",
+              label: "Accuracy",
+              render: (row) =>
+                row.accuracy_meters === null || row.accuracy_meters === undefined
+                  ? "-"
+                  : `${Math.round(Number(row.accuracy_meters))} m`,
+            },
+          ]}
+          rows={attendanceRecords}
+          emptyMessage="No attendance records found."
+          embedded
+        />
       </section>
 
       <section className="dashboard-section">
@@ -167,6 +260,61 @@ export default function TeacherMonitorView({
           embedded
         />
       </section>
+
+      {isAttendancePanelOpen
+        ? createPortal(
+            <div className="floating-panel-backdrop" role="presentation" onClick={() => setIsAttendancePanelOpen(false)}>
+              <section
+                className="floating-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="attendance-confirm-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="floating-panel-head">
+                  <div>
+                    <p className="eyebrow">Attendance</p>
+                    <h2 id="attendance-confirm-title">Confirm check-in</h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    onClick={() => setIsAttendancePanelOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="floating-panel-reason-box">
+                  <p>
+                    This will record the current server time and your phone's location for this account.
+                  </p>
+                </div>
+                {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+
+                <div className="floating-panel-actions">
+                  <button
+                    type="button"
+                    className="table-action-button"
+                    disabled={pendingAction === "attendance-check-in"}
+                    onClick={handleConfirmAttendance}
+                  >
+                    {pendingAction === "attendance-check-in" ? "Recording..." : "Confirm check-in"}
+                  </button>
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    disabled={pendingAction === "attendance-check-in"}
+                    onClick={() => setIsAttendancePanelOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {isCreatePanelOpen
         ? createPortal(

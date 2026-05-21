@@ -33,17 +33,119 @@
   }
 }
 
+@media (max-width: 720px) {
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(180, 79, 33, 0.12), transparent 30%),
+      linear-gradient(135deg, #f8f2e7 0%, #efe4cf 100%);
+  }
+
+  h1 {
+    max-width: none;
+  }
+
+  .dashboard-title {
+    font-size: 2rem;
+    line-height: 1.08;
+  }
+
+  .dashboard-actions,
+  .dashboard-action-stack,
+  .section-head,
+  .floating-panel-head,
+  .replacement-card-head,
+  .center-class-head {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-action-stack {
+    min-width: 0;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .inline-link,
+  .table-action-button {
+    width: 100%;
+  }
+
+  .table-wrap {
+    margin-inline: -4px;
+    padding-bottom: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 680px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 12px 10px;
+  }
+
+  .table-actions {
+    min-width: 132px;
+  }
+
+  .classes-center-table {
+    min-width: 760px;
+  }
+
+  .floating-panel-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .floating-panel {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 20px;
+    padding: 20px;
+  }
+
+  .floating-panel-actions {
+    flex-direction: column;
+  }
+
+  .floating-panel-summary-row,
+  .teacher-profile-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .teacher-profile-row strong {
+    text-align: left;
+  }
+}
+
 @media (max-width: 560px) {
+  .login-shell,
+  .dashboard-shell,
+  .page-shell {
+    padding: 12px;
+  }
+
   .panel-card,
   .hero-panel,
   .dashboard-card,
   .login-card {
-    border-radius: 24px;
-    padding: 22px;
+    border-radius: 18px;
+    padding: 18px;
   }
 
   .dashboard-head {
     flex-direction: column;
+    gap: 16px;
+    margin-bottom: 18px;
   }
 
   .account-chip {
@@ -52,7 +154,28 @@
   }
 
   .dashboard-shell {
-    padding: 18px;
+    padding: 12px;
+  }
+
+  .dashboard-section,
+  .replacement-card,
+  .center-class-group,
+  .class-highlight-card,
+  .teacher-profile-card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .monitor-grid,
+  .class-highlight-grid,
+  .profile-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-pill {
+    min-width: 0;
+    width: fit-content;
+    max-width: 100%;
   }
 
   .preference-card {
@@ -79,5 +202,47 @@
 
   .teacher-profile-details {
     grid-template-columns: 1fr;
+  }
+
+  .teacher-profile-avatar {
+    width: 144px;
+    height: 144px;
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .dashboard-title {
+    font-size: 1.72rem;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+  }
+
+  .field input,
+  .field textarea,
+  .field select,
+  .primary-button,
+  .secondary-button {
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  .account-chip {
+    border-radius: 14px;
+  }
+
+  .account-chip-copy strong,
+  .account-chip-copy span {
+    overflow-wrap: anywhere;
+  }
+
+  .floating-panel {
+    padding: 16px;
+  }
+
+  .data-table {
+    min-width: 620px;
   }
 }

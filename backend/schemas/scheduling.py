@@ -98,3 +98,32 @@ class LeaveRequestCreate(BaseModel):
 
 class AssignReplacementPayload(BaseModel):
     teacher_id: str
+
+
+class AttendanceCheckInPayload(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy_meters: Optional[float] = None
+
+    @field_validator("latitude")
+    @classmethod
+    def validate_latitude(cls, value: float) -> float:
+        if value < -90 or value > 90:
+            raise ValueError("latitude must be between -90 and 90")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def validate_longitude(cls, value: float) -> float:
+        if value < -180 or value > 180:
+            raise ValueError("longitude must be between -180 and 180")
+        return value
+
+    @field_validator("accuracy_meters")
+    @classmethod
+    def validate_accuracy(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return value
+        if value < 0:
+            raise ValueError("accuracy_meters must be at least 0")
+        return value
