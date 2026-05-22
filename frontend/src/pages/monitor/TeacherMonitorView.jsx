@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 
 import DataTable from "./DataTable.jsx";
+import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
 import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
@@ -264,85 +264,46 @@ export default function TeacherMonitorView({
         />
       </section>
 
-      {isAttendancePanelOpen
-        ? createPortal(
-            <div className="floating-panel-backdrop" role="presentation" onClick={() => setIsAttendancePanelOpen(false)}>
-              <section
-                className="floating-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="attendance-confirm-title"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="floating-panel-head">
-                  <div>
-                    <p className="eyebrow">Attendance</p>
-                    <h2 id="attendance-confirm-title">Confirm check-in</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    onClick={() => setIsAttendancePanelOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
+      {isAttendancePanelOpen ? (
+        <FloatingPanel
+          eyebrow="Attendance"
+          title="Confirm check-in"
+          titleId="attendance-confirm-title"
+          onClose={() => setIsAttendancePanelOpen(false)}
+        >
+          <div className="floating-panel-reason-box">
+            <p>This will record the current server time and your phone's location for this account.</p>
+          </div>
+          {attendanceError ? <div className="status error">{attendanceError}</div> : null}
 
-                <div className="floating-panel-reason-box">
-                  <p>
-                    This will record the current server time and your phone's location for this account.
-                  </p>
-                </div>
-                {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+          <div className="floating-panel-actions">
+            <button
+              type="button"
+              className="table-action-button"
+              disabled={pendingAction === "attendance-check-in"}
+              onClick={handleConfirmAttendance}
+            >
+              {pendingAction === "attendance-check-in" ? "Recording..." : "Confirm check-in"}
+            </button>
+            <button
+              type="button"
+              className="table-action-button table-action-button-muted"
+              disabled={pendingAction === "attendance-check-in"}
+              onClick={() => setIsAttendancePanelOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </FloatingPanel>
+      ) : null}
 
-                <div className="floating-panel-actions">
-                  <button
-                    type="button"
-                    className="table-action-button"
-                    disabled={pendingAction === "attendance-check-in"}
-                    onClick={handleConfirmAttendance}
-                  >
-                    {pendingAction === "attendance-check-in" ? "Recording..." : "Confirm check-in"}
-                  </button>
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    disabled={pendingAction === "attendance-check-in"}
-                    onClick={() => setIsAttendancePanelOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </section>
-            </div>,
-            document.body,
-          )
-        : null}
-
-      {isCreatePanelOpen
-        ? createPortal(
-            <div className="floating-panel-backdrop" role="presentation" onClick={() => setIsCreatePanelOpen(false)}>
-              <section
-                className="floating-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="teacher-leave-request-title"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="floating-panel-head">
-                  <div>
-                    <p className="eyebrow">Leave Request</p>
-                    <h2 id="teacher-leave-request-title">Create a new leave request</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    onClick={() => setIsCreatePanelOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-
+      {isCreatePanelOpen ? (
+        <FloatingPanel
+          eyebrow="Leave Request"
+          title="Create a new leave request"
+          titleId="teacher-leave-request-title"
+          onClose={() => setIsCreatePanelOpen(false)}
+        >
                 <form className="floating-panel-form" onSubmit={handleCreateLeaveRequest}>
                   <label className="field">
                     <span>Class</span>
@@ -411,11 +372,8 @@ export default function TeacherMonitorView({
                     </button>
                   </div>
                 </form>
-              </section>
-            </div>,
-            document.body,
-          )
-        : null}
+        </FloatingPanel>
+      ) : null}
     </>
   );
 }

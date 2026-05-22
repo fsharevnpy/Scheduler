@@ -153,84 +153,54 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function rejectLeaveRequest(requestId) {
+  function applyInactiveLeaveRequestStatus(current, requestId, nextStatus, leaveRequest) {
+    const nextLeaveRequests = current.leaveRequests.map((item) =>
+      item.request_id === requestId ? { ...item, status: nextStatus } : item,
+    );
+
+    const shouldResetClassStatus = leaveRequest
+      ? nextLeaveRequests.every(
+          (item) =>
+            item.class_id !== leaveRequest.class_id ||
+            !["REQUESTED", "APPROVED"].includes(item.status),
+        )
+      : false;
+
+    return {
+      ...current,
+      leaveRequests: nextLeaveRequests,
+      classes: current.classes.map((item) => {
+        if (!leaveRequest || item.class_id !== leaveRequest.class_id || !shouldResetClassStatus) {
+          return item;
+        }
+
+        return {
+          ...item,
+          status: item.teacher_id ? "ASSIGNED" : "OPEN",
+        };
+      }),
+    };
+  }
+
+  async function transitionLeaveRequest(requestId, endpointAction, nextStatus, actionLabel) {
     const leaveRequest = state.leaveRequests.find((item) => item.request_id === requestId);
 
     await runAction(
-      `reject-${requestId}`,
-      () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/reject`, { method: "PUT", headers }),
-      `Rejected leave request ${requestId}.`,
+      `${endpointAction}-${requestId}`,
+      () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/${endpointAction}`, { method: "PUT", headers }),
+      `${actionLabel} leave request ${requestId}.`,
       () => {
-        setState((current) => {
-          const nextLeaveRequests = current.leaveRequests.map((item) =>
-            item.request_id === requestId ? { ...item, status: "REJECTED" } : item,
-          );
-
-          const shouldResetClassStatus = leaveRequest
-            ? nextLeaveRequests.every(
-                (item) =>
-                  item.class_id !== leaveRequest.class_id ||
-                  !["REQUESTED", "APPROVED"].includes(item.status),
-              )
-            : false;
-
-          return {
-            ...current,
-            leaveRequests: nextLeaveRequests,
-            classes: current.classes.map((item) => {
-              if (!leaveRequest || item.class_id !== leaveRequest.class_id || !shouldResetClassStatus) {
-                return item;
-              }
-
-              return {
-                ...item,
-                status: item.teacher_id ? "ASSIGNED" : "OPEN",
-              };
-            }),
-          };
-        });
+        setState((current) => applyInactiveLeaveRequestStatus(current, requestId, nextStatus, leaveRequest));
       },
     );
   }
 
+  async function rejectLeaveRequest(requestId) {
+    await transitionLeaveRequest(requestId, "reject", "REJECTED", "Rejected");
+  }
+
   async function cancelLeaveRequest(requestId) {
-    const leaveRequest = state.leaveRequests.find((item) => item.request_id === requestId);
-
-    await runAction(
-      `cancel-${requestId}`,
-      () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/cancel`, { method: "PUT", headers }),
-      `Cancelled leave request ${requestId}.`,
-      () => {
-        setState((current) => {
-          const nextLeaveRequests = current.leaveRequests.map((item) =>
-            item.request_id === requestId ? { ...item, status: "CANCELLED" } : item,
-          );
-
-          const shouldResetClassStatus = leaveRequest
-            ? nextLeaveRequests.every(
-                (item) =>
-                  item.class_id !== leaveRequest.class_id ||
-                  !["REQUESTED", "APPROVED"].includes(item.status),
-              )
-            : false;
-
-          return {
-            ...current,
-            leaveRequests: nextLeaveRequests,
-            classes: current.classes.map((item) => {
-              if (!leaveRequest || item.class_id !== leaveRequest.class_id || !shouldResetClassStatus) {
-                return item;
-              }
-
-              return {
-                ...item,
-                status: item.teacher_id ? "ASSIGNED" : "OPEN",
-              };
-            }),
-          };
-        });
-      },
-    );
+    await transitionLeaveRequest(requestId, "cancel", "CANCELLED", "Cancelled");
   }
 
   async function createLeaveRequest({ classId, requestDate, reason }) {

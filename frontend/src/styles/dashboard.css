@@ -361,6 +361,33 @@
   text-align: right;
 }
 
+.teacher-profile-edit-value {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-width: 0;
+  padding: 0;
+  text-align: right;
+  text-decoration: underline;
+  text-decoration-color: rgba(180, 79, 33, 0.34);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.teacher-profile-edit-value:hover {
+  color: var(--accent);
+}
+
+.teacher-profile-edit-value:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(180, 79, 33, 0.12);
+  border-radius: 8px;
+}
+
 
 .hidden-file-input {
   display: none;

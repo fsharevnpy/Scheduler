@@ -166,6 +166,35 @@ class ChangePasswordRequest(BaseModel):
         return self
 
 
+ContactField = Literal["contact", "email"]
+
+
+class ContactUpdateRequest(BaseModel):
+    field: ContactField
+    value: str
+
+    @field_validator("value")
+    @classmethod
+    def validate_value(cls, value: str, info) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value is required")
+
+        field = info.data.get("field")
+        if field == "contact":
+            if len(value) > 50:
+                raise ValueError("phone must be at most 50 characters")
+        elif field == "email":
+            if len(value) > 100:
+                raise ValueError("email must be at most 100 characters")
+            if "@" not in value:
+                raise ValueError("email must be valid")
+        else:
+            raise ValueError("field must be contact or email")
+
+        return value
+
+
 class CurrentUser(BaseModel):
     user_id: UUID
     user_code: str

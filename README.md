@@ -13,6 +13,7 @@ Main capabilities:
 - internal forgot-password request flow
 - request-based password reset to default password
 - profile image delivery through MinIO object storage
+- teacher self-service phone and personal email changes
 - teacher and class management
 - teacher account creation with auto-generated `teacher_id`
 - leave request workflow
@@ -32,7 +33,7 @@ Requirements:
 
 Start the full stack:
 
-```powershell
+```powershell/bash
 docker compose up -d --build
 ```
 
@@ -48,7 +49,7 @@ Do not use `localhost:3000` directly after this change. Frontend and backend are
 
 Rebuild only one service:
 
-```powershell
+```powershell/bash
 docker compose up -d --build backend
 docker compose up -d --build frontend
 docker compose up -d --build db
@@ -58,7 +59,7 @@ docker compose up -d --build minio
 
 Reset containers and database volume, then recreate everything:
 
-```powershell
+```powershell/bash
 docker compose down -v
 docker compose up -d --build
 ```
@@ -71,19 +72,19 @@ Notes:
 
 View logs for the full stack:
 
-```powershell
+```powershell/bash
 docker compose logs
 ```
 
 Follow logs in real time:
 
-```powershell
+```powershell/bash
 docker compose logs -f
 ```
 
 View logs for a specific service:
 
-```powershell
+```powershell/bash
 docker compose logs backend
 docker compose logs frontend
 docker compose logs db
@@ -93,12 +94,18 @@ docker compose logs minio
 
 Follow logs for a specific service:
 
-```powershell
+```powershell/bash
 docker compose logs -f backend
 docker compose logs -f frontend
 docker compose logs -f db
 docker compose logs -f gateway
 docker compose logs -f minio
+```
+
+Create a tailscale funnel:
+
+```bash
+sudo tailscale funnel --bg 8080
 ```
 
 ## Default Accounts
@@ -121,6 +128,7 @@ Use `user_code` and password to sign in.
 Each account also has a `display_name` used across the UI.
 New accounts are created with the default password `123456aA@`.
 New teacher accounts are also created with a generated `teacher_id`.
+Teachers can edit their own phone number and personal email from Profile Settings.
 
 Seeded centers:
 - `Vạn Phúc (CS1)`

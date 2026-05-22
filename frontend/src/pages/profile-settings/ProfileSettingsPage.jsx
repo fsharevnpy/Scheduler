@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
+import FloatingPanel from "../monitor/FloatingPanel.jsx";
 import PasswordSettingsPanel from "../monitor/PasswordSettingsPanel.jsx";
 import { requestJson } from "../../lib/http.js";
 
@@ -11,8 +12,12 @@ export default function ProfileSettingsPage({ auth }) {
   const [imageStatus, setImageStatus] = useState({ kind: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSavingContactChange, setIsSavingContactChange] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState(null);
   const [teacherProfileError, setTeacherProfileError] = useState("");
+  const [contactStatus, setContactStatus] = useState({ kind: "", message: "" });
+  const [contactEditField, setContactEditField] = useState(null);
+  const [contactDraft, setContactDraft] = useState("");
   const [form, setForm] = useState({
     current_password: "",
     new_password: "",
@@ -120,6 +125,57 @@ export default function ProfileSettingsPage({ auth }) {
     }
   }
 
+  async function handleSaveContactChange(event) {
+    event.preventDefault();
+    if (!contactEditField) {
+      return;
+    }
+
+    setIsSavingContactChange(true);
+    setContactStatus({ kind: "", message: "" });
+
+    try {
+      const updatedProfile = await requestJson(`${auth.apiBase}/auth/profile/contact`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          field: contactEditField,
+          value: contactDraft,
+        }),
+      });
+
+      setTeacherProfile((current) => ({
+        ...(current || {}),
+        [updatedProfile.field]: updatedProfile.value,
+      }));
+      closeContactEditPanel();
+      setContactStatus({ kind: "success", message: "Contact details updated." });
+    } catch (error) {
+      setContactStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsSavingContactChange(false);
+    }
+  }
+
+  function openContactEditPanel(field) {
+    setContactEditField(field);
+    setContactDraft(field === "email" ? teacherProfile?.email || "" : teacherProfile?.contact || "");
+    setContactStatus({ kind: "", message: "" });
+  }
+
+  function closeContactEditPanel() {
+    setContactEditField(null);
+    setContactDraft("");
+  }
+
+  const contactEditLabel = contactEditField === "email" ? "Personal Email" : "Phone";
+  const contactEditCurrentValue =
+    contactEditField === "email" ? teacherProfile?.email || "" : teacherProfile?.contact || "";
+  const hasContactChanges = Boolean(contactEditField) && contactDraft.trim() !== contactEditCurrentValue;
+
   return (
     <main className="dashboard-shell">
       <section className="dashboard-card dashboard-card-wide">
@@ -208,11 +264,23 @@ export default function ProfileSettingsPage({ auth }) {
                   </div>
                   <div className="teacher-profile-row">
                     <span>Phone</span>
-                    <strong>{teacherProfile.contact || "-"}</strong>
+                    <button
+                      type="button"
+                      className="teacher-profile-edit-value"
+                      onClick={() => openContactEditPanel("contact")}
+                    >
+                      {teacherProfile.contact || "-"}
+                    </button>
                   </div>
                   <div className="teacher-profile-row">
                     <span>Personal Email</span>
-                    <strong>{teacherProfile.email || "-"}</strong>
+                    <button
+                      type="button"
+                      className="teacher-profile-edit-value"
+                      onClick={() => openContactEditPanel("email")}
+                    >
+                      {teacherProfile.email || "-"}
+                    </button>
                   </div>
                   <div className="teacher-profile-row">
                     <span>ELO</span>
@@ -231,7 +299,60 @@ export default function ProfileSettingsPage({ auth }) {
             ) : (
               <p className="subtle">Teacher profile information is not available.</p>
             )}
+
+            {!contactEditField ? (
+              <div className={`status ${contactStatus.kind}`.trim()} aria-live="polite">
+                {contactStatus.message}
+              </div>
+            ) : null}
           </section>
+        ) : null}
+
+        {contactEditField ? (
+          <FloatingPanel
+            eyebrow="Contact Change"
+            title={`Edit ${contactEditLabel}`}
+            titleId="contact-change-title"
+            onClose={closeContactEditPanel}
+          >
+            <form className="floating-panel-form" onSubmit={handleSaveContactChange}>
+              <label className="field">
+                <span>New {contactEditLabel}</span>
+                <input
+                  value={contactDraft}
+                  onChange={(event) => {
+                    setContactDraft(event.target.value);
+                    setContactStatus({ kind: "", message: "" });
+                  }}
+                  type={contactEditField === "email" ? "email" : "tel"}
+                  autoComplete={contactEditField === "email" ? "email" : "tel"}
+                  required
+                />
+              </label>
+
+              <div className={`status ${contactStatus.kind}`.trim()} aria-live="polite">
+                {contactStatus.message}
+              </div>
+
+              <div className="floating-panel-actions">
+                <button
+                  type="submit"
+                  className="table-action-button"
+                  disabled={!hasContactChanges || isSavingContactChange}
+                >
+                  {isSavingContactChange ? "Saving..." : "Save change"}
+                </button>
+                <button
+                  type="button"
+                  className="table-action-button table-action-button-muted"
+                  disabled={isSavingContactChange}
+                  onClick={closeContactEditPanel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </FloatingPanel>
         ) : null}
 
         <PasswordSettingsPanel

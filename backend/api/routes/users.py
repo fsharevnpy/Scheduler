@@ -8,13 +8,12 @@ from sqlalchemy.orm import Session
 from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
 from core.profile_images import build_profile_image_url
-from core.security import hash_password
+from core.security import DEFAULT_USER_PASSWORD, hash_password
 from db import get_db
 from schemas.auth import CurrentUser, UserCreate
 
 
 router = APIRouter()
-DEFAULT_NEW_USER_PASSWORD = "123456aA@"
 
 
 def get_target_user(user_code: str, db: Session):
@@ -104,7 +103,7 @@ def create_user(
 
         teacher_id = generate_teacher_id(db)
         display_name = payload.name
-        password = DEFAULT_NEW_USER_PASSWORD
+        password = DEFAULT_USER_PASSWORD
 
         db.execute(
             text("""
@@ -149,7 +148,7 @@ def create_user(
     else:
         teacher_id = None
         display_name = payload.display_name
-        password = DEFAULT_NEW_USER_PASSWORD
+        password = DEFAULT_USER_PASSWORD
 
     user_id = uuid4()
     user_code = generate_user_code(db)

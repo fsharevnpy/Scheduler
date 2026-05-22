@@ -1,6 +1,14 @@
 import { formatValue } from "./monitorUtils.js";
 
-export default function DataTable({ title, columns, rows, emptyMessage, embedded = false }) {
+export default function DataTable({
+  title,
+  columns,
+  rows,
+  emptyMessage,
+  embedded = false,
+  tableClassName = "",
+  colClasses = [],
+}) {
   const content = (
     <>
       {embedded ? null : (
@@ -16,7 +24,14 @@ export default function DataTable({ title, columns, rows, emptyMessage, embedded
         <p className="subtle">{emptyMessage}</p>
       ) : (
         <div className="table-wrap">
-          <table className="data-table">
+          <table className={`data-table ${tableClassName}`.trim()}>
+            {colClasses.length > 0 ? (
+              <colgroup>
+                {colClasses.map((className, index) => (
+                  <col key={`${className}-${index}`} className={className} />
+                ))}
+              </colgroup>
+            ) : null}
             <thead>
               <tr>
                 {columns.map((column) => (

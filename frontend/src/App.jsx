@@ -8,7 +8,7 @@ import RegisterPage from "./pages/RegisterPage.jsx";
 import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
 import { requestJson } from "./lib/http.js";
 
-function ProtectedRoute({ isAuthenticated, isRestoring, children }) {
+function RouteGuard({ isAuthenticated, isRestoring, user, allowedRoles, children }) {
   const location = useLocation();
 
   if (isRestoring) {
@@ -19,19 +19,7 @@ function ProtectedRoute({ isAuthenticated, isRestoring, children }) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return children;
-}
-
-function RoleRoute({ isAuthenticated, isRestoring, user, allowedRoles, children }) {
-  if (isRestoring) {
-    return <div className="page-status">Restoring session...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!allowedRoles.includes(user?.role)) {
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
     return <Navigate to="/monitor" replace />;
   }
 
@@ -124,30 +112,30 @@ export default function App() {
       <Route
         path="/profile-settings"
         element={
-          <ProtectedRoute isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
+          <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
             <ProfileSettingsPage auth={auth} />
-          </ProtectedRoute>
+          </RouteGuard>
         }
       />
       <Route
         path="/monitor"
         element={
-          <ProtectedRoute isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
+          <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
             <MonitorPage auth={auth} />
-          </ProtectedRoute>
+          </RouteGuard>
         }
       />
       <Route
         path="/register"
         element={
-          <RoleRoute
+          <RouteGuard
             isAuthenticated={auth.isAuthenticated}
             isRestoring={isRestoring}
             user={auth.user}
             allowedRoles={["developer", "manager"]}
           >
             <RegisterPage auth={auth} />
-          </RoleRoute>
+          </RouteGuard>
         }
       />
       <Route path="*" element={<Navigate to={auth.isAuthenticated ? "/monitor" : "/login"} replace />} />

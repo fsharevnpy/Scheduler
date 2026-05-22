@@ -122,7 +122,8 @@
     gap: 6px;
   }
 
-  .teacher-profile-row strong {
+  .teacher-profile-row strong,
+  .teacher-profile-edit-value {
     text-align: left;
   }
 }

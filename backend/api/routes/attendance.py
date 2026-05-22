@@ -31,7 +31,8 @@ def ensure_attendance_table(db: Session) -> None:
                 latitude NUMERIC(9,6) NOT NULL,
                 longitude NUMERIC(9,6) NOT NULL,
                 accuracy_meters NUMERIC(10,2),
-                status VARCHAR(10) NOT NULL DEFAULT 'INVALID'
+                status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
+                nearest_center_name VARCHAR(100)
             )
         """)
     )
@@ -39,6 +40,12 @@ def ensure_attendance_table(db: Session) -> None:
         text("""
             ALTER TABLE attendance_records
             ADD COLUMN IF NOT EXISTS status VARCHAR(10) NOT NULL DEFAULT 'INVALID'
+        """)
+    )
+    db.execute(
+        text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS nearest_center_name VARCHAR(100)
         """)
     )
     db.execute(

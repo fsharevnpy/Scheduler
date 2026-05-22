@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
 import DataTable from "./DataTable.jsx";
+import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
@@ -200,43 +200,33 @@ export default function AdminMonitorView({
                   <h3>{centerLabel}</h3>
                   <span className="subtle">{centerClasses.length} classes</span>
                 </div>
-
-                <div className="table-wrap">
-                  <table className="data-table classes-center-table">
-                    <colgroup>
-                      <col className="classes-col-id" />
-                      <col className="classes-col-date" />
-                      <col className="classes-col-time" />
-                      <col className="classes-col-room" />
-                      <col className="classes-col-teacher" />
-                      <col className="classes-col-status" />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th>Class ID</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Room</th>
-                        <th>Teacher</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {centerClasses.map((row) => (
-                        <tr key={row.class_id}>
-                          <td>{row.class_id}</td>
-                          <td>{row.class_date}</td>
-                          <td>{formatTimeValue(row.start_time)} - {formatTimeValue(row.end_time)}</td>
-                          <td>{formatValue(row.room_no)}</td>
-                          <td>{formatValue(row.teacher_label)}</td>
-                          <td>
-                            <StatusPill value={row.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  title={`${centerLabel} Classes`}
+                  columns={[
+                    { key: "class_id", label: "Class ID" },
+                    { key: "class_date", label: "Date" },
+                    {
+                      key: "time",
+                      label: "Time",
+                      render: (row) => `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`,
+                    },
+                    { key: "room_no", label: "Room" },
+                    { key: "teacher_label", label: "Teacher" },
+                    { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
+                  ]}
+                  rows={centerClasses}
+                  emptyMessage="No classes found."
+                  embedded
+                  tableClassName="classes-center-table"
+                  colClasses={[
+                    "classes-col-id",
+                    "classes-col-date",
+                    "classes-col-time",
+                    "classes-col-room",
+                    "classes-col-teacher",
+                    "classes-col-status",
+                  ]}
+                />
               </div>
             ))}
           </div>
@@ -439,30 +429,13 @@ export default function AdminMonitorView({
         )}
       </section>
 
-      {selectedLeaveRequest
-        ? createPortal(
-            <div className="floating-panel-backdrop" role="presentation" onClick={() => setSelectedLeaveRequest(null)}>
-              <section
-                className="floating-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="leave-request-info-title"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="floating-panel-head">
-                  <div>
-                    <p className="eyebrow">Leave Request</p>
-                    <h2 id="leave-request-info-title">{selectedLeaveRequest.request_id}</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    onClick={() => setSelectedLeaveRequest(null)}
-                  >
-                    Close
-                  </button>
-                </div>
-
+      {selectedLeaveRequest ? (
+        <FloatingPanel
+          eyebrow="Leave Request"
+          title={selectedLeaveRequest.request_id}
+          titleId="leave-request-info-title"
+          onClose={() => setSelectedLeaveRequest(null)}
+        >
                 <div className="floating-panel-grid">
                   <div>
                     <p className="subtle">Teacher</p>
@@ -516,42 +489,16 @@ export default function AdminMonitorView({
                     </button>
                   ) : null}
                 </div>
-              </section>
-            </div>,
-            document.body,
-          )
-        : null}
+        </FloatingPanel>
+      ) : null}
 
-      {selectedSuggestionTeacher
-        ? createPortal(
-            <div
-              className="floating-panel-backdrop"
-              role="presentation"
-              onClick={() => setSelectedSuggestionTeacher(null)}
-            >
-              <section
-                className="floating-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="suggestion-teacher-title"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="floating-panel-head">
-                  <div>
-                    <p className="eyebrow">Teacher Contact</p>
-                    <h2 id="suggestion-teacher-title">
-                      {selectedSuggestionTeacher.teacher_id} - {selectedSuggestionTeacher.name}
-                    </h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="table-action-button table-action-button-muted"
-                    onClick={() => setSelectedSuggestionTeacher(null)}
-                  >
-                    Close
-                  </button>
-                </div>
-
+      {selectedSuggestionTeacher ? (
+        <FloatingPanel
+          eyebrow="Teacher Contact"
+          title={`${selectedSuggestionTeacher.teacher_id} - ${selectedSuggestionTeacher.name}`}
+          titleId="suggestion-teacher-title"
+          onClose={() => setSelectedSuggestionTeacher(null)}
+        >
                 <div className="floating-panel-grid">
                   <div>
                     <p className="subtle">Phone</p>
@@ -570,11 +517,8 @@ export default function AdminMonitorView({
                     <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
                   </div>
                 </div>
-              </section>
-            </div>,
-            document.body,
-          )
-        : null}
+        </FloatingPanel>
+      ) : null}
 
       <div className={`status ${actionStatus.kind}`.trim()} aria-live="polite">
         {actionStatus.message}

@@ -12,6 +12,7 @@ from jose import JWTError, jwt
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+DEFAULT_USER_PASSWORD = "123456aA@"
 
 
 def _b64encode(value: bytes) -> str:

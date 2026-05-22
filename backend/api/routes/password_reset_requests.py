@@ -7,13 +7,12 @@ from sqlalchemy.orm import Session
 from api.routes.common import get_manageable_roles
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_current_user, require_roles
 from core.profile_images import build_profile_image_url
-from core.security import hash_password
+from core.security import DEFAULT_USER_PASSWORD, hash_password
 from db import get_db
 from schemas.auth import CurrentUser, PasswordResetRequestCreate
 
 
 router = APIRouter()
-DEFAULT_RESET_PASSWORD = "123456aA@"
 
 
 def get_password_reset_request(request_id: str, db: Session):
@@ -159,7 +158,7 @@ def reset_password_from_request(
             WHERE user_code = :user_code
         """),
         {
-            "password_hash": hash_password(DEFAULT_RESET_PASSWORD),
+            "password_hash": hash_password(DEFAULT_USER_PASSWORD),
             "user_code": target_request["user_code"],
         },
     )
@@ -184,5 +183,5 @@ def reset_password_from_request(
         "message": "password reset to default completed",
         "request_id": request_id,
         "status": "RESOLVED",
-        "default_password": DEFAULT_RESET_PASSWORD,
+        "default_password": DEFAULT_USER_PASSWORD,
     }

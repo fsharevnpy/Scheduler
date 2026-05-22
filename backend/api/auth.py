@@ -6,11 +6,17 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.object_storage import upload_profile_image
-from core.permissions import get_current_user
+from core.permissions import ROLE_TEACHER, get_current_user, require_roles, require_teacher_identity
 from core.profile_images import build_profile_image_url
 from core.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, hash_password, verify_password
 from db import get_db
-from schemas.auth import ChangePasswordRequest, CurrentUser, LoginRequest, TokenResponse
+from schemas.auth import (
+    ChangePasswordRequest,
+    ContactUpdateRequest,
+    CurrentUser,
+    LoginRequest,
+    TokenResponse,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -64,6 +70,35 @@ def normalize_profile_image(content: bytes, content_type: str) -> tuple[bytes, s
         status_code=status.HTTP_400_BAD_REQUEST,
         detail="image file is too large even after optimization",
     )
+
+
+@router.put("/profile/contact")
+def update_profile_contact(
+    payload: ContactUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_TEACHER)),
+):
+    teacher_user = require_teacher_identity(current_user)
+
+    db.execute(
+        text(f"""
+            UPDATE teachers
+            SET {payload.field} = :field_value
+            WHERE teacher_id = :teacher_id
+        """),
+        {
+            "field_value": payload.value,
+            "teacher_id": teacher_user.teacher_id,
+        },
+    )
+    db.commit()
+
+    return {
+        "message": "contact details updated",
+        "teacher_id": teacher_user.teacher_id,
+        "field": payload.field,
+        "value": payload.value,
+    }
 
 
 @router.post("/login", response_model=TokenResponse)
