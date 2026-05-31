@@ -96,6 +96,10 @@ CREATE TABLE leave_requests (
     CHECK (status IN ('REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED'))
 );
 
+CREATE UNIQUE INDEX ux_leave_requests_active_teacher_class
+    ON leave_requests (teacher_id, class_id)
+    WHERE status IN ('REQUESTED', 'APPROVED');
+
 -- =========================
 -- 8. Password Reset Requests
 -- =========================
@@ -125,3 +129,6 @@ CREATE TABLE attendance_records (
     status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
     nearest_center_name VARCHAR(100)
 );
+
+CREATE INDEX idx_attendance_records_user_time
+    ON attendance_records(user_code, checked_at DESC);

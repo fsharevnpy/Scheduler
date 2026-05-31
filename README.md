@@ -65,16 +65,17 @@ docker compose restart gateway
 
 This ensures the gateway (nginx) properly routes requests to updated services.
 
-Reset containers and database volume, then recreate everything:
+Reset only the database volume, then recreate everything:
 
 ```powershell/bash
-docker compose down -v
+docker compose down
+docker volume rm scheduler_postgres_data
 docker compose up -d --build
 ```
 
 Notes:
 - PostgreSQL init scripts in [`backend/db`](backend/db) run only when the database volume is created from scratch.
-- If you change schema or seed data and want those changes applied automatically, use `docker compose down -v` first.
+- If you change schema or seed data and want those changes applied automatically, remove `scheduler_postgres_data` first.
 
 ## Logs
 

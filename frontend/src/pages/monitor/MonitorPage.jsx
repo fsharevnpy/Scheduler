@@ -428,6 +428,7 @@ export default function MonitorPage({ auth }) {
               <div className="account-chip-copy">
                 <strong>{getRoleTitle(user.role)}</strong>
                 <span>{user.user_code}</span>
+                {user.role === "teacher" ? <span>{user.teacher_id || "-"}</span> : null}
               </div>
             </div>
             <div className="dashboard-action-stack">
@@ -455,7 +456,6 @@ export default function MonitorPage({ auth }) {
             highlightedClasses={highlightedClasses}
             attendanceRecords={state.attendanceRecords}
             leaveRequests={leaveRequestsWithCenter}
-            teacherId={user.teacher_id}
             unassignedCount={unassignedClasses.length}
             pendingAction={pendingAction}
             actionStatus={actionStatus}

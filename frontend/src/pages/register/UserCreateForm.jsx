@@ -1,6 +1,7 @@
 export default function UserCreateForm({
   centers,
   centersError,
+  classes,
   form,
   isSubmitting,
   roleOptions,
@@ -82,61 +83,26 @@ export default function UserCreateForm({
                   Add preference
                 </button>
               </div>
-              <small className="field-help">Optional. Use 24-hour `HH:MM` format such as `07:30` or `18:00`.</small>
+              <small className="field-help">Optional. Select from existing classes only.</small>
               {centersError ? <small className="field-help">{centersError}</small> : null}
             </div>
 
             <div className="preference-list">
               {form.preferences.map((preference, index) => (
-                <div className="preference-card" key={`${index}-${preference.day_of_week}`}>
+                <div className="preference-card preference-card-class" key={`${index}-${preference.class_id}`}>
                   <label className="field">
-                    <span>Center ID</span>
+                    <span>Class</span>
                     <select
-                      value={preference.preferred_center_id}
-                      onChange={(event) => onPreferenceChange(index, "preferred_center_id", event.target.value)}
+                      value={preference.class_id}
+                      onChange={(event) => onPreferenceChange(index, "class_id", event.target.value)}
                     >
-                      <option value="">Select center</option>
-                      {centers.map((center) => (
-                        <option key={center.center_id} value={center.center_id}>
-                          {center.center_id} - {center.name}
+                      <option value="">Select class</option>
+                      {classes.map((item) => (
+                        <option key={item.class_id} value={item.class_id}>
+                          {item.class_id} - {item.class_date} - {item.center_id} - {item.start_time} to {item.end_time}
                         </option>
                       ))}
                     </select>
-                  </label>
-
-                  <label className="field">
-                    <span>Day</span>
-                    <select value={preference.day_of_week} onChange={(event) => onPreferenceChange(index, "day_of_week", event.target.value)}>
-                      {["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((day) => (
-                        <option key={day} value={day}>
-                          {day}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="field">
-                    <span>Start Time</span>
-                    <input
-                      value={preference.preferred_start_time}
-                      onChange={(event) => onPreferenceChange(index, "preferred_start_time", event.target.value)}
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="HH:MM"
-                      maxLength="5"
-                    />
-                  </label>
-
-                  <label className="field">
-                    <span>End Time</span>
-                    <input
-                      value={preference.preferred_end_time}
-                      onChange={(event) => onPreferenceChange(index, "preferred_end_time", event.target.value)}
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="HH:MM"
-                      maxLength="5"
-                    />
                   </label>
 
                   <button type="button" className="secondary-button preference-remove" onClick={() => onRemovePreferenceRow(index)}>

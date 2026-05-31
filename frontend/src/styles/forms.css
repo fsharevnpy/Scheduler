@@ -118,6 +118,10 @@
   align-items: end;
 }
 
+.preference-card-class {
+  grid-template-columns: minmax(240px, 1fr) auto;
+}
+
 .preference-remove {
   width: fit-content;
   white-space: nowrap;

@@ -7,6 +7,44 @@ import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
+const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
+const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+
+function filterLeaveRequestsByView(leaveRequests, view) {
+  if (view === "active") {
+    return leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status));
+  }
+
+  if (view === "history") {
+    return leaveRequests.filter((item) => HISTORY_LEAVE_STATUSES.has(item.status));
+  }
+
+  return leaveRequests;
+}
+
+function filterAdminAttendanceByView(attendanceRecords, view) {
+  if (view === "all") {
+    return attendanceRecords;
+  }
+
+  const latestByUser = new Set();
+  const currentRecords = [];
+  const historyRecords = [];
+
+  attendanceRecords.forEach((record) => {
+    const key = record.user_code || record.teacher_id || record.record_id;
+    if (!latestByUser.has(key)) {
+      latestByUser.add(key);
+      currentRecords.push(record);
+      return;
+    }
+
+    historyRecords.push(record);
+  });
+
+  return view === "history" ? historyRecords : currentRecords;
+}
+
 export default function AdminMonitorView({
   actionStatus,
   attendanceRecords,
@@ -32,6 +70,8 @@ export default function AdminMonitorView({
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
   const [resourceView, setResourceView] = useState("teachers");
   const [requestView, setRequestView] = useState("leave");
+  const [attendanceView, setAttendanceView] = useState("current");
+  const [leaveRequestView, setLeaveRequestView] = useState("active");
 
   useEffect(() => {
     if (!selectedLeaveRequest) {
@@ -51,6 +91,9 @@ export default function AdminMonitorView({
     return groups;
   }, {});
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
+  const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
+  const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
+  const visibleAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
 
   return (
     <>
@@ -69,8 +112,8 @@ export default function AdminMonitorView({
 
         <article className="info-card">
           <p className="eyebrow">Leave Requests</p>
-          <h2>{leaveRequests.length}</h2>
-          <p className="subtle">All leave request records.</p>
+          <h2>{activeLeaveRequestCount}</h2>
+          <p className="subtle">Active leave request records.</p>
         </article>
 
         <article className="info-card">
@@ -98,6 +141,29 @@ export default function AdminMonitorView({
             <p className="eyebrow">Attendance</p>
             <h2>Check-in records</h2>
           </div>
+          <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
+            <button
+              type="button"
+              className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("current")}
+            >
+              Current
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("history")}
+            >
+              History
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("all")}
+            >
+              All
+            </button>
+          </div>
         </div>
 
         <DataTable
@@ -123,7 +189,7 @@ export default function AdminMonitorView({
                   : `${Math.round(Number(row.accuracy_meters))} m`,
             },
           ]}
-          rows={attendanceRecords}
+          rows={visibleAttendanceRecords}
           emptyMessage="No attendance records found."
           embedded
         />
@@ -355,6 +421,32 @@ export default function AdminMonitorView({
         </div>
 
         {requestView === "leave" ? (
+          <>
+            <div className="table-filter-row">
+              <div className="section-toggle-group" role="tablist" aria-label="Leave request filter">
+                <button
+                  type="button"
+                  className={`section-toggle-button ${leaveRequestView === "active" ? "active" : ""}`.trim()}
+                  onClick={() => setLeaveRequestView("active")}
+                >
+                  Active
+                </button>
+                <button
+                  type="button"
+                  className={`section-toggle-button ${leaveRequestView === "history" ? "active" : ""}`.trim()}
+                  onClick={() => setLeaveRequestView("history")}
+                >
+                  History
+                </button>
+                <button
+                  type="button"
+                  className={`section-toggle-button ${leaveRequestView === "all" ? "active" : ""}`.trim()}
+                  onClick={() => setLeaveRequestView("all")}
+                >
+                  All
+                </button>
+              </div>
+            </div>
           <DataTable
             title="Leave Requests"
             columns={[
@@ -363,6 +455,7 @@ export default function AdminMonitorView({
               { key: "center_id", label: "Center" },
               { key: "teacher_name", label: "Teacher" },
               { key: "request_date", label: "Date" },
+              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               {
                 key: "info",
                 label: "Info",
@@ -377,10 +470,11 @@ export default function AdminMonitorView({
                 ),
               },
             ]}
-            rows={leaveRequests}
+            rows={visibleLeaveRequests}
             emptyMessage="No leave requests found."
             embedded
           />
+          </>
         ) : (
           <DataTable
             title="Password Reset Requests"

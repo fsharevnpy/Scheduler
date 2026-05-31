@@ -75,6 +75,27 @@
   margin-bottom: 20px;
 }
 
+.teacher-summary-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.teacher-summary-metric {
+  min-width: 0;
+  padding: 0 14px;
+  border-left: 1px solid var(--line);
+}
+
+.teacher-summary-metric:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.teacher-summary-metric h2 {
+  margin-bottom: 0;
+}
+
 .dashboard-section {
   border-radius: 24px;
   background: rgba(255, 251, 243, 0.78);
@@ -87,12 +108,35 @@
   max-width: 720px;
 }
 
+.class-create-form {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.class-create-form .primary-button {
+  width: fit-content;
+  min-width: 150px;
+}
+
 .section-head {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.section-head-actions,
+.table-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-filter-row {
+  margin-bottom: 12px;
 }
 
 .section-toggle-group {

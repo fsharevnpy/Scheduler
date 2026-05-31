@@ -1,7 +1,7 @@
 from math import atan2, cos, radians, sin, sqrt
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from schemas.scheduling import AttendanceCheckInPayload
 
 
 router = APIRouter()
+CHECK_IN_COOLDOWN_MINUTES = 5
 
 
 def ensure_attendance_table(db: Session) -> None:
@@ -111,6 +112,27 @@ def check_in_attendance(
     db: Session = Depends(get_db),
 ):
     ensure_attendance_table(db)
+
+    recent_check_in = db.execute(
+        text("""
+            SELECT checked_at
+            FROM attendance_records
+            WHERE user_code = :user_code
+              AND checked_at > NOW() - (:cooldown_minutes * INTERVAL '1 minute')
+            ORDER BY checked_at DESC
+            LIMIT 1
+        """),
+        {
+            "user_code": current_user.user_code,
+            "cooldown_minutes": CHECK_IN_COOLDOWN_MINUTES,
+        },
+    ).mappings().first()
+
+    if recent_check_in:
+        raise HTTPException(
+            status_code=429,
+            detail=f"please wait {CHECK_IN_COOLDOWN_MINUTES} minutes between check-ins",
+        )
 
     record_id = str(uuid4())
     centers = db.execute(text("SELECT center_id, name, latitude, longitude FROM centers")).mappings().all()

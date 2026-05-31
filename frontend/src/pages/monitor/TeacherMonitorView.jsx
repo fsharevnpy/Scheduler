@@ -6,11 +6,37 @@ import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
 import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
+const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
+const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+
+function filterLeaveRequestsByView(leaveRequests, view) {
+  if (view === "active") {
+    return leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status));
+  }
+
+  if (view === "history") {
+    return leaveRequests.filter((item) => HISTORY_LEAVE_STATUSES.has(item.status));
+  }
+
+  return leaveRequests;
+}
+
+function filterTeacherAttendanceByView(attendanceRecords, view) {
+  if (view === "current") {
+    return attendanceRecords.slice(0, 1);
+  }
+
+  if (view === "history") {
+    return attendanceRecords.slice(1);
+  }
+
+  return attendanceRecords;
+}
+
 export default function TeacherMonitorView({
   highlightedClasses,
   attendanceRecords,
   leaveRequests,
-  teacherId,
   unassignedCount,
   pendingAction,
   actionStatus,
@@ -23,6 +49,8 @@ export default function TeacherMonitorView({
   const [selectedClassId, setSelectedClassId] = useState("");
   const [reason, setReason] = useState("");
   const [attendanceError, setAttendanceError] = useState("");
+  const [attendanceView, setAttendanceView] = useState("current");
+  const [leaveRequestView, setLeaveRequestView] = useState("active");
 
   const activeLeaveClassIds = useMemo(
     () =>
@@ -44,6 +72,9 @@ export default function TeacherMonitorView({
 
   const selectedClass =
     creatableClasses.find((item) => item.class_id === selectedClassId) || creatableClasses[0] || null;
+  const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
+  const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
+  const visibleAttendanceRecords = filterTeacherAttendanceByView(attendanceRecords, attendanceView);
 
   async function handleCreateLeaveRequest(event) {
     event.preventDefault();
@@ -103,28 +134,19 @@ export default function TeacherMonitorView({
   return (
     <>
       <section className="monitor-grid monitor-grid-summary">
-        <article className="info-card">
-          <p className="eyebrow">Session</p>
-          <h2>teacher</h2>
-          <p className="subtle">Teacher ID: {teacherId || "-"}</p>
-        </article>
-
-        <article className="info-card">
-          <p className="eyebrow">Unassigned Count</p>
-          <h2>{unassignedCount}</h2>
-          <p className="subtle">Classes in your list that are not currently marked as assigned.</p>
-        </article>
-
-        <article className="info-card">
-          <p className="eyebrow">Leave Requests</p>
-          <h2>{leaveRequests.length}</h2>
-          <p className="subtle">Your personal leave request records.</p>
-        </article>
-
-        <article className="info-card">
-          <p className="eyebrow">Attendance</p>
-          <h2>{attendanceRecords.length}</h2>
-          <p className="subtle">Your recorded check-in entries.</p>
+        <article className="info-card teacher-summary-card">
+          <div className="teacher-summary-metric">
+            <p className="eyebrow">Unassigned</p>
+            <h2>{unassignedCount}</h2>
+          </div>
+          <div className="teacher-summary-metric">
+            <p className="eyebrow">Leave Requests</p>
+            <h2>{activeLeaveRequestCount}</h2>
+          </div>
+          <div className="teacher-summary-metric">
+            <p className="eyebrow">Attendance</p>
+            <h2>{attendanceRecords.length}</h2>
+          </div>
         </article>
       </section>
 
@@ -134,17 +156,42 @@ export default function TeacherMonitorView({
             <p className="eyebrow">Attendance</p>
             <h2>Check in with current location</h2>
           </div>
-          <button
-            type="button"
-            className="table-action-button"
-            disabled={pendingAction === "attendance-check-in"}
-            onClick={() => {
-              setAttendanceError("");
-              setIsAttendancePanelOpen(true);
-            }}
-          >
-            {pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}
-          </button>
+          <div className="section-head-actions">
+            <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
+              <button
+                type="button"
+                className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
+                onClick={() => setAttendanceView("current")}
+              >
+                Current
+              </button>
+              <button
+                type="button"
+                className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
+                onClick={() => setAttendanceView("history")}
+              >
+                History
+              </button>
+              <button
+                type="button"
+                className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
+                onClick={() => setAttendanceView("all")}
+              >
+                All
+              </button>
+            </div>
+            <button
+              type="button"
+              className="table-action-button"
+              disabled={pendingAction === "attendance-check-in"}
+              onClick={() => {
+                setAttendanceError("");
+                setIsAttendancePanelOpen(true);
+              }}
+            >
+              {pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}
+            </button>
+          </div>
         </div>
 
         {!window.isSecureContext ? (
@@ -177,7 +224,7 @@ export default function TeacherMonitorView({
               render: (row) => <StatusPill value={row.status || "INVALID"} />,
             },
           ]}
-          rows={attendanceRecords}
+          rows={visibleAttendanceRecords}
           emptyMessage="No attendance records found."
           embedded
         />
@@ -207,18 +254,43 @@ export default function TeacherMonitorView({
             <p className="eyebrow">My Leave Requests</p>
             <h2>Personal leave records</h2>
           </div>
-          <button
-            type="button"
-            className="table-action-button"
-            disabled={creatableClasses.length === 0}
-            onClick={() => {
-              setSelectedClassId(creatableClasses[0]?.class_id || "");
-              setReason("");
-              setIsCreatePanelOpen(true);
-            }}
-          >
-            Create leave request
-          </button>
+          <div className="section-head-actions">
+            <div className="section-toggle-group" role="tablist" aria-label="Leave request filter">
+              <button
+                type="button"
+                className={`section-toggle-button ${leaveRequestView === "active" ? "active" : ""}`.trim()}
+                onClick={() => setLeaveRequestView("active")}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                className={`section-toggle-button ${leaveRequestView === "history" ? "active" : ""}`.trim()}
+                onClick={() => setLeaveRequestView("history")}
+              >
+                History
+              </button>
+              <button
+                type="button"
+                className={`section-toggle-button ${leaveRequestView === "all" ? "active" : ""}`.trim()}
+                onClick={() => setLeaveRequestView("all")}
+              >
+                All
+              </button>
+            </div>
+            <button
+              type="button"
+              className="table-action-button"
+              disabled={creatableClasses.length === 0}
+              onClick={() => {
+                setSelectedClassId(creatableClasses[0]?.class_id || "");
+                setReason("");
+                setIsCreatePanelOpen(true);
+              }}
+            >
+              Create leave request
+            </button>
+          </div>
         </div>
 
         {creatableClasses.length === 0 ? (
@@ -258,7 +330,7 @@ export default function TeacherMonitorView({
                 ),
             },
           ]}
-          rows={leaveRequests}
+          rows={visibleLeaveRequests}
           emptyMessage="No leave requests found for this teacher."
           embedded
         />

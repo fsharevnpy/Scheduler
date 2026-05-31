@@ -4,13 +4,23 @@ import { useEffect, useMemo, useState } from "react";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { requestJson } from "../../lib/http.js";
 import { getRoleTitle } from "../../lib/roles.js";
+import DataTable from "../monitor/DataTable.jsx";
+import StatusPill from "../monitor/StatusPill.jsx";
 import UserCreateForm from "./UserCreateForm.jsx";
 
 const EMPTY_PREFERENCE = {
-  preferred_center_id: "",
-  day_of_week: "T2",
-  preferred_start_time: "",
-  preferred_end_time: "",
+  class_id: "",
+};
+
+const EMPTY_CLASS_FORM = {
+  class_id: "",
+  class_date: "",
+  center_id: "",
+  start_time: "",
+  end_time: "",
+  room_no: 1,
+  teacher_id: "",
+  status: "OPEN",
 };
 
 function formatTimeDraft(value) {
@@ -59,6 +69,11 @@ function formatTimeDraft(value) {
   return `0${digits[0]}:${digits.slice(1, 3)}`;
 }
 
+function getDayCodeFromDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  return ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][date.getDay()];
+}
+
 export default function RegisterPage({ auth }) {
   const roleOptions = useMemo(
     () => (auth.user.role === "developer" ? ["developer", "manager", "teacher"] : ["manager", "teacher"]),
@@ -79,54 +94,66 @@ export default function RegisterPage({ auth }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [centers, setCenters] = useState([]);
   const [centersError, setCentersError] = useState("");
+  const [classes, setClasses] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [classForm, setClassForm] = useState({ ...EMPTY_CLASS_FORM });
+  const [classStatus, setClassStatus] = useState({ kind: "", message: "" });
+  const [isClassSubmitting, setIsClassSubmitting] = useState(false);
+  const [pendingClassDelete, setPendingClassDelete] = useState("");
+
+  const authHeaders = useMemo(
+    () => ({
+      Authorization: `Bearer ${auth.token}`,
+    }),
+    [auth.token],
+  );
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCenters() {
+    async function loadRegisterData() {
       if (!auth.token) {
         return;
       }
 
       try {
-        const data = await requestJson(`${auth.apiBase}/centers`, {
-          headers: {
-            Authorization: `Bearer ${auth.token}`,
-          },
-        });
+        const [centerData, classData, teacherData] = await Promise.all([
+          requestJson(`${auth.apiBase}/centers`, { headers: authHeaders }),
+          requestJson(`${auth.apiBase}/classes`, { headers: authHeaders }),
+          requestJson(`${auth.apiBase}/teachers`, { headers: authHeaders }),
+        ]);
 
         if (!cancelled) {
-          setCenters(data);
+          setCenters(centerData);
+          setClasses(classData);
+          setTeachers(teacherData);
           setCentersError("");
         }
       } catch (error) {
         if (!cancelled) {
           setCenters([]);
+          setClasses([]);
+          setTeachers([]);
           setCentersError(error.message);
         }
       }
     }
 
-    loadCenters();
+    loadRegisterData();
     return () => {
       cancelled = true;
     };
-  }, [auth.apiBase, auth.token]);
+  }, [auth.apiBase, auth.token, authHeaders]);
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function updatePreference(index, key, value) {
-    const nextValue =
-      key === "preferred_start_time" || key === "preferred_end_time"
-        ? formatTimeDraft(value)
-        : value;
-
     setForm((current) => ({
       ...current,
       preferences: current.preferences.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [key]: nextValue } : item,
+        itemIndex === index ? { ...item, [key]: value } : item,
       ),
     }));
   }
@@ -148,6 +175,74 @@ export default function RegisterPage({ auth }) {
     }));
   }
 
+  function updateClassField(key, value) {
+    const nextValue = key === "start_time" || key === "end_time" ? formatTimeDraft(value) : value;
+    setClassForm((current) => ({ ...current, [key]: nextValue }));
+  }
+
+  async function reloadClasses() {
+    const data = await requestJson(`${auth.apiBase}/classes`, { headers: authHeaders });
+    setClasses(data);
+  }
+
+  async function handleClassSubmit(event) {
+    event.preventDefault();
+    setIsClassSubmitting(true);
+    setClassStatus({ kind: "", message: "Creating class..." });
+
+    try {
+      const payload = {
+        class_id: classForm.class_id.trim(),
+        class_date: classForm.class_date,
+        center_id: classForm.center_id,
+        start_time: classForm.start_time,
+        end_time: classForm.end_time,
+        room_no: Number(classForm.room_no),
+        teacher_id: classForm.teacher_id || null,
+        status: classForm.teacher_id ? classForm.status : classForm.status === "ASSIGNED" ? "OPEN" : classForm.status,
+      };
+
+      await requestJson(`${auth.apiBase}/classes`, {
+        method: "POST",
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      await reloadClasses();
+      setClassForm({ ...EMPTY_CLASS_FORM });
+      setClassStatus({ kind: "success", message: `Created class ${payload.class_id}.` });
+    } catch (error) {
+      setClassStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsClassSubmitting(false);
+    }
+  }
+
+  async function handleDeleteClass(classId) {
+    if (!confirm(`Delete class ${classId}?`)) {
+      return;
+    }
+
+    setPendingClassDelete(classId);
+    setClassStatus({ kind: "", message: "Deleting class..." });
+
+    try {
+      await requestJson(`${auth.apiBase}/classes/${classId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      await reloadClasses();
+      setClassStatus({ kind: "success", message: `Deleted class ${classId}.` });
+    } catch (error) {
+      setClassStatus({ kind: "error", message: error.message });
+    } finally {
+      setPendingClassDelete("");
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -157,25 +252,21 @@ export default function RegisterPage({ auth }) {
       if (form.role === "teacher") {
         const preferences = [];
         for (const preference of form.preferences) {
-          const trimmedCenterId = preference.preferred_center_id.trim();
-          const hasAnyValue =
-            trimmedCenterId ||
-            preference.preferred_start_time ||
-            preference.preferred_end_time;
-
-          if (!hasAnyValue) {
+          const classId = preference.class_id.trim();
+          if (!classId) {
             continue;
           }
 
-          if (!trimmedCenterId || !preference.preferred_start_time || !preference.preferred_end_time) {
-            throw new Error("Each preference row must include center, start time, and end time.");
+          const selectedClass = classes.find((item) => item.class_id === classId);
+          if (!selectedClass) {
+            throw new Error("Each preference row must select an existing class.");
           }
 
           preferences.push({
-            preferred_center_id: trimmedCenterId,
-            day_of_week: preference.day_of_week,
-            preferred_start_time: preference.preferred_start_time,
-            preferred_end_time: preference.preferred_end_time,
+            preferred_center_id: selectedClass.center_id,
+            day_of_week: getDayCodeFromDate(selectedClass.class_date),
+            preferred_start_time: selectedClass.start_time,
+            preferred_end_time: selectedClass.end_time,
           });
         }
 
@@ -279,6 +370,7 @@ export default function RegisterPage({ auth }) {
         <UserCreateForm
           centers={centers}
           centersError={centersError}
+          classes={classes}
           form={form}
           isSubmitting={isSubmitting}
           roleOptions={roleOptions}
@@ -289,6 +381,151 @@ export default function RegisterPage({ auth }) {
           onRemovePreferenceRow={removePreferenceRow}
           onSubmit={handleSubmit}
         />
+
+        <section className="dashboard-section">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow">Class Management</p>
+              <h2>Create and delete classes</h2>
+            </div>
+          </div>
+
+          <form className="auth-form class-create-form" onSubmit={handleClassSubmit}>
+            <label className="field">
+              <span>Class ID</span>
+              <input
+                value={classForm.class_id}
+                onChange={(event) => updateClassField("class_id", event.target.value)}
+                type="text"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Date</span>
+              <input
+                value={classForm.class_date}
+                onChange={(event) => updateClassField("class_date", event.target.value)}
+                type="date"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Center</span>
+              <select
+                value={classForm.center_id}
+                onChange={(event) => updateClassField("center_id", event.target.value)}
+                required
+              >
+                <option value="">Select center</option>
+                {centers.map((center) => (
+                  <option key={center.center_id} value={center.center_id}>
+                    {center.center_id} - {center.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Room</span>
+              <input
+                value={classForm.room_no}
+                onChange={(event) => updateClassField("room_no", event.target.value)}
+                type="number"
+                min="1"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Start Time</span>
+              <input
+                value={classForm.start_time}
+                onChange={(event) => updateClassField("start_time", event.target.value)}
+                type="text"
+                inputMode="numeric"
+                placeholder="HH:MM"
+                maxLength="5"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>End Time</span>
+              <input
+                value={classForm.end_time}
+                onChange={(event) => updateClassField("end_time", event.target.value)}
+                type="text"
+                inputMode="numeric"
+                placeholder="HH:MM"
+                maxLength="5"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Teacher</span>
+              <select value={classForm.teacher_id} onChange={(event) => updateClassField("teacher_id", event.target.value)}>
+                <option value="">Unassigned</option>
+                {teachers.map((teacher) => (
+                  <option key={teacher.teacher_id} value={teacher.teacher_id}>
+                    {teacher.teacher_id} - {teacher.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Status</span>
+              <select value={classForm.status} onChange={(event) => updateClassField("status", event.target.value)}>
+                <option value="OPEN">OPEN</option>
+                <option value="ASSIGNED">ASSIGNED</option>
+                <option value="NEED_REPLACEMENT">NEED_REPLACEMENT</option>
+                <option value="CANCELLED">CANCELLED</option>
+              </select>
+            </label>
+
+            <button className="primary-button" type="submit" disabled={isClassSubmitting}>
+              {isClassSubmitting ? "Creating..." : "Create class"}
+            </button>
+          </form>
+
+          <div className={`status ${classStatus.kind}`.trim()} aria-live="polite">
+            {classStatus.message}
+          </div>
+
+          <DataTable
+            title="Classes"
+            columns={[
+              { key: "class_id", label: "Class ID" },
+              { key: "class_date", label: "Date" },
+              { key: "center_id", label: "Center" },
+              { key: "room_no", label: "Room" },
+              { key: "start_time", label: "Start" },
+              { key: "end_time", label: "End" },
+              { key: "teacher_id", label: "Teacher" },
+              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (row) => (
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    disabled={pendingClassDelete === row.class_id}
+                    onClick={() => handleDeleteClass(row.class_id)}
+                  >
+                    {pendingClassDelete === row.class_id ? "Deleting..." : "Delete"}
+                  </button>
+                ),
+              },
+            ]}
+            rows={classes}
+            emptyMessage="No classes found."
+            embedded
+          />
+        </section>
       </section>
     </main>
   );

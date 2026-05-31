@@ -144,3 +144,22 @@ def update_class(
     db.execute(text(f"UPDATE classes SET {fields} WHERE class_id = :class_id"), data)
     db.commit()
     return {"message": "class updated", "class_id": class_id}
+
+
+@router.delete("/classes/{class_id}")
+def delete_class(
+    class_id: str,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    existing = db.execute(
+        text("SELECT 1 FROM classes WHERE class_id = :class_id"),
+        {"class_id": class_id},
+    ).first()
+
+    if not existing:
+        raise HTTPException(status_code=404, detail="class not found")
+
+    db.execute(text("DELETE FROM classes WHERE class_id = :class_id"), {"class_id": class_id})
+    db.commit()
+    return {"message": "class deleted", "class_id": class_id}

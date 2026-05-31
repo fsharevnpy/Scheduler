@@ -19,6 +19,18 @@ from schemas.scheduling import LeaveRequestCreate
 router = APIRouter()
 
 
+def ensure_leave_request_constraints(db: Session) -> None:
+    db.execute(text("DROP INDEX IF EXISTS ux_leave_requests_teacher_class"))
+    db.execute(
+        text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_leave_requests_active_teacher_class
+                ON leave_requests (teacher_id, class_id)
+                WHERE status IN ('REQUESTED', 'APPROVED')
+        """)
+    )
+    db.commit()
+
+
 def get_leave_request_or_404(request_id: str, db: Session):
     leave_row = db.execute(
         text("""
@@ -115,6 +127,8 @@ def create_leave_request(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_leave_request_constraints(db)
+
     if payload.status not in VALID_LEAVE_STATUS:
         raise HTTPException(status_code=400, detail="invalid leave request status")
 
@@ -147,6 +161,28 @@ def create_leave_request(
 
     if class_row["teacher_id"] != payload.teacher_id:
         raise HTTPException(status_code=400, detail="teacher is not assigned to the class")
+
+    active_duplicate_for_class = db.execute(
+        text("""
+            SELECT request_id, status
+            FROM leave_requests
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+              AND status IN ('REQUESTED', 'APPROVED')
+            ORDER BY request_date DESC, request_id DESC
+            LIMIT 1
+        """),
+        {
+            "class_id": payload.class_id,
+            "teacher_id": payload.teacher_id,
+        },
+    ).mappings().first()
+
+    if active_duplicate_for_class:
+        raise HTTPException(
+            status_code=409,
+            detail="active leave request already exists for this class",
+        )
 
     db.execute(
         text("""
