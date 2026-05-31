@@ -40,6 +40,28 @@
   cursor: not-allowed;
 }
 
+.btn-view {
+  padding: 10px 20px;
+  background: white;
+  color: #333;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-view:hover:not(:disabled) {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.btn-view:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .error-message {
   background: #fee;
   color: #c00;

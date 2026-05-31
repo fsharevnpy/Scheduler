@@ -122,9 +122,9 @@ Available after reseeding the database:
 
 - `0000000 / devchessfighter` for `developer`
 - `2603001 / manager123` for `manager`
-- `2603011 / manager123` for `manager` (Võ Dương Xuân Nguyên)
-- `2603012 / manager123` for `manager` (Lê Văn Tiến Đạt)
-- `2603013 / manager123` for `manager` (Lộc Gia Tiểu Bình)
+- `2603011 / manager123` for `manager`
+- `2603012 / manager123` for `manager`
+- `2603013 / manager123` for `manager`
 - `2603002 / teacher123` for `teacher`
 - `2603003 / teacher123` for `teacher`
 - `2603004 / teacher123` for `teacher`

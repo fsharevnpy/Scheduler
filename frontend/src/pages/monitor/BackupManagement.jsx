@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "./BackupManagement.css";
 
 async function getErrorMessage(response, fallback) {
@@ -12,6 +12,7 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
   const [error, setError] = useState(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(null);
+  const [isListVisible, setIsListVisible] = useState(false);
 
   const authHeaders = {
     Authorization: `Bearer ${token}`,
@@ -39,14 +40,19 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
     }
   };
 
-  useEffect(() => {
-    loadBackups();
-    const interval = setInterval(loadBackups, 10000); // Refresh every 10s
-    return () => clearInterval(interval);
-  }, [apiBase, token]);
+  const handleViewBackups = async () => {
+    if (isListVisible) {
+      setIsListVisible(false);
+      return;
+    }
+
+    setIsListVisible(true);
+    await loadBackups();
+  };
 
   const handleBackupNow = async () => {
     if (!confirm("Create backup now?")) return;
+    setIsListVisible(true);
     try {
       setIsBackingUp(true);
       setError(null);
@@ -57,7 +63,7 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
       if (!response.ok) throw new Error(await getErrorMessage(response, "Backup failed"));
       const data = await response.json();
       onStatusChange?.(`✓ Backup created: ${data.file} (${data.size_mb} MB)`);
-      loadBackups();
+      await loadBackups();
     } catch (err) {
       setError(err.message);
       onStatusChange?.(`✗ Backup failed: ${err.message}`);
@@ -165,63 +171,72 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
         >
           {isBackingUp ? "Creating Backup..." : "BackUp Data"}
         </button>
+        <button
+          onClick={handleViewBackups}
+          disabled={isBackingUp || loading}
+          className="btn-view"
+        >
+          {loading ? "Loading..." : isListVisible ? "Hide Backups" : "View Backups"}
+        </button>
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
-      <div className="backup-files">
-        <h4>Backup Files (Last 31 Days)</h4>
-        {loading ? (
-          <p className="loading">Loading backups...</p>
-        ) : backups.length === 0 ? (
-          <p className="empty">No backups found</p>
-        ) : (
-          <div className="backup-list">
-            {backups.map((backup) => (
-              <div key={backup.file} className="backup-item">
-                <div className="backup-info">
-                  <div className="backup-name">📦 {backup.file}</div>
-                  <div className="backup-meta">
-                    {backup.size_mb} MB · {new Date(backup.created).toLocaleString()}
+      {isListVisible ? (
+        <div className="backup-files">
+          <h4>Backup Files (Last 31 Days)</h4>
+          {loading ? (
+            <p className="loading">Loading backups...</p>
+          ) : backups.length === 0 ? (
+            <p className="empty">No backups found</p>
+          ) : (
+            <div className="backup-list">
+              {backups.map((backup) => (
+                <div key={backup.file} className="backup-item">
+                  <div className="backup-info">
+                    <div className="backup-name">📦 {backup.file}</div>
+                    <div className="backup-meta">
+                      {backup.size_mb} MB · {new Date(backup.created).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="backup-actions">
+                    <button
+                      onClick={() => handleDownload(backup.file)}
+                      className="btn-small btn-download"
+                      title="Download"
+                    >
+                      ⬇ Download
+                    </button>
+                    <button
+                      onClick={() => handleRestoreFull(backup.file)}
+                      disabled={restoreLoading === backup.file}
+                      className="btn-small btn-restore"
+                      title="Restore Full Database"
+                    >
+                      {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Full"}
+                    </button>
+                    <button
+                      onClick={() => handleRestoreMaster(backup.file)}
+                      disabled={restoreLoading === backup.file}
+                      className="btn-small btn-restore-master"
+                      title="Restore Master Data Only"
+                    >
+                      {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Master"}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(backup.file)}
+                      className="btn-small btn-delete"
+                      title="Delete"
+                    >
+                      🗑 Delete
+                    </button>
                   </div>
                 </div>
-                <div className="backup-actions">
-                  <button
-                    onClick={() => handleDownload(backup.file)}
-                    className="btn-small btn-download"
-                    title="Download"
-                  >
-                    ⬇ Download
-                  </button>
-                  <button
-                    onClick={() => handleRestoreFull(backup.file)}
-                    disabled={restoreLoading === backup.file}
-                    className="btn-small btn-restore"
-                    title="Restore Full Database"
-                  >
-                    {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Full"}
-                  </button>
-                  <button
-                    onClick={() => handleRestoreMaster(backup.file)}
-                    disabled={restoreLoading === backup.file}
-                    className="btn-small btn-restore-master"
-                    title="Restore Master Data Only"
-                  >
-                    {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Master"}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(backup.file)}
-                    className="btn-small btn-delete"
-                    title="Delete"
-                  >
-                    🗑 Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
