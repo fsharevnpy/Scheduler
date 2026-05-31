@@ -10,6 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db:/docker-entrypoint-initdb.d
+      - ./backup:/backup
 
   backend:
     build: ./backend
@@ -20,12 +21,21 @@ services:
       - minio
     environment:
       DATABASE_URL: postgresql://chessfighter:123456@db:5432/scheduler
+      POSTGRES_USER: chessfighter
+      POSTGRES_PASSWORD: 123456
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: scheduler
       PROFILE_IMAGE_BASE_URL: /storage
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: chessfighter
       MINIO_SECRET_KEY: chessfighter123
       MINIO_BUCKET: scheduler-assets
       MINIO_SECURE: "false"
+      MINIO_DATA_PATH: /minio_data
+    volumes:
+      - ./backup:/backup
+      - minio_data:/minio_data:ro
 
   frontend:
     build: ./frontend
@@ -63,6 +73,29 @@ services:
       mc mb -p local/scheduler-assets || true;
       mc anonymous set public local/scheduler-assets;
       mc cp --recursive /seed/profile-imgs local/scheduler-assets/profile-imgs;
+      "
+
+  backup:
+    image: alpine:latest
+    container_name: scheduler_backup
+    restart: always
+    depends_on:
+      - db
+    environment:
+      POSTGRES_USER: chessfighter
+      POSTGRES_PASSWORD: 123456
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: scheduler
+    volumes:
+      - ./backend/scripts/backup.sh:/backup.sh:ro
+      - ./backup:/backup
+      - minio_data:/minio_data:ro
+    entrypoint: >
+      sh -c "
+      apk add --no-cache postgresql-client bash dcron;
+      echo '0 22 * * * /backup.sh /backup' | crontab -;
+      crond -f -l 2
       "
 
   gateway:

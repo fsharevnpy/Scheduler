@@ -1,8 +1,8 @@
 INSERT INTO centers (center_id, name, room_count, latitude, longitude)
 VALUES
-    ('CS1', 'Vạn Phúc', 2, 10.801027, 106.651300),
-    ('CS2', 'Cityland', 3, 21.006200, 105.832000),
-    ('CS3', 'Vin', 2, 21.036700, 105.780300);
+    ('CS1', 'Vạn Phúc', 2, 10.843032, 106.713994),
+    ('CS2', 'Cityland', 3, 10.835616, 106.668719),
+    ('CS3', 'Vin', 2, 10.840505, 106.842802);
 
 INSERT INTO center_slots (center_id, day_of_week, start_time, end_time, max_room)
 VALUES
@@ -31,6 +31,9 @@ INSERT INTO users (user_id, user_code, display_name, profile_image_url, password
 VALUES
     ('5a9dc527-a1fd-4a7f-b130-945ddcecc8ef', '0000000', 'System Developer', NULL, 'scrypt$16384$8$1$c8goqjJklAlaQT0soEfu0Q$cJnFYkNdHUibVCTpgZ6u3RK0WDRY4AM17gQWHUG4Ue4', 'developer', NULL, TRUE),
     ('2f3e6333-e160-4d3b-96c6-24e4d33f76db', '2603001', 'Nguyễn Công Thành', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
+    ('e0792c76-9b15-4ee9-8605-4256a920c7fc', '2603011', 'Võ Dương Xuân Nguyên', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
+    ('3495c850-59a4-4c4a-8914-b8522ff617a6', '2603012', 'Lê Văn Tiến Đạt', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
+    ('ff718af2-b19b-4b2b-9662-6ee8b0f64243', '2603013', 'Lộc Gia Tiểu Bình', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
     ('9fd30d6b-ad68-4322-afb3-b19b88d52b45', '2603002', 'Nguyễn Công Thành', NULL, 'scrypt$16384$8$1$1nqFsW8PL_xjPQ_OLl5yKg$PeWBqgSAy6XaozV62kjQZmrtrNGz88cnD2z1zKBahU4', 'teacher', 'GV0', TRUE),
     ('f4dc53a4-b8e6-4d2e-81b6-0e2de3e514df', '2603003', 'Nguyễn Đình Ngọc Ân', NULL, 'scrypt$16384$8$1$j4plORlhpYnjPRqw6m7DrA$pgPixJJ5cGUyEihG1X0zVwhfB5IM7o8EYItN_Aug3ms', 'teacher', 'GV1', TRUE),
     ('33e62206-bf08-44ff-a4ee-e6b70dc4a709', '2603004', 'Vũ Hoàng Nhật Trường', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV2', TRUE),

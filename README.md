@@ -57,6 +57,14 @@ docker compose up -d --build gateway
 docker compose up -d --build minio
 ```
 
+**⚠️ Important: After rebuilding backend or frontend, always restart gateway:**
+
+```bash
+docker compose restart gateway
+```
+
+This ensures the gateway (nginx) properly routes requests to updated services.
+
 Reset containers and database volume, then recreate everything:
 
 ```powershell/bash
@@ -114,6 +122,9 @@ Available after reseeding the database:
 
 - `0000000 / devchessfighter` for `developer`
 - `2603001 / manager123` for `manager`
+- `2603011 / manager123` for `manager` (Võ Dương Xuân Nguyên)
+- `2603012 / manager123` for `manager` (Lê Văn Tiến Đạt)
+- `2603013 / manager123` for `manager` (Lộc Gia Tiểu Bình)
 - `2603002 / teacher123` for `teacher`
 - `2603003 / teacher123` for `teacher`
 - `2603004 / teacher123` for `teacher`
@@ -134,6 +145,36 @@ Seeded centers:
 - `Vạn Phúc (CS1)`
 - `Cityland (CS2)`
 - `Vin (CS3)`
+
+## Backup Management
+
+### Auto-backup (Daily)
+- Database and MinIO data are automatically backed up at **22:00 (10 PM) daily**
+- Backups are retained for **31 days** and automatically cleaned up
+- Backup files are stored in `/backup` volume
+
+### Manual Backup (Developer only)
+Developer users can manually trigger backups from the Admin Monitor panel:
+1. Go to Monitor page (http://localhost:8080)
+2. Scroll down to **BACKUP MANAGEMENT** section
+3. Click **[BackUp Data]** button
+
+### Backup Operations
+- **Download**: Download backup file to local machine
+- **Restore Full**: Restore entire database from backup (all data after backup time is lost)
+- **Restore Master**: Restore only master data (centers, teachers, preferences) without affecting recent classes/leave requests
+- **Delete**: Remove backup file
+
+### Typical Workflow Before Code Update
+```bash
+# 1. Backup data (manual or auto at 22:00)
+# 2. Update source code
+docker compose up -d --build backend
+docker compose restart gateway
+
+# 3. Test changes - if issues found:
+# Go to Admin panel → [⟳ Restore Full] → Database restores
+```
 
 ## Backend Notes
 

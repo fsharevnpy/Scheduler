@@ -468,6 +468,7 @@ export default function MonitorPage({ auth }) {
             actionStatus={actionStatus}
             attendanceRecords={state.attendanceRecords}
             apiBase={auth.apiBase}
+            token={auth.token}
             classes={classesWithCenterAndTeacher}
             leaveRequests={leaveRequestsWithCenter}
             managerUsers={managerUsers}

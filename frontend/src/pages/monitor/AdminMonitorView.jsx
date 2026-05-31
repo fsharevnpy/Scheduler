@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
+import BackupManagement from "./BackupManagement.jsx";
 import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
@@ -10,6 +11,7 @@ export default function AdminMonitorView({
   actionStatus,
   attendanceRecords,
   apiBase,
+  token,
   leaveRequests,
   managerUsers,
   pendingAction,
@@ -85,6 +87,10 @@ export default function AdminMonitorView({
           </article>
         ) : null}
       </section>
+
+      {role === "developer" ? (
+        <BackupManagement apiBase={apiBase} token={token} onStatusChange={(msg) => console.log(msg)} />
+      ) : null}
 
       <section className="dashboard-section">
         <div className="section-head">
