@@ -37,9 +37,10 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_requests_status_created
 CREATE INDEX IF NOT EXISTS idx_users_user_code
     ON users(user_code);
 
-CREATE INDEX IF NOT EXISTS idx_teacher_score_events_teacher_month
-    ON teacher_score_events(teacher_id, score_month, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_teacher_events_score_teacher_month
+    ON teacher_events(teacher_id, score_month, created_at DESC)
+    WHERE event_type = 'SCORE';
 
-CREATE INDEX IF NOT EXISTS idx_teacher_score_events_unread
-    ON teacher_score_events(teacher_id, teacher_read_at)
+CREATE INDEX IF NOT EXISTS idx_teacher_events_unread
+    ON teacher_events(teacher_id, teacher_read_at, created_at DESC)
     WHERE teacher_read_at IS NULL;

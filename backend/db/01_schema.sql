@@ -134,18 +134,23 @@ CREATE INDEX idx_attendance_records_user_time
     ON attendance_records(user_code, checked_at DESC);
 
 -- =========================
--- 10. Teacher Score Events
+-- 10. Teacher Events
 -- =========================
-CREATE TABLE teacher_score_events (
+CREATE TABLE teacher_events (
     event_id UUID PRIMARY KEY,
     teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id) ON DELETE CASCADE,
-    score_month DATE NOT NULL,
-    delta INT NOT NULL CHECK (delta <> 0),
+    event_type VARCHAR(20) NOT NULL,
+    score_month DATE NULL,
+    delta INT NULL CHECK (delta IS NULL OR delta <> 0),
     reason TEXT NOT NULL,
-    evidence_text TEXT NOT NULL,
+    evidence_text TEXT,
     evidence_url TEXT,
+    profile_field VARCHAR(50),
+    old_value TEXT,
+    new_value TEXT,
     created_by VARCHAR(7) NOT NULL REFERENCES users(user_code) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     teacher_read_at TIMESTAMPTZ NULL,
-    CHECK (score_month = date_trunc('month', score_month)::date)
+    CHECK (event_type IN ('SCORE', 'PROFILE')),
+    CHECK (score_month IS NULL OR score_month = date_trunc('month', score_month)::date)
 );

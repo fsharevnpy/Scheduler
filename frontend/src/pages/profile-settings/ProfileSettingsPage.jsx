@@ -7,6 +7,37 @@ import FloatingPanel from "../monitor/FloatingPanel.jsx";
 import PasswordSettingsPanel from "../monitor/PasswordSettingsPanel.jsx";
 import { requestJson } from "../../lib/http.js";
 
+function buildTeacherEventsWebSocketUrl(apiBase, token) {
+  const encodedToken = encodeURIComponent(token);
+  if (/^https?:\/\//i.test(apiBase)) {
+    const url = new URL(apiBase);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/teacher-events/ws`;
+    url.search = `token=${encodedToken}`;
+    return url.toString();
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = apiBase.startsWith("/") ? apiBase : `/${apiBase}`;
+  return `${protocol}//${window.location.host}${basePath.replace(/\/$/, "")}/teacher-events/ws?token=${encodedToken}`;
+}
+
+function parseProfileEventValue(field, value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (field === "elo" || field === "max_slots_per_day") {
+    return Number.parseInt(value, 10);
+  }
+
+  if (field === "education_score") {
+    return Number.parseFloat(value);
+  }
+
+  return value;
+}
+
 export default function ProfileSettingsPage({ auth }) {
   const [status, setStatus] = useState({ kind: "", message: "" });
   const [imageStatus, setImageStatus] = useState({ kind: "", message: "" });
@@ -15,6 +46,7 @@ export default function ProfileSettingsPage({ auth }) {
   const [isSavingContactChange, setIsSavingContactChange] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState(null);
   const [teacherProfileError, setTeacherProfileError] = useState("");
+  const [teacherRealtimeStatus, setTeacherRealtimeStatus] = useState({ kind: "", message: "" });
   const [contactStatus, setContactStatus] = useState({ kind: "", message: "" });
   const [contactEditField, setContactEditField] = useState(null);
   const [contactDraft, setContactDraft] = useState("");
@@ -56,6 +88,62 @@ export default function ProfileSettingsPage({ auth }) {
     loadTeacherProfile();
     return () => {
       cancelled = true;
+    };
+  }, [auth.apiBase, auth.token, auth.user?.role]);
+
+  useEffect(() => {
+    if (auth.user?.role !== "teacher" || !auth.token) {
+      return undefined;
+    }
+
+    let socket = null;
+    let reconnectTimer = null;
+    let isClosedByEffect = false;
+
+    function connect() {
+      socket = new WebSocket(buildTeacherEventsWebSocketUrl(auth.apiBase, auth.token));
+
+      socket.onmessage = (message) => {
+        const payload = JSON.parse(message.data);
+        if (payload.type !== "teacher_event" || payload.event?.event_type !== "PROFILE") {
+          return;
+        }
+
+        const { profile_field: field, new_value: newValue, reason } = payload.event;
+        if (!field) {
+          return;
+        }
+
+        setTeacherProfile((current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            [field]: parseProfileEventValue(field, newValue),
+          };
+        });
+        setTeacherRealtimeStatus({ kind: "success", message: reason || "Teacher profile updated." });
+      };
+
+      socket.onclose = () => {
+        if (!isClosedByEffect) {
+          reconnectTimer = window.setTimeout(connect, 3000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      isClosedByEffect = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      if (socket) {
+        socket.close();
+      }
     };
   }, [auth.apiBase, auth.token, auth.user?.role]);
 
@@ -183,7 +271,7 @@ export default function ProfileSettingsPage({ auth }) {
           <div>
             <p className="eyebrow">Account</p>
             <h1 className="dashboard-title">Profile Settings</h1>
-            <p className="subtle">Manage your profile image, password, and teacher profile basics in one place.</p>
+            <p className="subtle">Manage your profile image, password, and account details in one place.</p>
           </div>
           <div className="dashboard-actions">
             <div className="account-chip">
@@ -305,8 +393,66 @@ export default function ProfileSettingsPage({ auth }) {
                 {contactStatus.message}
               </div>
             ) : null}
+            <div className={`status ${teacherRealtimeStatus.kind}`.trim()} aria-live="polite">
+              {teacherRealtimeStatus.message}
+            </div>
           </section>
-        ) : null}
+        ) : (
+          <section className="dashboard-section">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Account Profile</p>
+                <h2>Basic information</h2>
+              </div>
+            </div>
+
+            <article className="teacher-profile-card">
+              <div className="teacher-profile-identity">
+                <label className="teacher-profile-avatar-trigger">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden-file-input"
+                    onChange={handleProfileImageChange}
+                  />
+                  <UserAvatar
+                    apiBase={auth.apiBase}
+                    imageUrl={auth.user?.profile_image_url}
+                    name={auth.user?.display_name}
+                    fallbackCode={auth.user?.user_code}
+                    size="large"
+                    className="teacher-profile-avatar"
+                  />
+                  <span className="teacher-profile-avatar-overlay">
+                    {isUploadingImage ? "Uploading..." : "Update photo"}
+                  </span>
+                </label>
+                <div className="teacher-profile-identity-copy">
+                  <strong>{auth.user?.display_name || "-"}</strong>
+                  <span>{auth.user?.user_code || "-"}</span>
+                </div>
+                <div className={`status ${imageStatus.kind}`.trim()} aria-live="polite">
+                  {imageStatus.message}
+                </div>
+              </div>
+
+              <div className="teacher-profile-details">
+                <div className="teacher-profile-row">
+                  <span>Role</span>
+                  <strong>{getRoleTitle(auth.user?.role)}</strong>
+                </div>
+                <div className="teacher-profile-row">
+                  <span>User Code</span>
+                  <strong>{auth.user?.user_code || "-"}</strong>
+                </div>
+                <div className="teacher-profile-row">
+                  <span>Display Name</span>
+                  <strong>{auth.user?.display_name || "-"}</strong>
+                </div>
+              </div>
+            </article>
+          </section>
+        )}
 
         {contactEditField ? (
           <FloatingPanel

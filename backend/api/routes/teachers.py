@@ -6,6 +6,7 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import TeacherUpdate
+from services.teacher_events import create_teacher_profile_event, ensure_teacher_events_table
 
 
 router = APIRouter()
@@ -54,12 +55,16 @@ def update_teacher(
     teacher_id: str,
     payload: TeacherUpdate,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     existing = db.execute(
-        text("SELECT 1 FROM teachers WHERE teacher_id = :teacher_id"),
+        text("""
+            SELECT teacher_id, elo, education_score, max_slots_per_day
+            FROM teachers
+            WHERE teacher_id = :teacher_id
+        """),
         {"teacher_id": teacher_id},
-    ).first()
+    ).mappings().first()
 
     if not existing:
         raise HTTPException(status_code=404, detail="teacher not found")
@@ -72,6 +77,24 @@ def update_teacher(
     data["teacher_id"] = teacher_id
 
     db.execute(text(f"UPDATE teachers SET {fields} WHERE teacher_id = :teacher_id"), data)
+
+    profile_notification_fields = {"elo", "education_score", "max_slots_per_day"}
+    changed_profile_fields = [
+        key
+        for key in data.keys()
+        if key in profile_notification_fields and existing[key] != data[key]
+    ]
+    if changed_profile_fields:
+        ensure_teacher_events_table(db)
+        for field in changed_profile_fields:
+            create_teacher_profile_event(
+                db,
+                teacher_id=teacher_id,
+                field=field,
+                old_value=existing[field],
+                new_value=data[field],
+                created_by=current_user.user_code,
+            )
 
     if "name" in data:
         db.execute(

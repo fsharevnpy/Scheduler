@@ -22,6 +22,21 @@ function generateLeaveRequestId(leaveRequests) {
   return `LR${maxSequence + 1}`;
 }
 
+function buildTeacherEventsWebSocketUrl(apiBase, token) {
+  const encodedToken = encodeURIComponent(token);
+  if (/^https?:\/\//i.test(apiBase)) {
+    const url = new URL(apiBase);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/teacher-events/ws`;
+    url.search = `token=${encodedToken}`;
+    return url.toString();
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = apiBase.startsWith("/") ? apiBase : `/${apiBase}`;
+  return `${protocol}//${window.location.host}${basePath.replace(/\/$/, "")}/teacher-events/ws?token=${encodedToken}`;
+}
+
 export default function MonitorPage({ auth }) {
   const user = auth.user;
   const [state, setState] = useState({
@@ -79,7 +94,7 @@ export default function MonitorPage({ auth }) {
         }
 
         if (user.role === "teacher") {
-          requests.push(requestJson(`${auth.apiBase}/teacher-score-events/unread`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/teacher-events/unread`, { headers }));
         }
 
         if (user.role === "developer") {
@@ -146,6 +161,70 @@ export default function MonitorPage({ auth }) {
       cancelled = true;
     };
   }, [auth.apiBase, headers, user.role]);
+
+  useEffect(() => {
+    if (user.role !== "teacher" || !auth.token) {
+      return undefined;
+    }
+
+    let socket = null;
+    let reconnectTimer = null;
+    let isClosedByEffect = false;
+
+    async function refreshScores() {
+      try {
+        const teacherScores = await requestJson(`${auth.apiBase}/teacher-scores`, { headers });
+        setState((current) => ({ ...current, teacherScores }));
+      } catch {
+        // Realtime notifications should not interrupt the monitor if a refresh races with logout.
+      }
+    }
+
+    function connect() {
+      socket = new WebSocket(buildTeacherEventsWebSocketUrl(auth.apiBase, auth.token));
+
+      socket.onmessage = (message) => {
+        const payload = JSON.parse(message.data);
+        if (payload.type !== "teacher_event" || !payload.event) {
+          return;
+        }
+
+        setState((current) => {
+          const exists = current.unreadScoreEvents.some((item) => item.event_id === payload.event.event_id);
+          if (exists) {
+            return current;
+          }
+
+          return {
+            ...current,
+            unreadScoreEvents: [payload.event, ...current.unreadScoreEvents],
+          };
+        });
+
+        if (payload.event.event_type === "SCORE") {
+          refreshScores();
+        }
+      };
+
+      socket.onclose = () => {
+        if (!isClosedByEffect) {
+          reconnectTimer = window.setTimeout(connect, 3000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      isClosedByEffect = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      if (socket) {
+        socket.close();
+      }
+    };
+  }, [auth.apiBase, auth.token, headers, user.role]);
 
   async function runAction(actionKey, action, successMessage, onSuccess) {
     setPendingAction(actionKey);
@@ -455,13 +534,24 @@ export default function MonitorPage({ auth }) {
   }
 
   async function markScoreEventRead(eventId) {
-    await requestJson(`${auth.apiBase}/teacher-score-events/${eventId}/read`, {
+    await requestJson(`${auth.apiBase}/teacher-events/${eventId}/read`, {
       method: "PUT",
       headers,
     });
     setState((current) => ({
       ...current,
       unreadScoreEvents: current.unreadScoreEvents.filter((item) => item.event_id !== eventId),
+    }));
+  }
+
+  async function markAllScoreEventsRead() {
+    await requestJson(`${auth.apiBase}/teacher-events/read-all`, {
+      method: "PUT",
+      headers,
+    });
+    setState((current) => ({
+      ...current,
+      unreadScoreEvents: [],
     }));
   }
 
@@ -500,8 +590,11 @@ export default function MonitorPage({ auth }) {
     };
   const notifications = state.unreadScoreEvents.map((item) => ({
     id: item.event_id,
-    title: "Score updated",
-    message: `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
+    title: item.event_type === "PROFILE" ? "Teacher profile updated" : "Score updated",
+    message:
+      item.event_type === "PROFILE"
+        ? `${item.reason}. ${item.evidence_text || ""}`
+        : `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
     evidenceUrl: item.evidence_url,
     createdAt: formatDateTimeValue(item.created_at),
     unread: !item.teacher_read_at,
@@ -521,7 +614,11 @@ export default function MonitorPage({ auth }) {
             </p>
           </div>
           <div className="dashboard-actions">
-            <NotificationBell notifications={notifications} onMarkRead={user.role === "teacher" ? markScoreEventRead : undefined} />
+            <NotificationBell
+              notifications={notifications}
+              onMarkAllRead={user.role === "teacher" ? markAllScoreEventsRead : undefined}
+              onMarkRead={user.role === "teacher" ? markScoreEventRead : undefined}
+            />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}

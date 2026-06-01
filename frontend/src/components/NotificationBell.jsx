@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function NotificationBell({ notifications = [], onMarkRead }) {
+export default function NotificationBell({ notifications = [], onMarkAllRead, onMarkRead }) {
   const [isOpen, setIsOpen] = useState(false);
   const panelRef = useRef(null);
   const unreadCount = notifications.filter((item) => item.unread).length;
@@ -35,7 +35,14 @@ export default function NotificationBell({ notifications = [], onMarkRead }) {
         <div className="notification-panel" role="dialog" aria-label="Notifications">
           <div className="notification-panel-head">
             <strong>Notifications</strong>
-            <span>{unreadCount} new</span>
+            <div className="notification-panel-actions">
+              <span>{unreadCount} new</span>
+              {unreadCount > 0 && onMarkAllRead ? (
+                <button type="button" className="inline-text-action" onClick={onMarkAllRead}>
+                  Mark all
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {notifications.length === 0 ? (
