@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import VALID_LEAVE_STATUS, ensure_classes_day_of_week
+from api.routes.common import VALID_LEAVE_STATUS
 from core.permissions import (
     ROLE_DEVELOPER,
     ROLE_MANAGER,
@@ -128,7 +128,6 @@ def get_leave_requests(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    ensure_classes_day_of_week(db)
     ensure_leave_request_constraints(db)
 
     query = """
@@ -184,7 +183,6 @@ def create_leave_request(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    ensure_classes_day_of_week(db)
     ensure_leave_request_constraints(db)
 
     if payload.status not in VALID_LEAVE_STATUS:
@@ -346,7 +344,6 @@ def get_unread_manager_events(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
     ensure_leave_request_constraints(db)
 
     rows = db.execute(
@@ -389,7 +386,6 @@ def mark_manager_event_read(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_roles(ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
     ensure_leave_request_constraints(db)
 
     result = db.execute(

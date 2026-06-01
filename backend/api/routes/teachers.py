@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.object_storage import remove_profile_image
 from core.profile_images import build_profile_image_url
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
 from db import get_db
@@ -11,6 +12,10 @@ from services.teacher_events import create_teacher_profile_event, ensure_teacher
 
 
 router = APIRouter()
+
+
+def is_managed_profile_image_path(path: str | None) -> bool:
+    return bool(path) and not path.startswith("http://") and not path.startswith("https://")
 
 
 @router.get("/teachers")
@@ -145,3 +150,46 @@ def update_teacher(
 
     db.commit()
     return {"message": "teacher updated", "teacher_id": teacher_id}
+
+
+@router.delete("/teachers/{teacher_id}/profile-image")
+def delete_teacher_profile_image(
+    teacher_id: str,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    user = db.execute(
+        text("""
+            SELECT user_code, profile_image_url
+            FROM users
+            WHERE teacher_id = :teacher_id
+              AND role = 'teacher'
+            LIMIT 1
+        """),
+        {"teacher_id": teacher_id},
+    ).mappings().first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="teacher user not found")
+
+    db.execute(
+        text("""
+            UPDATE users
+            SET profile_image_url = NULL
+            WHERE user_code = :user_code
+        """),
+        {"user_code": user["user_code"]},
+    )
+    db.commit()
+
+    if is_managed_profile_image_path(user["profile_image_url"]):
+        try:
+            remove_profile_image(user["profile_image_url"])
+        except Exception:
+            pass
+
+    return {
+        "message": "teacher profile image deleted",
+        "teacher_id": teacher_id,
+        "profile_image_url": None,
+    }

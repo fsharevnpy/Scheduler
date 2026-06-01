@@ -67,6 +67,7 @@ export default function AdminMonitorView({
   onResetPasswordRequest,
   onUpdateTeacherActive,
   onUpdateTeacherProfile,
+  onDeleteTeacherProfileImage,
   onCreateTeacherScoreEvent,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
@@ -191,6 +192,28 @@ export default function AdminMonitorView({
 
     setProfilePanelStatus({ kind: "success", message: `${meta.label} updated.` });
     setSelectedProfileEdit((current) => (current ? { ...current, teacher: { ...current.teacher, ...payload } } : current));
+  }
+
+  async function handleDeleteTeacherAvatar() {
+    if (!selectedAvatarTeacher?.profile_image_url) {
+      return;
+    }
+
+    if (!confirm(`Delete profile image for ${selectedAvatarTeacher.teacher_id} - ${selectedAvatarTeacher.name}?`)) {
+      return;
+    }
+
+    const success = await onDeleteTeacherProfileImage(selectedAvatarTeacher.teacher_id);
+    if (success) {
+      setSelectedAvatarTeacher((current) =>
+        current
+          ? {
+              ...current,
+              profile_image_url: null,
+            }
+          : current,
+      );
+    }
   }
 
   async function toggleScoreHistory() {
@@ -825,14 +848,26 @@ export default function AdminMonitorView({
           onClose={() => setSelectedAvatarTeacher(null)}
         >
           <div className="teacher-avatar-verification-panel">
-            <UserAvatar
-              apiBase={apiBase}
-              imageUrl={selectedAvatarTeacher.profile_image_url}
-              name={selectedAvatarTeacher.name}
-              fallbackCode={selectedAvatarTeacher.teacher_id}
-              size="large"
-              className="teacher-avatar-verification-image"
-            />
+            <div className="teacher-avatar-verification-frame">
+              <UserAvatar
+                apiBase={apiBase}
+                imageUrl={selectedAvatarTeacher.profile_image_url}
+                name={selectedAvatarTeacher.name}
+                fallbackCode={selectedAvatarTeacher.teacher_id}
+                size="large"
+                className="teacher-avatar-verification-image"
+              />
+              {selectedAvatarTeacher.profile_image_url ? (
+                <button
+                  type="button"
+                  className="teacher-avatar-delete-button"
+                  disabled={pendingAction === `teacher-avatar-delete-${selectedAvatarTeacher.teacher_id}`}
+                  onClick={handleDeleteTeacherAvatar}
+                >
+                  {pendingAction === `teacher-avatar-delete-${selectedAvatarTeacher.teacher_id}` ? "Deleting..." : "Delete"}
+                </button>
+              ) : null}
+            </div>
             <div className="teacher-avatar-verification-copy">
               <p className="subtle">Teacher ID</p>
               <strong>{formatValue(selectedAvatarTeacher.teacher_id)}</strong>

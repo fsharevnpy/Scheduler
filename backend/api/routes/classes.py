@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import VALID_CLASS_STATUS, ensure_classes_day_of_week
+from api.routes.common import VALID_CLASS_STATUS
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_current_user, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
@@ -32,8 +32,6 @@ def get_classes(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    ensure_classes_day_of_week(db)
-
     query = """
         SELECT class_id, day_of_week, center_id, start_time, end_time,
                room_no, teacher_id, status
@@ -64,8 +62,6 @@ def create_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
-
     if payload.status not in VALID_CLASS_STATUS:
         raise HTTPException(status_code=400, detail="invalid class status")
 
@@ -117,8 +113,6 @@ def update_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
-
     existing = db.execute(
         text("SELECT 1 FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},
@@ -164,8 +158,6 @@ def delete_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
-
     existing = db.execute(
         text("SELECT 1 FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},

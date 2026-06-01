@@ -427,6 +427,11 @@
   align-items: center;
 }
 
+.teacher-avatar-verification-frame {
+  position: relative;
+  width: min(100%, 320px);
+}
+
 .teacher-avatar-verification-image {
   width: 100%;
   max-width: 320px;
@@ -434,6 +439,36 @@
   aspect-ratio: 1;
   border-radius: 24px;
   box-shadow: 0 18px 36px rgba(90, 54, 28, 0.16);
+}
+
+.teacher-avatar-delete-button {
+  appearance: none;
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: rgba(143, 38, 31, 0.94);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 12px 24px rgba(31, 27, 23, 0.22);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.teacher-avatar-verification-frame:hover .teacher-avatar-delete-button,
+.teacher-avatar-verification-frame:focus-within .teacher-avatar-delete-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.teacher-avatar-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .teacher-avatar-verification-copy {

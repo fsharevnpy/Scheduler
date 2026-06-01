@@ -32,3 +32,8 @@ def upload_profile_image(object_name: str, data: bytes, content_type: str) -> st
         content_type=content_type,
     )
     return object_name
+
+
+def remove_profile_image(object_name: str) -> None:
+    client = get_minio_client()
+    client.remove_object(MINIO_BUCKET, object_name)

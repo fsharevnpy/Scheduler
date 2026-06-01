@@ -577,6 +577,31 @@ export default function MonitorPage({ auth }) {
     );
   }
 
+  async function deleteTeacherProfileImage(teacherId) {
+    return runAction(
+      `teacher-avatar-delete-${teacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/teachers/${teacherId}/profile-image`, {
+          method: "DELETE",
+          headers,
+        }),
+      `Deleted profile image for ${teacherId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          teachers: current.teachers.map((item) =>
+            item.teacher_id === teacherId
+              ? {
+                  ...item,
+                  profile_image_url: null,
+                }
+              : item,
+          ),
+        }));
+      },
+    );
+  }
+
   async function reloadTeacherScores() {
     const teacherScores = await requestJson(`${auth.apiBase}/teacher-scores`, { headers });
     setState((current) => ({ ...current, teacherScores }));
@@ -797,6 +822,7 @@ export default function MonitorPage({ auth }) {
             onResetPasswordRequest={resetPasswordRequest}
             onUpdateTeacherActive={updateTeacherActive}
             onUpdateTeacherProfile={updateTeacherProfile}
+            onDeleteTeacherProfileImage={deleteTeacherProfileImage}
             onCreateTeacherScoreEvent={createTeacherScoreEvent}
           />
         )}

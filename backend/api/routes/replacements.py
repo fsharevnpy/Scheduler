@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import ensure_classes_day_of_week
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
@@ -23,8 +22,6 @@ def get_replacement_suggestions(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
-
     target_class = db.execute(
         text(f"""
             SELECT
@@ -179,8 +176,6 @@ def assign_replacement(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    ensure_classes_day_of_week(db)
-
     target_class = db.execute(
         text(f"""
             SELECT
