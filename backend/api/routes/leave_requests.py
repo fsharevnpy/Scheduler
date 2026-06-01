@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import VALID_LEAVE_STATUS
+from api.routes.common import VALID_LEAVE_STATUS, ensure_classes_day_of_week
 from core.permissions import (
     ROLE_DEVELOPER,
     ROLE_MANAGER,
@@ -11,15 +11,21 @@ from core.permissions import (
     require_roles,
     require_teacher_identity,
 )
+from core.security import decode_access_token
 from db import get_db
+from db import SessionLocal
 from schemas.auth import CurrentUser
 from schemas.scheduling import LeaveRequestCreate
+from services.user_event_broker import user_event_broker
 
 
 router = APIRouter()
 
 
 def ensure_leave_request_constraints(db: Session) -> None:
+    db.execute(text("ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS assigned_manager_code VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL"))
+    db.execute(text("ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"))
+    db.execute(text("ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS manager_read_at TIMESTAMPTZ NULL"))
     db.execute(text("DROP INDEX IF EXISTS ux_leave_requests_teacher_class"))
     db.execute(
         text("""
@@ -28,13 +34,20 @@ def ensure_leave_request_constraints(db: Session) -> None:
                 WHERE status IN ('REQUESTED', 'APPROVED')
         """)
     )
+    db.execute(
+        text("""
+            CREATE INDEX IF NOT EXISTS idx_leave_requests_assigned_manager_unread
+                ON leave_requests(assigned_manager_code, manager_read_at, created_at DESC)
+                WHERE assigned_manager_code IS NOT NULL AND manager_read_at IS NULL
+        """)
+    )
     db.commit()
 
 
 def get_leave_request_or_404(request_id: str, db: Session):
     leave_row = db.execute(
         text("""
-            SELECT request_id, class_id, teacher_id, reason, status
+            SELECT request_id, class_id, teacher_id, assigned_manager_code, reason, status
             FROM leave_requests
             WHERE request_id = :request_id
         """),
@@ -59,6 +72,17 @@ def set_leave_request_status(request_id: str, status: str, db: Session) -> None:
             "status": status,
         },
     )
+
+
+def ensure_manager_can_review(leave_row, current_user: CurrentUser) -> None:
+    if current_user.role == ROLE_DEVELOPER:
+        return
+
+    if leave_row["assigned_manager_code"] is None:
+        return
+
+    if leave_row["assigned_manager_code"] != current_user.user_code:
+        raise HTTPException(status_code=403, detail="leave request is assigned to another manager")
 
 
 def mark_class_needs_replacement(class_id: str, db: Session) -> None:
@@ -104,20 +128,53 @@ def get_leave_requests(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_classes_day_of_week(db)
+    ensure_leave_request_constraints(db)
+
     query = """
-        SELECT request_id, class_id, teacher_id, request_date, reason, status
-        FROM leave_requests
+        SELECT
+            lr.request_id,
+            lr.class_id,
+            c.day_of_week AS class_day_of_week,
+            lr.teacher_id,
+            lr.assigned_manager_code,
+            u.display_name AS assigned_manager_name,
+            lr.request_date,
+            lr.reason,
+            lr.status,
+            lr.created_at,
+            lr.manager_read_at
+        FROM leave_requests lr
+        JOIN classes c ON c.class_id = lr.class_id
+        LEFT JOIN users u ON u.user_code = lr.assigned_manager_code
     """
     params = {}
 
     if current_user.role == ROLE_TEACHER:
         if not current_user.teacher_id:
             raise HTTPException(status_code=403, detail="teacher account is not linked")
-        query += " WHERE teacher_id = :teacher_id"
+        query += " WHERE lr.teacher_id = :teacher_id"
         params["teacher_id"] = current_user.teacher_id
 
-    query += " ORDER BY request_date, request_id"
+    query += " ORDER BY lr.request_date, lr.request_id"
     rows = db.execute(text(query), params).mappings().all()
+    return [dict(row) for row in rows]
+
+
+@router.get("/leave-request-managers")
+def get_leave_request_managers(
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_TEACHER)),
+):
+    rows = db.execute(
+        text("""
+            SELECT user_code, display_name, profile_image_url
+            FROM users
+            WHERE role = 'manager'
+              AND active = TRUE
+            ORDER BY display_name, user_code
+        """)
+    ).mappings().all()
     return [dict(row) for row in rows]
 
 
@@ -127,6 +184,7 @@ def create_leave_request(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_classes_day_of_week(db)
     ensure_leave_request_constraints(db)
 
     if payload.status not in VALID_LEAVE_STATUS:
@@ -149,9 +207,10 @@ def create_leave_request(
 
     class_row = db.execute(
         text("""
-            SELECT class_id, teacher_id, status
-            FROM classes
-            WHERE class_id = :class_id
+            SELECT c.class_id, c.teacher_id, c.status, c.day_of_week, t.name AS teacher_name
+            FROM classes c
+            JOIN teachers t ON t.teacher_id = c.teacher_id
+            WHERE c.class_id = :class_id
         """),
         {"class_id": payload.class_id},
     ).mappings().first()
@@ -161,6 +220,20 @@ def create_leave_request(
 
     if class_row["teacher_id"] != payload.teacher_id:
         raise HTTPException(status_code=400, detail="teacher is not assigned to the class")
+
+    assigned_manager = db.execute(
+        text("""
+            SELECT user_code, display_name, role, active
+            FROM users
+            WHERE user_code = :user_code
+              AND role = 'manager'
+              AND active = TRUE
+        """),
+        {"user_code": payload.assigned_manager_code},
+    ).mappings().first()
+
+    if not assigned_manager:
+        raise HTTPException(status_code=404, detail="assigned manager not found")
 
     active_duplicate_for_class = db.execute(
         text("""
@@ -184,34 +257,186 @@ def create_leave_request(
             detail="active leave request already exists for this class",
         )
 
-    db.execute(
+    created_leave_request = db.execute(
         text("""
-            INSERT INTO leave_requests (request_id, class_id, teacher_id, request_date, reason, status)
-            VALUES (:request_id, :class_id, :teacher_id, :request_date, :reason, :status)
+            INSERT INTO leave_requests (
+                request_id, class_id, teacher_id, assigned_manager_code,
+                request_date, reason, status
+            )
+            VALUES (
+                :request_id, :class_id, :teacher_id, :assigned_manager_code,
+                :request_date, :reason, :status
+            )
+            RETURNING request_id, class_id, teacher_id, assigned_manager_code,
+                      request_date, reason, status, created_at, manager_read_at
         """),
         {
             "request_id": payload.request_id,
             "class_id": payload.class_id,
             "teacher_id": payload.teacher_id,
+            "assigned_manager_code": payload.assigned_manager_code,
             "request_date": payload.request_date,
             "reason": payload.reason,
             "status": payload.status,
         },
-    )
+    ).mappings().first()
 
     mark_class_needs_replacement(payload.class_id, db)
 
     db.commit()
+    user_event_broker.publish(
+        payload.assigned_manager_code,
+        {
+            "event_type": "LEAVE_REQUEST",
+            **dict(created_leave_request),
+            "teacher_name": class_row["teacher_name"],
+            "class_day_of_week": class_row["day_of_week"],
+        },
+    )
     return {"message": "leave request created", "request_id": payload.request_id}
+
+
+@router.websocket("/manager-events/ws")
+async def manager_events_websocket(websocket: WebSocket):
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        payload = decode_access_token(token)
+    except HTTPException:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    user_code = payload.get("sub")
+    db = SessionLocal()
+    try:
+        user = db.execute(
+            text("""
+                SELECT user_code, role, active
+                FROM users
+                WHERE user_code = :user_code
+            """),
+            {"user_code": user_code},
+        ).mappings().first()
+    finally:
+        db.close()
+
+    if not user or not user["active"] or user["role"] != ROLE_MANAGER:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await websocket.accept()
+    queue, loop = user_event_broker.subscribe(user["user_code"])
+
+    try:
+        await websocket.send_json({"type": "connected"})
+        while True:
+            event = await queue.get()
+            await websocket.send_json({"type": "manager_event", "event": event})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        user_event_broker.unsubscribe(user["user_code"], loop, queue)
+
+
+@router.get("/manager-events/unread")
+def get_unread_manager_events(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_MANAGER)),
+):
+    ensure_classes_day_of_week(db)
+    ensure_leave_request_constraints(db)
+
+    rows = db.execute(
+        text("""
+            SELECT
+                lr.request_id,
+                lr.class_id,
+                c.day_of_week AS class_day_of_week,
+                lr.teacher_id,
+                t.name AS teacher_name,
+                lr.assigned_manager_code,
+                lr.request_date,
+                lr.reason,
+                lr.status,
+                lr.created_at,
+                lr.manager_read_at
+            FROM leave_requests lr
+            JOIN classes c ON c.class_id = lr.class_id
+            JOIN teachers t ON t.teacher_id = lr.teacher_id
+            WHERE lr.assigned_manager_code = :manager_code
+              AND lr.manager_read_at IS NULL
+              AND lr.status = 'REQUESTED'
+            ORDER BY lr.created_at DESC, lr.request_id DESC
+        """),
+        {"manager_code": current_user.user_code},
+    ).mappings().all()
+
+    return [
+        {
+            "event_type": "LEAVE_REQUEST",
+            **dict(row),
+        }
+        for row in rows
+    ]
+
+
+@router.put("/manager-events/{request_id}/read")
+def mark_manager_event_read(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_MANAGER)),
+):
+    ensure_classes_day_of_week(db)
+    ensure_leave_request_constraints(db)
+
+    result = db.execute(
+        text("""
+            UPDATE leave_requests
+            SET manager_read_at = NOW()
+            WHERE request_id = :request_id
+              AND assigned_manager_code = :manager_code
+        """),
+        {"request_id": request_id, "manager_code": current_user.user_code},
+    )
+    db.commit()
+
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="manager notification not found")
+
+    return {"message": "manager event marked as read", "request_id": request_id}
+
+
+@router.put("/manager-events/read-all")
+def mark_all_manager_events_read(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_roles(ROLE_MANAGER)),
+):
+    ensure_leave_request_constraints(db)
+
+    result = db.execute(
+        text("""
+            UPDATE leave_requests
+            SET manager_read_at = NOW()
+            WHERE assigned_manager_code = :manager_code
+              AND manager_read_at IS NULL
+        """),
+        {"manager_code": current_user.user_code},
+    )
+    db.commit()
+    return {"message": "manager events marked as read", "count": result.rowcount}
 
 
 @router.put("/leave-requests/{request_id}/approve")
 def approve_leave_request(
     request_id: str,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     leave_row = get_leave_request_or_404(request_id, db)
+    ensure_manager_can_review(leave_row, current_user)
 
     if leave_row["status"] == "APPROVED":
         return {"message": "leave request already approved", "request_id": request_id}
@@ -233,9 +458,10 @@ def approve_leave_request(
 def reject_leave_request(
     request_id: str,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     leave_row = get_leave_request_or_404(request_id, db)
+    ensure_manager_can_review(leave_row, current_user)
 
     if leave_row["status"] == "REJECTED":
         return {"message": "leave request already rejected", "request_id": request_id}

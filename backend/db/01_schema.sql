@@ -72,7 +72,7 @@ CREATE TABLE teacher_preferences (
 -- =========================
 CREATE TABLE classes (
     class_id VARCHAR(20) PRIMARY KEY,
-    class_date DATE NOT NULL,
+    day_of_week VARCHAR(10) NOT NULL,
     center_id VARCHAR(20) NOT NULL REFERENCES centers(center_id),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
@@ -80,6 +80,7 @@ CREATE TABLE classes (
     teacher_id VARCHAR(20) REFERENCES teachers(teacher_id),
     status VARCHAR(30) NOT NULL,
     CHECK (start_time < end_time),
+    CHECK (day_of_week IN ('T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN')),
     CHECK (status IN ('OPEN', 'ASSIGNED', 'CANCELLED', 'NEED_REPLACEMENT'))
 );
 
@@ -90,9 +91,12 @@ CREATE TABLE leave_requests (
     request_id VARCHAR(20) PRIMARY KEY,
     class_id VARCHAR(20) NOT NULL REFERENCES classes(class_id) ON DELETE CASCADE,
     teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+    assigned_manager_code VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL,
     request_date DATE NOT NULL,
     reason TEXT NOT NULL,
     status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    manager_read_at TIMESTAMPTZ NULL,
     CHECK (status IN ('REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED'))
 );
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import get_day_of_week_sql
+from api.routes.common import ensure_classes_day_of_week
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
@@ -23,16 +23,17 @@ def get_replacement_suggestions(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_classes_day_of_week(db)
+
     target_class = db.execute(
         text(f"""
             SELECT
                 c.class_id,
-                c.class_date,
+                c.day_of_week,
                 c.center_id,
                 c.start_time,
                 c.end_time,
-                c.teacher_id AS original_teacher_id,
-                {get_day_of_week_sql()} AS day_of_week
+                c.teacher_id AS original_teacher_id
             FROM classes c
             WHERE c.class_id = :class_id
         """),
@@ -81,7 +82,7 @@ def get_replacement_suggestions(
                     SELECT COUNT(*)
                     FROM classes c2
                     WHERE c2.teacher_id = t.teacher_id
-                      AND c2.class_date = :class_date
+                      AND c2.day_of_week = :day_of_week
                       AND c2.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
                 ), 0) AS assigned_slots_that_day,
                 CASE
@@ -108,22 +109,22 @@ def get_replacement_suggestions(
               AND NOT EXISTS (
                   SELECT 1
                   FROM leave_requests lr
+                  JOIN classes lc ON lc.class_id = lr.class_id
                   WHERE lr.teacher_id = t.teacher_id
-                    AND lr.request_date = :class_date
+                    AND lc.day_of_week = :day_of_week
                     AND lr.status IN ('REQUESTED', 'APPROVED')
               )
               AND NOT EXISTS (
                   SELECT 1
                   FROM classes c3
                   WHERE c3.teacher_id = t.teacher_id
-                    AND c3.class_date = :class_date
+                    AND c3.day_of_week = :day_of_week
                     AND c3.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
                     AND c3.start_time < :end_time
                     AND c3.end_time > :start_time
               )
         """),
         {
-            "class_date": target_class["class_date"],
             "center_id": target_class["center_id"],
             "day_of_week": target_class["day_of_week"],
             "start_time": target_class["start_time"],
@@ -178,17 +179,18 @@ def assign_replacement(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_classes_day_of_week(db)
+
     target_class = db.execute(
         text(f"""
             SELECT
                 c.class_id,
-                c.class_date,
+                c.day_of_week,
                 c.center_id,
                 c.start_time,
                 c.end_time,
                 c.teacher_id AS current_teacher_id,
-                c.status,
-                {get_day_of_week_sql()} AS day_of_week
+                c.status
             FROM classes c
             WHERE c.class_id = :class_id
         """),
@@ -216,26 +218,27 @@ def assign_replacement(
     active_leave_request = db.execute(
         text("""
             SELECT 1
-            FROM leave_requests
-            WHERE teacher_id = :teacher_id
-              AND request_date = :class_date
-              AND status IN ('REQUESTED', 'APPROVED')
+            FROM leave_requests lr
+            JOIN classes lc ON lc.class_id = lr.class_id
+            WHERE lr.teacher_id = :teacher_id
+              AND lc.day_of_week = :day_of_week
+              AND lr.status IN ('REQUESTED', 'APPROVED')
         """),
         {
             "teacher_id": payload.teacher_id,
-            "class_date": target_class["class_date"],
+            "day_of_week": target_class["day_of_week"],
         },
     ).first()
 
     if active_leave_request:
-        raise HTTPException(status_code=400, detail="replacement teacher already has a leave request on that date")
+        raise HTTPException(status_code=400, detail="replacement teacher already has a leave request on that day")
 
     overlap = db.execute(
         text("""
             SELECT 1
             FROM classes c
             WHERE c.teacher_id = :teacher_id
-              AND c.class_date = :class_date
+              AND c.day_of_week = :day_of_week
               AND c.class_id <> :class_id
               AND c.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
               AND c.start_time < :end_time
@@ -243,7 +246,7 @@ def assign_replacement(
         """),
         {
             "teacher_id": payload.teacher_id,
-            "class_date": target_class["class_date"],
+            "day_of_week": target_class["day_of_week"],
             "class_id": class_id,
             "start_time": target_class["start_time"],
             "end_time": target_class["end_time"],
@@ -258,12 +261,12 @@ def assign_replacement(
             SELECT COUNT(*)
             FROM classes
             WHERE teacher_id = :teacher_id
-              AND class_date = :class_date
+              AND day_of_week = :day_of_week
               AND status IN ('ASSIGNED', 'NEED_REPLACEMENT')
         """),
         {
             "teacher_id": payload.teacher_id,
-            "class_date": target_class["class_date"],
+            "day_of_week": target_class["day_of_week"],
         },
     ).scalar_one()
 

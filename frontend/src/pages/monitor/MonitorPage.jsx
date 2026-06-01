@@ -5,6 +5,7 @@ import NotificationBell from "../../components/NotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
+import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
 import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
 import { formatDateTimeValue } from "./monitorUtils.js";
@@ -22,21 +23,6 @@ function generateLeaveRequestId(leaveRequests) {
   return `LR${maxSequence + 1}`;
 }
 
-function buildTeacherEventsWebSocketUrl(apiBase, token) {
-  const encodedToken = encodeURIComponent(token);
-  if (/^https?:\/\//i.test(apiBase)) {
-    const url = new URL(apiBase);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/teacher-events/ws`;
-    url.search = `token=${encodedToken}`;
-    return url.toString();
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const basePath = apiBase.startsWith("/") ? apiBase : `/${apiBase}`;
-  return `${protocol}//${window.location.host}${basePath.replace(/\/$/, "")}/teacher-events/ws?token=${encodedToken}`;
-}
-
 export default function MonitorPage({ auth }) {
   const user = auth.user;
   const [state, setState] = useState({
@@ -51,6 +37,8 @@ export default function MonitorPage({ auth }) {
     users: [],
     teacherScores: [],
     unreadScoreEvents: [],
+    unreadManagerEvents: [],
+    leaveRequestManagers: [],
   });
   const [actionStatus, setActionStatus] = useState({ kind: "", message: "" });
   const [pendingAction, setPendingAction] = useState("");
@@ -95,6 +83,11 @@ export default function MonitorPage({ auth }) {
 
         if (user.role === "teacher") {
           requests.push(requestJson(`${auth.apiBase}/teacher-events/unread`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/leave-request-managers`, { headers }));
+        }
+
+        if (user.role === "manager") {
+          requests.push(requestJson(`${auth.apiBase}/manager-events/unread`, { headers }));
         }
 
         if (user.role === "developer") {
@@ -107,6 +100,8 @@ export default function MonitorPage({ auth }) {
         let teachers = [];
         let resetRequests = [];
         let unreadScoreEvents = [];
+        let unreadManagerEvents = [];
+        let leaveRequestManagers = [];
         let users = [];
 
         if (user.role === "manager" || user.role === "developer") {
@@ -116,6 +111,11 @@ export default function MonitorPage({ auth }) {
 
         if (user.role === "teacher") {
           unreadScoreEvents = results[resultIndex++] || [];
+          leaveRequestManagers = results[resultIndex++] || [];
+        }
+
+        if (user.role === "manager") {
+          unreadManagerEvents = results[resultIndex++] || [];
         }
 
         if (user.role === "developer") {
@@ -135,6 +135,8 @@ export default function MonitorPage({ auth }) {
             users,
             teacherScores,
             unreadScoreEvents,
+            unreadManagerEvents,
+            leaveRequestManagers,
           });
         }
       } catch (error) {
@@ -151,6 +153,8 @@ export default function MonitorPage({ auth }) {
             users: [],
             teacherScores: [],
             unreadScoreEvents: [],
+            unreadManagerEvents: [],
+            leaveRequestManagers: [],
           });
         }
       }
@@ -225,6 +229,57 @@ export default function MonitorPage({ auth }) {
       }
     };
   }, [auth.apiBase, auth.token, headers, user.role]);
+
+  useEffect(() => {
+    if (user.role !== "manager" || !auth.token) {
+      return undefined;
+    }
+
+    let socket = null;
+    let reconnectTimer = null;
+    let isClosedByEffect = false;
+
+    function connect() {
+      socket = new WebSocket(buildManagerEventsWebSocketUrl(auth.apiBase, auth.token));
+
+      socket.onmessage = (message) => {
+        const payload = JSON.parse(message.data);
+        if (payload.type !== "manager_event" || !payload.event) {
+          return;
+        }
+
+        setState((current) => {
+          const exists = current.unreadManagerEvents.some((item) => item.request_id === payload.event.request_id);
+          if (exists) {
+            return current;
+          }
+
+          return {
+            ...current,
+            unreadManagerEvents: [payload.event, ...current.unreadManagerEvents],
+          };
+        });
+      };
+
+      socket.onclose = () => {
+        if (!isClosedByEffect) {
+          reconnectTimer = window.setTimeout(connect, 3000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      isClosedByEffect = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      if (socket) {
+        socket.close();
+      }
+    };
+  }, [auth.apiBase, auth.token, user.role]);
 
   async function runAction(actionKey, action, successMessage, onSuccess) {
     setPendingAction(actionKey);
@@ -313,8 +368,9 @@ export default function MonitorPage({ auth }) {
     await transitionLeaveRequest(requestId, "cancel", "CANCELLED", "Cancelled");
   }
 
-  async function createLeaveRequest({ classId, requestDate, reason }) {
+  async function createLeaveRequest({ classId, reason, assignedManagerCode }) {
     const requestId = generateLeaveRequestId(state.leaveRequests);
+    const requestDate = new Date().toISOString().slice(0, 10);
 
     return runAction(
       "create-leave-request",
@@ -326,6 +382,7 @@ export default function MonitorPage({ auth }) {
             request_id: requestId,
             class_id: classId,
             teacher_id: user.teacher_id,
+            assigned_manager_code: assignedManagerCode,
             request_date: requestDate,
             reason,
             status: "REQUESTED",
@@ -337,14 +394,22 @@ export default function MonitorPage({ auth }) {
           ...current,
           leaveRequests: [
             ...current.leaveRequests,
-            {
-              request_id: requestId,
-              class_id: classId,
-              teacher_id: user.teacher_id,
-              request_date: requestDate,
-              reason,
-              status: "REQUESTED",
-            },
+            (() => {
+              const selectedClass = current.classes.find((item) => item.class_id === classId);
+              return {
+                request_id: requestId,
+                class_id: classId,
+                teacher_id: user.teacher_id,
+                assigned_manager_code: assignedManagerCode,
+                assigned_manager_name:
+                  current.leaveRequestManagers.find((item) => item.user_code === assignedManagerCode)?.display_name ||
+                  assignedManagerCode,
+                class_day_of_week: selectedClass?.day_of_week || "-",
+                request_date: requestDate,
+                reason,
+                status: "REQUESTED",
+              };
+            })(),
           ],
           classes: current.classes.map((item) =>
             item.class_id === classId
@@ -555,6 +620,28 @@ export default function MonitorPage({ auth }) {
     }));
   }
 
+  async function markManagerEventRead(requestId) {
+    await requestJson(`${auth.apiBase}/manager-events/${requestId}/read`, {
+      method: "PUT",
+      headers,
+    });
+    setState((current) => ({
+      ...current,
+      unreadManagerEvents: current.unreadManagerEvents.filter((item) => item.request_id !== requestId),
+    }));
+  }
+
+  async function markAllManagerEventsRead() {
+    await requestJson(`${auth.apiBase}/manager-events/read-all`, {
+      method: "PUT",
+      headers,
+    });
+    setState((current) => ({
+      ...current,
+      unreadManagerEvents: [],
+    }));
+  }
+
   const unassignedClasses = state.classes.filter((item) => item.status !== "ASSIGNED");
   const managerUsers = state.users.filter((item) => item.role === "manager");
   const centersById = new Map(state.centers.map((item) => [item.center_id, item]));
@@ -585,20 +672,28 @@ export default function MonitorPage({ auth }) {
     state.teacherScores.find((item) => item.teacher_id === user.teacher_id) || {
       score: 100,
       max_score: 110,
-      base_score: 100,
       event_count: 0,
     };
-  const notifications = state.unreadScoreEvents.map((item) => ({
-    id: item.event_id,
-    title: item.event_type === "PROFILE" ? "Teacher profile updated" : "Score updated",
-    message:
-      item.event_type === "PROFILE"
-        ? `${item.reason}. ${item.evidence_text || ""}`
-        : `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
-    evidenceUrl: item.evidence_url,
-    createdAt: formatDateTimeValue(item.created_at),
-    unread: !item.teacher_read_at,
-  }));
+  const notifications =
+    user.role === "manager"
+      ? state.unreadManagerEvents.map((item) => ({
+          id: item.request_id,
+          title: "Leave request assigned",
+          message: `${item.teacher_name || item.teacher_id} requested leave for ${item.class_id}. ${item.reason}`,
+          createdAt: formatDateTimeValue(item.created_at),
+          unread: !item.manager_read_at,
+        }))
+      : state.unreadScoreEvents.map((item) => ({
+          id: item.event_id,
+          title: item.event_type === "PROFILE" ? "Teacher profile updated" : "Score updated",
+          message:
+            item.event_type === "PROFILE"
+              ? `${item.reason}. ${item.evidence_text || ""}`
+              : `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
+          evidenceUrl: item.evidence_url,
+          createdAt: formatDateTimeValue(item.created_at),
+          unread: !item.teacher_read_at,
+        }));
 
   return (
     <main className="dashboard-shell">
@@ -616,8 +711,20 @@ export default function MonitorPage({ auth }) {
           <div className="dashboard-actions">
             <NotificationBell
               notifications={notifications}
-              onMarkAllRead={user.role === "teacher" ? markAllScoreEventsRead : undefined}
-              onMarkRead={user.role === "teacher" ? markScoreEventRead : undefined}
+              onMarkAllRead={
+                user.role === "teacher"
+                  ? markAllScoreEventsRead
+                  : user.role === "manager"
+                    ? markAllManagerEventsRead
+                    : undefined
+              }
+              onMarkRead={
+                user.role === "teacher"
+                  ? markScoreEventRead
+                  : user.role === "manager"
+                    ? markManagerEventRead
+                    : undefined
+              }
             />
             <div className="account-chip">
               <UserAvatar
@@ -657,6 +764,7 @@ export default function MonitorPage({ auth }) {
           <TeacherMonitorView
             highlightedClasses={highlightedClasses}
             attendanceRecords={state.attendanceRecords}
+            leaveRequestManagers={state.leaveRequestManagers}
             leaveRequests={leaveRequestsWithCenter}
             unassignedCount={unassignedClasses.length}
             pendingAction={pendingAction}

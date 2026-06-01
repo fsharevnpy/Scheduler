@@ -78,7 +78,7 @@ Stores scheduled classes.
 
 Key fields:
 - `class_id`
-- `class_date`
+- `day_of_week`
 - `center_id`
 - `start_time`
 - `end_time`

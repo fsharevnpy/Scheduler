@@ -114,7 +114,6 @@ def get_teacher_scores(
         {
             **dict(teacher),
             "score_month": score_month,
-            "base_score": BASE_SCORE,
             "score": apply_score_events([int(event["delta"]) for event in events_by_teacher_id[teacher["teacher_id"]]]),
             "min_score": MIN_SCORE,
             "max_score": MAX_SCORE,

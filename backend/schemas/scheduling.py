@@ -1,5 +1,5 @@
 from datetime import date, time
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -69,7 +69,7 @@ class TeacherUpdate(BaseModel):
 
 class ClassCreate(BaseModel):
     class_id: str
-    class_date: date
+    day_of_week: Literal["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     center_id: str
     start_time: time
     end_time: time
@@ -79,7 +79,7 @@ class ClassCreate(BaseModel):
 
 
 class ClassUpdate(BaseModel):
-    class_date: Optional[date] = None
+    day_of_week: Optional[Literal["T2", "T3", "T4", "T5", "T6", "T7", "CN"]] = None
     center_id: Optional[str] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
@@ -92,9 +92,18 @@ class LeaveRequestCreate(BaseModel):
     request_id: str
     class_id: str
     teacher_id: str
+    assigned_manager_code: str
     request_date: date
     reason: str
     status: str = "REQUESTED"
+
+    @field_validator("assigned_manager_code")
+    @classmethod
+    def validate_assigned_manager_code(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("assigned_manager_code is required")
+        return value
 
     @field_validator("reason")
     @classmethod

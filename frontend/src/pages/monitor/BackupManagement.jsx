@@ -6,7 +6,7 @@ async function getErrorMessage(response, fallback) {
   return data.detail || fallback;
 }
 
-export default function BackupManagement({ apiBase, token, onStatusChange }) {
+export default function BackupManagement({ apiBase, token }) {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -61,12 +61,10 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
         headers: authHeaders,
       });
       if (!response.ok) throw new Error(await getErrorMessage(response, "Backup failed"));
-      const data = await response.json();
-      onStatusChange?.(`✓ Backup created: ${data.file} (${data.size_mb} MB)`);
+      await response.json();
       await loadBackups();
     } catch (err) {
       setError(err.message);
-      onStatusChange?.(`✗ Backup failed: ${err.message}`);
     } finally {
       setIsBackingUp(false);
     }
@@ -105,11 +103,9 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
       });
       if (!response.ok) throw new Error(await getErrorMessage(response, "Restore failed"));
       setError(null);
-      onStatusChange?.(`✓ Database restored from ${filename}`);
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
       setError(err.message);
-      onStatusChange?.(`✗ Restore failed: ${err.message}`);
     } finally {
       setRestoreLoading(null);
     }
@@ -133,11 +129,9 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
       );
       if (!response.ok) throw new Error(await getErrorMessage(response, "Restore failed"));
       setError(null);
-      onStatusChange?.(`✓ Master data restored from ${filename}`);
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
       setError(err.message);
-      onStatusChange?.(`✗ Restore failed: ${err.message}`);
     } finally {
       setRestoreLoading(null);
     }
@@ -152,7 +146,6 @@ export default function BackupManagement({ apiBase, token, onStatusChange }) {
       });
       if (!response.ok) throw new Error(await getErrorMessage(response, "Delete failed"));
       setError(null);
-      onStatusChange?.(`✓ Backup deleted: ${filename}`);
       loadBackups();
     } catch (err) {
       setError(err.message);

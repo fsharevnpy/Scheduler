@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.profile_images import build_profile_image_url
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
@@ -19,12 +20,22 @@ def get_teachers(
 ):
     rows = db.execute(
         text("""
-            SELECT teacher_id, name, contact, email, elo, education_score, max_slots_per_day, active
-            FROM teachers
-            ORDER BY teacher_id
+            SELECT
+                t.teacher_id,
+                t.name,
+                t.contact,
+                t.email,
+                t.elo,
+                t.education_score,
+                t.max_slots_per_day,
+                t.active,
+                u.profile_image_url
+            FROM teachers t
+            LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
+            ORDER BY t.teacher_id
         """)
     ).mappings().all()
-    return [dict(row) for row in rows]
+    return [{**dict(row), "profile_image_url": build_profile_image_url(row["profile_image_url"])} for row in rows]
 
 
 @router.get("/teachers/me")
@@ -37,9 +48,19 @@ def get_my_teacher_profile(
 
     row = db.execute(
         text("""
-            SELECT teacher_id, name, contact, email, elo, education_score, max_slots_per_day, active
-            FROM teachers
-            WHERE teacher_id = :teacher_id
+            SELECT
+                t.teacher_id,
+                t.name,
+                t.contact,
+                t.email,
+                t.elo,
+                t.education_score,
+                t.max_slots_per_day,
+                t.active,
+                u.profile_image_url
+            FROM teachers t
+            LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
+            WHERE t.teacher_id = :teacher_id
         """),
         {"teacher_id": current_user.teacher_id},
     ).mappings().first()
@@ -47,7 +68,7 @@ def get_my_teacher_profile(
     if not row:
         raise HTTPException(status_code=404, detail="teacher profile not found")
 
-    return dict(row)
+    return {**dict(row), "profile_image_url": build_profile_image_url(row["profile_image_url"])}
 
 
 @router.put("/teachers/{teacher_id}")

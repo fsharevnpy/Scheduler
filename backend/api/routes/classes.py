@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.routes.common import VALID_CLASS_STATUS
+from api.routes.common import VALID_CLASS_STATUS, ensure_classes_day_of_week
 from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_current_user, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
@@ -32,8 +32,10 @@ def get_classes(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_classes_day_of_week(db)
+
     query = """
-        SELECT class_id, class_date, center_id, start_time, end_time,
+        SELECT class_id, day_of_week, center_id, start_time, end_time,
                room_no, teacher_id, status
         FROM classes
     """
@@ -45,7 +47,13 @@ def get_classes(
         query += " WHERE teacher_id = :teacher_id"
         params["teacher_id"] = current_user.teacher_id
 
-    query += " ORDER BY class_date, start_time"
+    query += """
+        ORDER BY CASE day_of_week
+            WHEN 'T2' THEN 1 WHEN 'T3' THEN 2 WHEN 'T4' THEN 3
+            WHEN 'T5' THEN 4 WHEN 'T6' THEN 5 WHEN 'T7' THEN 6
+            ELSE 7
+        END, start_time
+    """
     rows = db.execute(text(query), params).mappings().all()
     return [dict(row) for row in rows]
 
@@ -56,6 +64,8 @@ def create_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_classes_day_of_week(db)
+
     if payload.status not in VALID_CLASS_STATUS:
         raise HTTPException(status_code=400, detail="invalid class status")
 
@@ -86,11 +96,11 @@ def create_class(
     db.execute(
         text("""
             INSERT INTO classes (
-                class_id, class_date, center_id, start_time, end_time,
+                class_id, day_of_week, center_id, start_time, end_time,
                 room_no, teacher_id, status
             )
             VALUES (
-                :class_id, :class_date, :center_id, :start_time, :end_time,
+                :class_id, :day_of_week, :center_id, :start_time, :end_time,
                 :room_no, :teacher_id, :status
             )
         """),
@@ -107,6 +117,8 @@ def update_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_classes_day_of_week(db)
+
     existing = db.execute(
         text("SELECT 1 FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},
@@ -152,6 +164,8 @@ def delete_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_classes_day_of_week(db)
+
     existing = db.execute(
         text("SELECT 1 FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},

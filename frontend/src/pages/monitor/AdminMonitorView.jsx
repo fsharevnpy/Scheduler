@@ -71,6 +71,7 @@ export default function AdminMonitorView({
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
+  const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
   const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
   const [profileForm, setProfileForm] = useState({
@@ -266,7 +267,7 @@ export default function AdminMonitorView({
       </section>
 
       {role === "developer" ? (
-        <BackupManagement apiBase={apiBase} token={token} onStatusChange={(msg) => console.log(msg)} />
+        <BackupManagement apiBase={apiBase} token={token} />
       ) : null}
 
       <section className="dashboard-section">
@@ -329,6 +330,7 @@ export default function AdminMonitorView({
           rows={visibleAttendanceRecords}
           emptyMessage="No attendance records found."
           embedded
+          pageSize={10}
         />
       </section>
 
@@ -360,6 +362,26 @@ export default function AdminMonitorView({
           <DataTable
             title="Teachers"
             columns={[
+              {
+                key: "avatar",
+                label: "Avatar",
+                render: (row) => (
+                  <button
+                    type="button"
+                    className="avatar-preview-button"
+                    onClick={() => setSelectedAvatarTeacher(row)}
+                    aria-label={`View avatar for ${row.name}`}
+                  >
+                    <UserAvatar
+                      apiBase={apiBase}
+                      imageUrl={row.profile_image_url}
+                      name={row.name}
+                      fallbackCode={row.teacher_id}
+                      size="small"
+                    />
+                  </button>
+                ),
+              },
               { key: "teacher_id", label: "Teacher ID" },
               { key: "name", label: "Name" },
               { key: "contact", label: "Phone" },
@@ -428,6 +450,7 @@ export default function AdminMonitorView({
             rows={teachers}
             emptyMessage="No teachers found."
             embedded
+            pageSize={10}
           />
         ) : classes.length === 0 ? (
           <p className="subtle">No classes found.</p>
@@ -443,7 +466,7 @@ export default function AdminMonitorView({
                   title={`${centerLabel} Classes`}
                   columns={[
                     { key: "class_id", label: "Class ID" },
-                    { key: "class_date", label: "Date" },
+                    { key: "day_of_week", label: "Day" },
                     {
                       key: "time",
                       label: "Time",
@@ -456,10 +479,11 @@ export default function AdminMonitorView({
                   rows={centerClasses}
                   emptyMessage="No classes found."
                   embedded
+                  pageSize={5}
                   tableClassName="classes-center-table"
                   colClasses={[
                     "classes-col-id",
-                    "classes-col-date",
+                    "classes-col-day",
                     "classes-col-time",
                     "classes-col-room",
                     "classes-col-teacher",
@@ -493,7 +517,7 @@ export default function AdminMonitorView({
                     <div>
                       <h3>{item.class_id}</h3>
                       <p className="subtle">
-                        {item.class_date} | {item.center_label} | {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
+                        {item.day_of_week} | {item.center_label} | {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                       </p>
                       <p className="subtle">
                         Room {formatValue(item.room_no)} | Current teacher {formatValue(item.teacher_id)} | Status {formatValue(item.status)}
@@ -621,7 +645,9 @@ export default function AdminMonitorView({
               { key: "class_id", label: "Class ID" },
               { key: "center_id", label: "Center" },
               { key: "teacher_name", label: "Teacher" },
-              { key: "request_date", label: "Date" },
+              { key: "assigned_manager_name", label: "Assigned Manager" },
+              { key: "class_day_of_week", label: "Class Day" },
+              { key: "request_date", label: "Request Date" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               {
                 key: "info",
@@ -717,6 +743,10 @@ export default function AdminMonitorView({
                     <strong>{formatValue(selectedLeaveRequest.center_id)}</strong>
                   </div>
                   <div>
+                    <p className="subtle">Class Day</p>
+                    <strong>{formatValue(selectedLeaveRequest.class_day_of_week)}</strong>
+                  </div>
+                  <div>
                     <p className="subtle">Request Date</p>
                     <strong>{formatValue(selectedLeaveRequest.request_date)}</strong>
                   </div>
@@ -784,6 +814,32 @@ export default function AdminMonitorView({
                     <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
                   </div>
                 </div>
+        </FloatingPanel>
+      ) : null}
+
+      {selectedAvatarTeacher ? (
+        <FloatingPanel
+          eyebrow="Teacher Avatar"
+          title={`${selectedAvatarTeacher.teacher_id} - ${selectedAvatarTeacher.name}`}
+          titleId="teacher-avatar-title"
+          onClose={() => setSelectedAvatarTeacher(null)}
+        >
+          <div className="teacher-avatar-verification-panel">
+            <UserAvatar
+              apiBase={apiBase}
+              imageUrl={selectedAvatarTeacher.profile_image_url}
+              name={selectedAvatarTeacher.name}
+              fallbackCode={selectedAvatarTeacher.teacher_id}
+              size="large"
+              className="teacher-avatar-verification-image"
+            />
+            <div className="teacher-avatar-verification-copy">
+              <p className="subtle">Teacher ID</p>
+              <strong>{formatValue(selectedAvatarTeacher.teacher_id)}</strong>
+              <p className="subtle">Name</p>
+              <strong>{formatValue(selectedAvatarTeacher.name)}</strong>
+            </div>
+          </div>
         </FloatingPanel>
       ) : null}
 

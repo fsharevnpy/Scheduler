@@ -6,21 +6,7 @@ import { getRoleTitle } from "../../lib/roles.js";
 import FloatingPanel from "../monitor/FloatingPanel.jsx";
 import PasswordSettingsPanel from "../monitor/PasswordSettingsPanel.jsx";
 import { requestJson } from "../../lib/http.js";
-
-function buildTeacherEventsWebSocketUrl(apiBase, token) {
-  const encodedToken = encodeURIComponent(token);
-  if (/^https?:\/\//i.test(apiBase)) {
-    const url = new URL(apiBase);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/teacher-events/ws`;
-    url.search = `token=${encodedToken}`;
-    return url.toString();
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const basePath = apiBase.startsWith("/") ? apiBase : `/${apiBase}`;
-  return `${protocol}//${window.location.host}${basePath.replace(/\/$/, "")}/teacher-events/ws?token=${encodedToken}`;
-}
+import { buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
 
 function parseProfileEventValue(field, value) {
   if (value === null || value === undefined || value === "") {

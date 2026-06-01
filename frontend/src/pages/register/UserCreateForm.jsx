@@ -99,7 +99,7 @@ export default function UserCreateForm({
                       <option value="">Select class</option>
                       {classes.map((item) => (
                         <option key={item.class_id} value={item.class_id}>
-                          {item.class_id} - {item.class_date} - {item.center_id} - {item.start_time} to {item.end_time}
+                          {item.class_id} - {item.day_of_week} - {item.center_id} - {item.start_time} to {item.end_time}
                         </option>
                       ))}
                     </select>

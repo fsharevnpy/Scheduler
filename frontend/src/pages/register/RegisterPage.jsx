@@ -14,7 +14,7 @@ const EMPTY_PREFERENCE = {
 
 const EMPTY_CLASS_FORM = {
   class_id: "",
-  class_date: "",
+  day_of_week: "",
   center_id: "",
   start_time: "",
   end_time: "",
@@ -67,11 +67,6 @@ function formatTimeDraft(value) {
   }
 
   return `0${digits[0]}:${digits.slice(1, 3)}`;
-}
-
-function getDayCodeFromDate(value) {
-  const date = new Date(`${value}T00:00:00`);
-  return ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][date.getDay()];
 }
 
 export default function RegisterPage({ auth }) {
@@ -193,7 +188,7 @@ export default function RegisterPage({ auth }) {
     try {
       const payload = {
         class_id: classForm.class_id.trim(),
-        class_date: classForm.class_date,
+        day_of_week: classForm.day_of_week,
         center_id: classForm.center_id,
         start_time: classForm.start_time,
         end_time: classForm.end_time,
@@ -264,7 +259,7 @@ export default function RegisterPage({ auth }) {
 
           preferences.push({
             preferred_center_id: selectedClass.center_id,
-            day_of_week: getDayCodeFromDate(selectedClass.class_date),
+            day_of_week: selectedClass.day_of_week,
             preferred_start_time: selectedClass.start_time,
             preferred_end_time: selectedClass.end_time,
           });
@@ -402,13 +397,21 @@ export default function RegisterPage({ auth }) {
             </label>
 
             <label className="field">
-              <span>Date</span>
-              <input
-                value={classForm.class_date}
-                onChange={(event) => updateClassField("class_date", event.target.value)}
-                type="date"
+              <span>Day</span>
+              <select
+                value={classForm.day_of_week}
+                onChange={(event) => updateClassField("day_of_week", event.target.value)}
                 required
-              />
+              >
+                <option value="">Select day</option>
+                <option value="T2">T2</option>
+                <option value="T3">T3</option>
+                <option value="T4">T4</option>
+                <option value="T5">T5</option>
+                <option value="T6">T6</option>
+                <option value="T7">T7</option>
+                <option value="CN">CN</option>
+              </select>
             </label>
 
             <label className="field">
@@ -499,7 +502,7 @@ export default function RegisterPage({ auth }) {
             title="Classes"
             columns={[
               { key: "class_id", label: "Class ID" },
-              { key: "class_date", label: "Date" },
+              { key: "day_of_week", label: "Day" },
               { key: "center_id", label: "Center" },
               { key: "room_no", label: "Room" },
               { key: "start_time", label: "Start" },

@@ -69,7 +69,7 @@ VALUES
 
 INSERT INTO classes (
     class_id,
-    class_date,
+    day_of_week,
     center_id,
     start_time,
     end_time,
@@ -78,12 +78,12 @@ INSERT INTO classes (
     status
 )
 VALUES
-    ('CL001', '2026-03-23', 'CS1', '17:00', '18:30', 1, 'GV0', 'NEED_REPLACEMENT'),
-    ('CL002', '2026-03-23', 'CS1', '18:30', '20:00', 2, 'GV1', 'ASSIGNED'),
-    ('CL003', '2026-03-24', 'CS2', '17:00', '18:30', 1, 'GV3', 'NEED_REPLACEMENT'),
-    ('CL004', '2026-03-24', 'CS2', '18:30', '20:00', 2, 'GV6', 'ASSIGNED'),
-    ('CL005', '2026-03-25', 'CS3', '17:00', '18:30', 1, 'GV5', 'ASSIGNED'),
-    ('CL006', '2026-03-27', 'CS3', '18:30', '20:00', 2, NULL, 'OPEN');
+    ('CL001', 'T2', 'CS1', '17:00', '18:30', 1, 'GV0', 'NEED_REPLACEMENT'),
+    ('CL002', 'T2', 'CS1', '18:30', '20:00', 2, 'GV1', 'ASSIGNED'),
+    ('CL003', 'T3', 'CS2', '17:00', '18:30', 1, 'GV3', 'NEED_REPLACEMENT'),
+    ('CL004', 'T3', 'CS2', '18:30', '20:00', 2, 'GV6', 'ASSIGNED'),
+    ('CL005', 'T4', 'CS3', '17:00', '18:30', 1, 'GV5', 'ASSIGNED'),
+    ('CL006', 'T6', 'CS3', '18:30', '20:00', 2, NULL, 'OPEN');
 
 INSERT INTO leave_requests (
     request_id,

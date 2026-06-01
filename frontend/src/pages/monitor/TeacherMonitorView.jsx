@@ -52,6 +52,7 @@ function getScoreBand(score) {
 export default function TeacherMonitorView({
   highlightedClasses,
   attendanceRecords,
+  leaveRequestManagers = [],
   leaveRequests,
   unassignedCount,
   pendingAction,
@@ -64,6 +65,7 @@ export default function TeacherMonitorView({
   const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
   const [isAttendancePanelOpen, setIsAttendancePanelOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedManagerCode, setSelectedManagerCode] = useState("");
   const [reason, setReason] = useState("");
   const [attendanceError, setAttendanceError] = useState("");
   const [attendanceView, setAttendanceView] = useState("current");
@@ -110,13 +112,14 @@ export default function TeacherMonitorView({
 
     const success = await onCreateLeaveRequest({
       classId: selectedClass.class_id,
-      requestDate: selectedClass.class_date,
       reason: trimmedReason,
+      assignedManagerCode: selectedManagerCode || leaveRequestManagers[0]?.user_code || "",
     });
 
     if (success) {
       setIsCreatePanelOpen(false);
       setSelectedClassId("");
+      setSelectedManagerCode("");
       setReason("");
     }
   }
@@ -251,6 +254,7 @@ export default function TeacherMonitorView({
           rows={visibleAttendanceRecords}
           emptyMessage="No attendance records found."
           embedded
+          pageSize={10}
         />
       </section>
 
@@ -305,9 +309,10 @@ export default function TeacherMonitorView({
             <button
               type="button"
               className="table-action-button"
-              disabled={creatableClasses.length === 0}
+              disabled={creatableClasses.length === 0 || leaveRequestManagers.length === 0}
               onClick={() => {
                 setSelectedClassId(creatableClasses[0]?.class_id || "");
+                setSelectedManagerCode(leaveRequestManagers[0]?.user_code || "");
                 setReason("");
                 setIsCreatePanelOpen(true);
               }}
@@ -322,6 +327,9 @@ export default function TeacherMonitorView({
             No eligible assigned classes are available for a new leave request right now.
           </p>
         ) : null}
+        {leaveRequestManagers.length === 0 ? (
+          <p className="subtle">No active manager is available to review leave requests right now.</p>
+        ) : null}
 
         <DataTable
           title="My Leave Requests"
@@ -329,7 +337,9 @@ export default function TeacherMonitorView({
             { key: "request_id", label: "Request ID" },
             { key: "class_id", label: "Class ID" },
             { key: "center_id", label: "Center" },
-            { key: "request_date", label: "Date" },
+            { key: "assigned_manager_name", label: "Review Manager" },
+            { key: "class_day_of_week", label: "Class Day" },
+            { key: "request_date", label: "Request Date" },
             { key: "reason", label: "Reason" },
             {
               key: "status",
@@ -410,7 +420,22 @@ export default function TeacherMonitorView({
                     >
                       {creatableClasses.map((item) => (
                         <option key={item.class_id} value={item.class_id}>
-                          {item.class_id} | {item.class_date} | {item.center_label}
+                          {item.class_id} | {item.day_of_week} | {item.center_label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>Review Manager</span>
+                    <select
+                      value={selectedManagerCode}
+                      onChange={(event) => setSelectedManagerCode(event.target.value)}
+                      required
+                    >
+                      {leaveRequestManagers.map((manager) => (
+                        <option key={manager.user_code} value={manager.user_code}>
+                          {manager.display_name} ({manager.user_code})
                         </option>
                       ))}
                     </select>
@@ -419,8 +444,8 @@ export default function TeacherMonitorView({
                   {selectedClass ? (
                     <div className="floating-panel-summary">
                       <div className="floating-panel-summary-row">
-                        <span>Date</span>
-                        <strong>{formatValue(selectedClass.class_date)}</strong>
+                        <span>Day</span>
+                        <strong>{formatValue(selectedClass.day_of_week)}</strong>
                       </div>
                       <div className="floating-panel-summary-row">
                         <span>Time</span>
@@ -454,7 +479,12 @@ export default function TeacherMonitorView({
                     <button
                       type="submit"
                       className="table-action-button"
-                      disabled={!selectedClass || !reason.trim() || pendingAction === "create-leave-request"}
+                      disabled={
+                        !selectedClass ||
+                        !selectedManagerCode ||
+                        !reason.trim() ||
+                        pendingAction === "create-leave-request"
+                      }
                     >
                       {pendingAction === "create-leave-request" ? "Creating..." : "Create request"}
                     </button>

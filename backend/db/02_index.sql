@@ -7,20 +7,24 @@ CREATE INDEX IF NOT EXISTS idx_teacher_preferences_teacher
 CREATE INDEX IF NOT EXISTS idx_teacher_preferences_center_day
     ON teacher_preferences(preferred_center_id, day_of_week);
 
-CREATE INDEX IF NOT EXISTS idx_classes_date
-    ON classes(class_date);
+CREATE INDEX IF NOT EXISTS idx_classes_day
+    ON classes(day_of_week);
 
-CREATE INDEX IF NOT EXISTS idx_classes_teacher_date
-    ON classes(teacher_id, class_date);
+CREATE INDEX IF NOT EXISTS idx_classes_teacher_day
+    ON classes(teacher_id, day_of_week);
 
-CREATE INDEX IF NOT EXISTS idx_classes_center_date
-    ON classes(center_id, class_date);
+CREATE INDEX IF NOT EXISTS idx_classes_center_day
+    ON classes(center_id, day_of_week);
 
 CREATE INDEX IF NOT EXISTS idx_leave_requests_class
     ON leave_requests(class_id);
 
 CREATE INDEX IF NOT EXISTS idx_leave_requests_teacher
     ON leave_requests(teacher_id);
+
+CREATE INDEX IF NOT EXISTS idx_leave_requests_assigned_manager_unread
+    ON leave_requests(assigned_manager_code, manager_read_at, created_at DESC)
+    WHERE assigned_manager_code IS NOT NULL AND manager_read_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_attendance_records_user_time
     ON attendance_records(user_code, checked_at DESC);

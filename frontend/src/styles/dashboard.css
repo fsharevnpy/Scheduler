@@ -370,6 +370,22 @@
   background: rgba(180, 79, 33, 0.04);
 }
 
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0 2px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.table-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .table-actions {
   display: flex;
   flex-wrap: wrap;
@@ -385,6 +401,44 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.avatar-preview-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.avatar-preview-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.teacher-avatar-verification-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 320px) minmax(180px, 1fr);
+  gap: 22px;
+  align-items: center;
+}
+
+.teacher-avatar-verification-image {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 24px;
+  box-shadow: 0 18px 36px rgba(90, 54, 28, 0.16);
+}
+
+.teacher-avatar-verification-copy {
+  display: grid;
+  gap: 8px;
 }
 
 .profile-image-panel {
