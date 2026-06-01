@@ -189,6 +189,11 @@
     padding-top: 0;
   }
 
+  .teacher-score-metric,
+  .teacher-score-metric:first-child {
+    padding: 12px 14px;
+  }
+
   .status-pill {
     min-width: 0;
     width: fit-content;

@@ -77,7 +77,7 @@
 
 .teacher-summary-card {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -94,6 +94,36 @@
 
 .teacher-summary-metric h2 {
   margin-bottom: 0;
+}
+
+.teacher-score-metric {
+  border-radius: 16px;
+  padding: 12px 14px;
+  border-left: 0;
+}
+
+.teacher-score-metric:first-child {
+  padding-left: 14px;
+}
+
+.teacher-score-critical {
+  background: rgba(164, 55, 45, 0.13);
+  color: #8f261f;
+}
+
+.teacher-score-low {
+  background: rgba(180, 79, 33, 0.14);
+  color: var(--accent-dark);
+}
+
+.teacher-score-medium {
+  background: rgba(190, 145, 42, 0.16);
+  color: #8a6417;
+}
+
+.teacher-score-high {
+  background: rgba(42, 123, 86, 0.12);
+  color: var(--success);
 }
 
 .dashboard-section {
@@ -161,6 +191,78 @@
   background: rgba(180, 79, 33, 0.14);
   border-color: rgba(180, 79, 33, 0.24);
   color: var(--accent-dark);
+}
+
+.score-button {
+  border: 1px solid rgba(42, 123, 86, 0.18);
+  border-radius: 999px;
+  background: rgba(42, 123, 86, 0.1);
+  color: var(--success);
+  padding: 6px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.score-button:hover {
+  background: rgba(42, 123, 86, 0.16);
+}
+
+.score-event-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.score-event-item {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgba(31, 27, 23, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 12px;
+}
+
+.score-event-item span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.score-event-item p {
+  margin: 0;
+}
+
+.score-summary-grid {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.score-panel-form {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.score-panel-status {
+  margin-bottom: 0;
+}
+
+.score-history-section {
+  padding-top: 2px;
+}
+
+.score-history-toggle {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  padding: 12px 14px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+
+.score-history-toggle:hover {
+  background: rgba(180, 79, 33, 0.08);
 }
 
 .section-head h2,

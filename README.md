@@ -126,6 +126,8 @@ Available after reseeding the database:
 - `2603011 / manager123` for `manager`
 - `2603012 / manager123` for `manager`
 - `2603013 / manager123` for `manager`
+- `2603015 / manager123` for `manager`
+- `2603016 / manager123` for `manager`
 - `2603002 / teacher123` for `teacher`
 - `2603003 / teacher123` for `teacher`
 - `2603004 / teacher123` for `teacher`
@@ -135,6 +137,7 @@ Available after reseeding the database:
 - `2603008 / teacher123` for `teacher`
 - `2603009 / teacher123` for `teacher`
 - `2603010 / teacher123` for `teacher`
+- `2603014 / teacher123` for `teacher`
 
 Use `user_code` and password to sign in.
 Each account also has a `display_name` used across the UI.

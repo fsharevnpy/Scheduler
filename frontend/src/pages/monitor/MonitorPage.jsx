@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import NotificationBell from "../../components/NotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
 import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
+import { formatDateTimeValue } from "./monitorUtils.js";
 
 function generateLeaveRequestId(leaveRequests) {
   const maxSequence = leaveRequests.reduce((currentMax, item) => {
@@ -32,6 +34,8 @@ export default function MonitorPage({ auth }) {
     attendanceRecords: [],
     resetRequests: [],
     users: [],
+    teacherScores: [],
+    unreadScoreEvents: [],
   });
   const [actionStatus, setActionStatus] = useState({ kind: "", message: "" });
   const [pendingAction, setPendingAction] = useState("");
@@ -66,6 +70,7 @@ export default function MonitorPage({ auth }) {
           requestJson(`${auth.apiBase}/classes`, { headers }),
           requestJson(`${auth.apiBase}/leave-requests`, { headers }),
           requestJson(`${auth.apiBase}/attendance-records`, { headers }),
+          requestJson(`${auth.apiBase}/teacher-scores`, { headers }),
         ];
 
         if (user.role === "manager" || user.role === "developer") {
@@ -73,12 +78,34 @@ export default function MonitorPage({ auth }) {
           requests.push(requestJson(`${auth.apiBase}/password-reset-requests`, { headers }));
         }
 
+        if (user.role === "teacher") {
+          requests.push(requestJson(`${auth.apiBase}/teacher-score-events/unread`, { headers }));
+        }
+
         if (user.role === "developer") {
           requests.push(requestJson(`${auth.apiBase}/users`, { headers }));
         }
 
         const results = await Promise.all(requests);
-        const [centers, classes, leaveRequests, attendanceRecords, teachers = [], resetRequests = [], users = []] = results;
+        const [centers, classes, leaveRequests, attendanceRecords, teacherScores] = results;
+        let resultIndex = 5;
+        let teachers = [];
+        let resetRequests = [];
+        let unreadScoreEvents = [];
+        let users = [];
+
+        if (user.role === "manager" || user.role === "developer") {
+          teachers = results[resultIndex++] || [];
+          resetRequests = results[resultIndex++] || [];
+        }
+
+        if (user.role === "teacher") {
+          unreadScoreEvents = results[resultIndex++] || [];
+        }
+
+        if (user.role === "developer") {
+          users = results[resultIndex++] || [];
+        }
 
         if (!cancelled) {
           setState({
@@ -91,6 +118,8 @@ export default function MonitorPage({ auth }) {
             attendanceRecords,
             resetRequests,
             users,
+            teacherScores,
+            unreadScoreEvents,
           });
         }
       } catch (error) {
@@ -105,6 +134,8 @@ export default function MonitorPage({ auth }) {
             attendanceRecords: [],
             resetRequests: [],
             users: [],
+            teacherScores: [],
+            unreadScoreEvents: [],
           });
         }
       }
@@ -376,6 +407,38 @@ export default function MonitorPage({ auth }) {
     );
   }
 
+  async function reloadTeacherScores() {
+    const teacherScores = await requestJson(`${auth.apiBase}/teacher-scores`, { headers });
+    setState((current) => ({ ...current, teacherScores }));
+  }
+
+  async function createTeacherScoreEvent(teacherId, payload) {
+    return runAction(
+      `score-${teacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/teachers/${teacherId}/score-events`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      `Updated score for ${teacherId}.`,
+      () => {
+        reloadTeacherScores();
+      },
+    );
+  }
+
+  async function markScoreEventRead(eventId) {
+    await requestJson(`${auth.apiBase}/teacher-score-events/${eventId}/read`, {
+      method: "PUT",
+      headers,
+    });
+    setState((current) => ({
+      ...current,
+      unreadScoreEvents: current.unreadScoreEvents.filter((item) => item.event_id !== eventId),
+    }));
+  }
+
   const unassignedClasses = state.classes.filter((item) => item.status !== "ASSIGNED");
   const managerUsers = state.users.filter((item) => item.role === "manager");
   const centersById = new Map(state.centers.map((item) => [item.center_id, item]));
@@ -402,6 +465,21 @@ export default function MonitorPage({ auth }) {
   const assignmentQueue = classesWithCenterAndTeacher.filter(
     (item) => item.status === "OPEN" || item.status === "NEED_REPLACEMENT",
   );
+  const currentTeacherScore =
+    state.teacherScores.find((item) => item.teacher_id === user.teacher_id) || {
+      score: 100,
+      max_score: 110,
+      base_score: 100,
+      event_count: 0,
+    };
+  const notifications = state.unreadScoreEvents.map((item) => ({
+    id: item.event_id,
+    title: "Score updated",
+    message: `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
+    evidenceUrl: item.evidence_url,
+    createdAt: formatDateTimeValue(item.created_at),
+    unread: !item.teacher_read_at,
+  }));
 
   return (
     <main className="dashboard-shell">
@@ -417,6 +495,7 @@ export default function MonitorPage({ auth }) {
             </p>
           </div>
           <div className="dashboard-actions">
+            <NotificationBell notifications={notifications} onMarkRead={user.role === "teacher" ? markScoreEventRead : undefined} />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}
@@ -459,6 +538,7 @@ export default function MonitorPage({ auth }) {
             unassignedCount={unassignedClasses.length}
             pendingAction={pendingAction}
             actionStatus={actionStatus}
+            teacherScore={currentTeacherScore}
             onCheckInAttendance={checkInAttendance}
             onCreateLeaveRequest={createLeaveRequest}
             onCancelLeaveRequest={cancelLeaveRequest}
@@ -477,6 +557,7 @@ export default function MonitorPage({ auth }) {
             replacementSuggestions={replacementSuggestions}
             resetRequests={state.resetRequests}
             role={user.role}
+            teacherScores={state.teacherScores}
             teachers={state.teachers}
             onApproveLeaveRequest={approveLeaveRequest}
             onAssignReplacement={assignReplacement}
@@ -484,6 +565,7 @@ export default function MonitorPage({ auth }) {
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
             onUpdateTeacherActive={updateTeacherActive}
+            onCreateTeacherScoreEvent={createTeacherScoreEvent}
           />
         )}
       </section>

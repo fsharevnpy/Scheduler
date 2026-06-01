@@ -25,7 +25,8 @@ VALUES
     ('GV5', 'Nguyễn Tiến Hiếu',      '0962450531', 'gv5@gmail.com', 1821, 8.7, 3, TRUE),
     ('GV6', 'Nguyễn Thị Thuý Quyên', '0794337990', 'gv6@gmail.com', 1772, 8.1, 2, TRUE),
     ('GV7', 'Đỗ Đinh Hồng Chinh',    '0949217359', 'gv7@gmail.com', 1810, 8.9, 2, TRUE),
-    ('GV8', 'Nguyễn Trí Thịnh',      '0913699745', 'gv8@gmail.com', 1738, 7.6, 2, TRUE);
+    ('GV8', 'Nguyễn Trí Thịnh',      '0913699745', 'gv8@gmail.com', 1738, 7.6, 2, TRUE),
+    ('GV9', 'Nguyễn Văn Khoa',       '0325944465', 'nvkhoa2711@gmail.com', 2200, NULL, 4, TRUE);
 
 INSERT INTO users (user_id, user_code, display_name, profile_image_url, password_hash, role, teacher_id, active)
 VALUES
@@ -34,6 +35,8 @@ VALUES
     ('e0792c76-9b15-4ee9-8605-4256a920c7fc', '2603011', 'Võ Dương Xuân Nguyên', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
     ('3495c850-59a4-4c4a-8914-b8522ff617a6', '2603012', 'Lê Văn Tiến Đạt', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
     ('ff718af2-b19b-4b2b-9662-6ee8b0f64243', '2603013', 'Lộc Gia Tiểu Bình', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
+    ('c72434cc-1f6f-4093-bbe7-cce61e6cb4b1', '2603015', 'Nguyễn Ngọc Thùy Trang', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
+    ('4b5eee0b-31bf-4280-b413-f614680a7e7a', '2603016', 'Vũ Quang Quyền', NULL, 'scrypt$16384$8$1$FBvsRVaWrLAwhQX5yLovyg$BfKokEw2tas0r7vv01LZEGq4Ay3ZBnO2J-q839hsNxM', 'manager', NULL, TRUE),
     ('9fd30d6b-ad68-4322-afb3-b19b88d52b45', '2603002', 'Nguyễn Công Thành', NULL, 'scrypt$16384$8$1$1nqFsW8PL_xjPQ_OLl5yKg$PeWBqgSAy6XaozV62kjQZmrtrNGz88cnD2z1zKBahU4', 'teacher', 'GV0', TRUE),
     ('f4dc53a4-b8e6-4d2e-81b6-0e2de3e514df', '2603003', 'Nguyễn Đình Ngọc Ân', NULL, 'scrypt$16384$8$1$j4plORlhpYnjPRqw6m7DrA$pgPixJJ5cGUyEihG1X0zVwhfB5IM7o8EYItN_Aug3ms', 'teacher', 'GV1', TRUE),
     ('33e62206-bf08-44ff-a4ee-e6b70dc4a709', '2603004', 'Vũ Hoàng Nhật Trường', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV2', TRUE),
@@ -42,7 +45,8 @@ VALUES
     ('e92ba56f-c795-4ae8-9b7f-8cc8777fe38a', '2603007', 'Nguyễn Tiến Hiếu', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV5', TRUE),
     ('f76189a3-2a5d-4f76-97a4-3e1d4f493418', '2603008', 'Nguyễn Thị Thuý Quyên', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV6', TRUE),
     ('1b0f4b9d-4d68-48fb-8cda-5d7588475fb2', '2603009', 'Đỗ Đinh Hồng Chinh', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV7', TRUE),
-    ('2c1f5c0e-5e79-49ac-9d0b-6e8699586ac3', '2603010', 'Nguyễn Trí Thịnh', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV8', TRUE);
+    ('2c1f5c0e-5e79-49ac-9d0b-6e8699586ac3', '2603010', 'Nguyễn Trí Thịnh', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV8', TRUE),
+    ('71175625-5202-451a-a86f-48eae681bd96', '2603014', 'Nguyễn Văn Khoa', NULL, 'scrypt$16384$8$1$Hijf9CL_6B5A2JiSpC0Ffg$_TIrKtqy_blFHduVFe6LueO66STHV5c8Bt4Zl78l6n4', 'teacher', 'GV9', TRUE);
 
 INSERT INTO teacher_preferences (
     teacher_id,

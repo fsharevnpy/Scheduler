@@ -127,3 +127,42 @@ class AttendanceCheckInPayload(BaseModel):
         if value < 0:
             raise ValueError("accuracy_meters must be at least 0")
         return value
+
+
+class TeacherScoreEventCreate(BaseModel):
+    score_month: date
+    delta: int
+    reason: str
+    evidence_text: str
+    evidence_url: Optional[str] = None
+
+    @field_validator("delta")
+    @classmethod
+    def validate_delta(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("delta must not be zero")
+        return value
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason is required")
+        return value
+
+    @field_validator("evidence_text")
+    @classmethod
+    def validate_evidence_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("evidence_text is required")
+        return value
+
+    @field_validator("evidence_url")
+    @classmethod
+    def validate_evidence_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        return value or None

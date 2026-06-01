@@ -33,6 +33,22 @@ function filterTeacherAttendanceByView(attendanceRecords, view) {
   return attendanceRecords;
 }
 
+function getScoreBand(score) {
+  if (score < 40) {
+    return "critical";
+  }
+
+  if (score < 60) {
+    return "low";
+  }
+
+  if (score < 85) {
+    return "medium";
+  }
+
+  return "high";
+}
+
 export default function TeacherMonitorView({
   highlightedClasses,
   attendanceRecords,
@@ -40,6 +56,7 @@ export default function TeacherMonitorView({
   unassignedCount,
   pendingAction,
   actionStatus,
+  teacherScore,
   onCheckInAttendance,
   onCreateLeaveRequest,
   onCancelLeaveRequest,
@@ -75,6 +92,9 @@ export default function TeacherMonitorView({
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const visibleAttendanceRecords = filterTeacherAttendanceByView(attendanceRecords, attendanceView);
+  const scoreValue = teacherScore?.score ?? 100;
+  const scoreMax = teacherScore?.max_score ?? 110;
+  const scoreBand = getScoreBand(scoreValue);
 
   async function handleCreateLeaveRequest(event) {
     event.preventDefault();
@@ -135,6 +155,10 @@ export default function TeacherMonitorView({
     <>
       <section className="monitor-grid monitor-grid-summary">
         <article className="info-card teacher-summary-card">
+          <div className={`teacher-summary-metric teacher-score-metric teacher-score-${scoreBand}`}>
+            <p className="eyebrow">Monthly Score</p>
+            <h2>{scoreValue}/{scoreMax}</h2>
+          </div>
           <div className="teacher-summary-metric">
             <p className="eyebrow">Unassigned</p>
             <h2>{unassignedCount}</h2>

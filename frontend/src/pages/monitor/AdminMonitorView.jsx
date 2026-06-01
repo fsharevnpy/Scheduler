@@ -57,6 +57,7 @@ export default function AdminMonitorView({
   replacementSuggestions,
   resetRequests,
   role,
+  teacherScores,
   teachers,
   classes,
   onApproveLeaveRequest,
@@ -65,9 +66,21 @@ export default function AdminMonitorView({
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
   onUpdateTeacherActive,
+  onCreateTeacherScoreEvent,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
+  const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
+  const [scoreEvents, setScoreEvents] = useState([]);
+  const [scoreForm, setScoreForm] = useState({
+    delta: "",
+    reason: "",
+    evidence_text: "",
+    evidence_url: "",
+  });
+  const [scorePanelStatus, setScorePanelStatus] = useState({ kind: "", message: "" });
+  const [isScoreEventsLoading, setIsScoreEventsLoading] = useState(false);
+  const [isScoreHistoryVisible, setIsScoreHistoryVisible] = useState(false);
   const [resourceView, setResourceView] = useState("teachers");
   const [requestView, setRequestView] = useState("leave");
   const [attendanceView, setAttendanceView] = useState("current");
@@ -94,6 +107,76 @@ export default function AdminMonitorView({
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const visibleAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
+  const scoresByTeacherId = new Map(teacherScores.map((item) => [item.teacher_id, item]));
+
+  async function openScorePanel(teacher) {
+    setSelectedScoreTeacher(teacher);
+    setScoreForm({ delta: "", reason: "", evidence_text: "", evidence_url: "" });
+    setScorePanelStatus({ kind: "", message: "" });
+    setScoreEvents([]);
+    setIsScoreHistoryVisible(false);
+  }
+
+  async function loadScoreEvents(teacher) {
+    setIsScoreEventsLoading(true);
+
+    try {
+      const data = await fetch(`${apiBase}/teachers/${teacher.teacher_id}/score-events`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }).then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.detail || "Failed to load score events");
+        }
+        return payload;
+      });
+      setScoreEvents(data);
+    } catch (error) {
+      setScoreEvents([]);
+      setScorePanelStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsScoreEventsLoading(false);
+    }
+  }
+
+  async function toggleScoreHistory() {
+    if (isScoreHistoryVisible) {
+      setIsScoreHistoryVisible(false);
+      return;
+    }
+
+    setIsScoreHistoryVisible(true);
+    if (selectedScoreTeacher) {
+      await loadScoreEvents(selectedScoreTeacher);
+    }
+  }
+
+  async function handleScoreSubmit(event) {
+    event.preventDefault();
+    if (!selectedScoreTeacher) {
+      return;
+    }
+
+    const success = await onCreateTeacherScoreEvent(selectedScoreTeacher.teacher_id, {
+      score_month: new Date().toISOString().slice(0, 10),
+      delta: Number(scoreForm.delta),
+      reason: scoreForm.reason,
+      evidence_text: scoreForm.evidence_text,
+      evidence_url: scoreForm.evidence_url || null,
+    });
+
+    if (!success) {
+      return;
+    }
+
+    setScoreForm({ delta: "", reason: "", evidence_text: "", evidence_url: "" });
+    setScorePanelStatus({ kind: "success", message: "Score event created." });
+    if (isScoreHistoryVisible) {
+      await loadScoreEvents(selectedScoreTeacher);
+    }
+  }
 
   return (
     <>
@@ -173,8 +256,11 @@ export default function AdminMonitorView({
             { key: "user_code", label: "User Code" },
             { key: "teacher_id", label: "Teacher ID" },
             { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
-            { key: "latitude", label: "Latitude" },
-            { key: "longitude", label: "Longitude" },
+            {
+              key: "nearest_center_name",
+              label: "Location",
+              render: (row) => (row.status === "VALID" ? row.nearest_center_name || "Nearest center" : "INVALID"),
+            },
             {
               key: "status",
               label: "Status",
@@ -241,6 +327,18 @@ export default function AdminMonitorView({
                 key: "max_slots_per_day",
                 label: <span className="table-value-center">Max Slots</span>,
                 render: (row) => <span className="table-value-center">{formatValue(row.max_slots_per_day)}</span>,
+              },
+              {
+                key: "monthly_score",
+                label: "Monthly Score",
+                render: (row) => {
+                  const score = scoresByTeacherId.get(row.teacher_id) || { score: 100, max_score: 110 };
+                  return (
+                    <button type="button" className="score-button" onClick={() => openScorePanel(row)}>
+                      {score.score}/{score.max_score}
+                    </button>
+                  );
+                },
               },
               {
                 key: "active",
@@ -617,6 +715,110 @@ export default function AdminMonitorView({
                     <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
                   </div>
                 </div>
+        </FloatingPanel>
+      ) : null}
+
+      {selectedScoreTeacher ? (
+        <FloatingPanel
+          eyebrow="Teacher Score"
+          title={`${selectedScoreTeacher.teacher_id} - ${selectedScoreTeacher.name}`}
+          titleId="teacher-score-title"
+          onClose={() => setSelectedScoreTeacher(null)}
+        >
+          {(() => {
+            const score = scoresByTeacherId.get(selectedScoreTeacher.teacher_id) || {
+              score: 100,
+              max_score: 110,
+              event_count: 0,
+            };
+
+            return (
+              <>
+                <div className="floating-panel-grid score-summary-grid">
+                  <div>
+                    <p className="subtle">Monthly Score</p>
+                    <strong>{score.score}/{score.max_score}</strong>
+                  </div>
+                  <div>
+                    <p className="subtle">Events</p>
+                    <strong>{score.event_count}</strong>
+                  </div>
+                </div>
+
+                <form className="auth-form compact score-panel-form" onSubmit={handleScoreSubmit}>
+                  <label className="field">
+                    <span>Delta</span>
+                    <input
+                      value={scoreForm.delta}
+                      onChange={(event) => setScoreForm((current) => ({ ...current, delta: event.target.value }))}
+                      type="number"
+                      placeholder="-5 or 3"
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Reason</span>
+                    <input
+                      value={scoreForm.reason}
+                      onChange={(event) => setScoreForm((current) => ({ ...current, reason: event.target.value }))}
+                      type="text"
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Evidence Text</span>
+                    <textarea
+                      value={scoreForm.evidence_text}
+                      onChange={(event) => setScoreForm((current) => ({ ...current, evidence_text: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Evidence URL</span>
+                    <input
+                      value={scoreForm.evidence_url}
+                      onChange={(event) => setScoreForm((current) => ({ ...current, evidence_url: event.target.value }))}
+                      type="url"
+                    />
+                  </label>
+                  <button className="table-action-button" type="submit" disabled={pendingAction === `score-${selectedScoreTeacher.teacher_id}`}>
+                    {pendingAction === `score-${selectedScoreTeacher.teacher_id}` ? "Saving..." : "Save score event"}
+                  </button>
+                </form>
+
+                <div className={`status score-panel-status ${scorePanelStatus.kind}`.trim()}>{scorePanelStatus.message}</div>
+
+                <div className="floating-panel-section score-history-section">
+                  <button type="button" className="score-history-toggle" onClick={toggleScoreHistory}>
+                    {isScoreHistoryVisible ? "Hide Score History" : "Show Score History"}
+                  </button>
+                  {isScoreHistoryVisible ? (
+                    isScoreEventsLoading ? (
+                      <p className="subtle">Loading score events...</p>
+                    ) : scoreEvents.length === 0 ? (
+                      <p className="subtle">No score events this month.</p>
+                    ) : (
+                      <div className="score-event-list">
+                        {scoreEvents.map((item) => (
+                          <article className="score-event-item" key={item.event_id}>
+                            <strong>{item.delta > 0 ? "+" : ""}{item.delta} points</strong>
+                            <span>{formatDateTimeValue(item.created_at)}</span>
+                            <p>{item.reason}</p>
+                            <p className="subtle">{item.evidence_text}</p>
+                            {item.evidence_url ? (
+                              <a className="inline-link" href={item.evidence_url} target="_blank" rel="noreferrer">
+                                View evidence
+                              </a>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              </>
+            );
+          })()}
         </FloatingPanel>
       ) : null}
 
