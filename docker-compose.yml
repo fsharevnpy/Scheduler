@@ -95,12 +95,12 @@ services:
     entrypoint: >
       sh -c "
       apk add --no-cache postgresql-client bash tzdata;
-      echo 'Backup scheduler started. Daily backup time: 22:00 Asia/Ho_Chi_Minh';
+      echo 'Backup scheduler started. Daily backup time: 23:00 Asia/Ho_Chi_Minh';
       while true; do
-        if [ \"$$(date +%H%M)\" = '2200' ]; then
+        if [ \"$$(date +%H%M)\" = '2300' ]; then
           today=\"$$(date +%F)\";
           if [ \"$$(cat /tmp/last_backup 2>/dev/null)\" != \"$$today\" ]; then
-            /backup.sh /backup && echo \"$$today\" > /tmp/last_backup;
+            bash /backup.sh /backup && echo \"$$today\" > /tmp/last_backup;
           fi;
         fi;
         sleep 60;

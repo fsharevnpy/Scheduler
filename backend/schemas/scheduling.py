@@ -57,6 +57,15 @@ class TeacherUpdate(BaseModel):
             raise ValueError("education_score must be between 0 and 10")
         return value
 
+    @field_validator("max_slots_per_day")
+    @classmethod
+    def validate_max_slots_per_day(cls, value: Optional[int]) -> Optional[int]:
+        if value is None:
+            return value
+        if value <= 0:
+            raise ValueError("max_slots_per_day must be greater than 0")
+        return value
+
 
 class ClassCreate(BaseModel):
     class_id: str

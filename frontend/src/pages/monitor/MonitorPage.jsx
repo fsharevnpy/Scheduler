@@ -407,6 +407,32 @@ export default function MonitorPage({ auth }) {
     );
   }
 
+  async function updateTeacherProfile(teacherId, payload) {
+    return runAction(
+      `teacher-profile-${teacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/teachers/${teacherId}`, {
+          method: "PUT",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      `Updated teacher profile for ${teacherId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          teachers: current.teachers.map((item) =>
+            item.teacher_id === teacherId
+              ? {
+                  ...item,
+                  ...payload,
+                }
+              : item,
+          ),
+        }));
+      },
+    );
+  }
+
   async function reloadTeacherScores() {
     const teacherScores = await requestJson(`${auth.apiBase}/teacher-scores`, { headers });
     setState((current) => ({ ...current, teacherScores }));
@@ -565,6 +591,7 @@ export default function MonitorPage({ auth }) {
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
             onUpdateTeacherActive={updateTeacherActive}
+            onUpdateTeacherProfile={updateTeacherProfile}
             onCreateTeacherScoreEvent={createTeacherScoreEvent}
           />
         )}

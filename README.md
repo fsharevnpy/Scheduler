@@ -153,7 +153,7 @@ Seeded centers:
 ## Backup Management
 
 ### Auto-backup (Daily)
-- Database and MinIO data are automatically backed up at **22:00 (10 PM) daily**
+- Database and MinIO data are automatically backed up at **23:00 (11 PM) daily**
 - Backups are retained for **31 days** and automatically cleaned up
 - Backup files are stored in `/backup` volume
 
@@ -171,7 +171,7 @@ Developer users can manually trigger backups from the Admin Monitor panel:
 
 ### Typical Workflow Before Code Update
 ```bash
-# 1. Backup data (manual or auto at 22:00)
+# 1. Backup data (manual or auto at 23:00)
 # 2. Update source code
 docker compose up -d --build backend
 docker compose restart gateway

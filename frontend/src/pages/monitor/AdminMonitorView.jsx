@@ -66,11 +66,17 @@ export default function AdminMonitorView({
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
   onUpdateTeacherActive,
+  onUpdateTeacherProfile,
   onCreateTeacherScoreEvent,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
+  const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
   const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
+  const [profileForm, setProfileForm] = useState({
+    value: "",
+  });
+  const [profilePanelStatus, setProfilePanelStatus] = useState({ kind: "", message: "" });
   const [scoreEvents, setScoreEvents] = useState([]);
   const [scoreForm, setScoreForm] = useState({
     delta: "",
@@ -109,6 +115,30 @@ export default function AdminMonitorView({
   const visibleAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
   const scoresByTeacherId = new Map(teacherScores.map((item) => [item.teacher_id, item]));
 
+  const profileEditMeta = {
+    elo: {
+      label: "ELO",
+      inputProps: { type: "number", min: "0", required: true },
+      normalize: (value) => Number(value),
+    },
+    education_score: {
+      label: "Education",
+      inputProps: { type: "number", min: "0", max: "10", step: "0.1", placeholder: "0 - 10" },
+      normalize: (value) => (value === "" ? null : Number(value)),
+    },
+    max_slots_per_day: {
+      label: "Max Slots / Day",
+      inputProps: { type: "number", min: "1", required: true },
+      normalize: (value) => Number(value),
+    },
+  };
+
+  function openProfilePanel(teacher, field) {
+    setSelectedProfileEdit({ teacher, field });
+    setProfileForm({ value: teacher[field] ?? "" });
+    setProfilePanelStatus({ kind: "", message: "" });
+  }
+
   async function openScorePanel(teacher) {
     setSelectedScoreTeacher(teacher);
     setScoreForm({ delta: "", reason: "", evidence_text: "", evidence_url: "" });
@@ -139,6 +169,27 @@ export default function AdminMonitorView({
     } finally {
       setIsScoreEventsLoading(false);
     }
+  }
+
+  async function handleProfileSubmit(event) {
+    event.preventDefault();
+    if (!selectedProfileEdit) {
+      return;
+    }
+
+    const { teacher, field } = selectedProfileEdit;
+    const meta = profileEditMeta[field];
+    const payload = {
+      [field]: meta.normalize(profileForm.value),
+    };
+
+    const success = await onUpdateTeacherProfile(teacher.teacher_id, payload);
+    if (!success) {
+      return;
+    }
+
+    setProfilePanelStatus({ kind: "success", message: `${meta.label} updated.` });
+    setSelectedProfileEdit((current) => (current ? { ...current, teacher: { ...current.teacher, ...payload } } : current));
   }
 
   async function toggleScoreHistory() {
@@ -316,17 +367,35 @@ export default function AdminMonitorView({
               {
                 key: "elo",
                 label: <span className="table-value-center">ELO</span>,
-                render: (row) => <span className="table-value-center">{formatValue(row.elo)}</span>,
+                render: (row) => (
+                  <span className="table-value-center">
+                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "elo")}>
+                      {formatValue(row.elo)}
+                    </button>
+                  </span>
+                ),
               },
               {
                 key: "education_score",
                 label: <span className="table-value-center">Education</span>,
-                render: (row) => <span className="table-value-center">{formatValue(row.education_score)}</span>,
+                render: (row) => (
+                  <span className="table-value-center">
+                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "education_score")}>
+                      {formatValue(row.education_score)}
+                    </button>
+                  </span>
+                ),
               },
               {
                 key: "max_slots_per_day",
                 label: <span className="table-value-center">Max Slots</span>,
-                render: (row) => <span className="table-value-center">{formatValue(row.max_slots_per_day)}</span>,
+                render: (row) => (
+                  <span className="table-value-center">
+                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "max_slots_per_day")}>
+                      {formatValue(row.max_slots_per_day)}
+                    </button>
+                  </span>
+                ),
               },
               {
                 key: "monthly_score",
@@ -715,6 +784,38 @@ export default function AdminMonitorView({
                     <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
                   </div>
                 </div>
+        </FloatingPanel>
+      ) : null}
+
+      {selectedProfileEdit ? (
+        <FloatingPanel
+          eyebrow="Teacher Profile"
+          title={`${profileEditMeta[selectedProfileEdit.field].label} | ${selectedProfileEdit.teacher.teacher_id} - ${selectedProfileEdit.teacher.name}`}
+          titleId="teacher-profile-edit-title"
+          onClose={() => setSelectedProfileEdit(null)}
+        >
+          <div className="floating-panel-grid score-summary-grid">
+            <div>
+              <p className="subtle">Current {profileEditMeta[selectedProfileEdit.field].label}</p>
+              <strong>{formatValue(selectedProfileEdit.teacher[selectedProfileEdit.field])}</strong>
+            </div>
+          </div>
+
+          <form className="auth-form compact score-panel-form" onSubmit={handleProfileSubmit}>
+            <label className="field">
+              <span>{profileEditMeta[selectedProfileEdit.field].label}</span>
+              <input
+                value={profileForm.value}
+                onChange={(event) => setProfileForm({ value: event.target.value })}
+                {...profileEditMeta[selectedProfileEdit.field].inputProps}
+              />
+            </label>
+            <button className="table-action-button" type="submit" disabled={pendingAction === `teacher-profile-${selectedProfileEdit.teacher.teacher_id}`}>
+              {pendingAction === `teacher-profile-${selectedProfileEdit.teacher.teacher_id}` ? "Saving..." : "Save"}
+            </button>
+          </form>
+
+          <div className={`status score-panel-status ${profilePanelStatus.kind}`.trim()}>{profilePanelStatus.message}</div>
         </FloatingPanel>
       ) : null}
 
