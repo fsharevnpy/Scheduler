@@ -76,12 +76,18 @@ CREATE TABLE classes (
     center_id VARCHAR(20) NOT NULL REFERENCES centers(center_id),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    room_no INT NOT NULL CHECK (room_no > 0),
     teacher_id VARCHAR(20) REFERENCES teachers(teacher_id),
     status VARCHAR(30) NOT NULL,
     CHECK (start_time < end_time),
     CHECK (day_of_week IN ('T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN')),
     CHECK (status IN ('OPEN', 'ASSIGNED', 'CANCELLED', 'NEED_REPLACEMENT'))
+);
+
+CREATE TABLE class_teachers (
+    class_id VARCHAR(20) NOT NULL REFERENCES classes(class_id) ON DELETE CASCADE,
+    teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (class_id, teacher_id)
 );
 
 -- =========================

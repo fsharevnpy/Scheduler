@@ -73,26 +73,56 @@ INSERT INTO classes (
     center_id,
     start_time,
     end_time,
-    room_no,
     teacher_id,
     status
 )
-VALUES
-    ('CL001', 'T2', 'CS1', '17:00', '18:30', 1, 'GV0', 'NEED_REPLACEMENT'),
-    ('CL002', 'T2', 'CS1', '18:30', '20:00', 2, 'GV1', 'ASSIGNED'),
-    ('CL003', 'T3', 'CS2', '17:00', '18:30', 1, 'GV3', 'NEED_REPLACEMENT'),
-    ('CL004', 'T3', 'CS2', '18:30', '20:00', 2, 'GV6', 'ASSIGNED'),
-    ('CL005', 'T4', 'CS3', '17:00', '18:30', 1, 'GV5', 'ASSIGNED'),
-    ('CL006', 'T6', 'CS3', '18:30', '20:00', 2, NULL, 'OPEN');
-
-INSERT INTO leave_requests (
-    request_id,
-    class_id,
-    teacher_id,
-    request_date,
-    reason,
-    status
+WITH class_centers(center_id) AS (
+    VALUES ('CS1'), ('CS2'), ('CS3')
+),
+class_days(day_of_week, day_order) AS (
+    VALUES
+        ('T2', 1),
+        ('T3', 2),
+        ('T4', 3),
+        ('T5', 4),
+        ('T6', 5),
+        ('T7', 6),
+        ('CN', 7)
+),
+class_slots(slot_order, start_time, end_time) AS (
+    VALUES
+        ('1', '08:00'::time, '09:30'::time),
+        ('2', '09:30'::time, '11:00'::time),
+        ('3', '14:30'::time, '16:00'::time),
+        ('4', '16:00'::time, '17:30'::time),
+        ('5', '17:00'::time, '18:30'::time),
+        ('6', '18:30'::time, '20:00'::time)
+),
+cityland_extra_slots(slot_order, start_time, end_time) AS (
+    VALUES
+        ('3', '15:00'::time, '16:30'::time)
 )
-VALUES
-    ('LR001', 'CL001', 'GV0', '2026-03-23', 'Medical leave', 'REQUESTED'),
-    ('LR002', 'CL003', 'GV3', '2026-03-24', 'Family commitment', 'APPROVED');
+SELECT
+    CONCAT('CL_', c.center_id, '_', d.day_of_week, '_', s.slot_order),
+    d.day_of_week,
+    c.center_id,
+    s.start_time,
+    s.end_time,
+    NULL,
+    'OPEN'
+FROM class_centers c
+CROSS JOIN class_days d
+CROSS JOIN class_slots s
+WHERE NOT (c.center_id = 'CS2' AND s.slot_order IN ('3', '4'))
+UNION ALL
+SELECT
+    CONCAT('CL_CS2_', d.day_of_week, '_', s.slot_order),
+    d.day_of_week,
+    'CS2',
+    s.start_time,
+    s.end_time,
+    NULL,
+    'OPEN'
+FROM class_days d
+CROSS JOIN cityland_extra_slots s
+ORDER BY center_id, day_of_week, start_time;

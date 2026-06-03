@@ -9,6 +9,7 @@ import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtil
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 function filterLeaveRequestsByView(leaveRequests, view) {
   if (view === "active") {
@@ -45,6 +46,24 @@ function filterAdminAttendanceByView(attendanceRecords, view) {
   return view === "history" ? historyRecords : currentRecords;
 }
 
+function renderTeacherNames(label) {
+  if (!label || label === "-") {
+    return <span>-</span>;
+  }
+
+  return (
+    <span className="class-teacher-list">
+      {String(label)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+    </span>
+  );
+}
+
 export default function AdminMonitorView({
   actionStatus,
   attendanceRecords,
@@ -72,6 +91,8 @@ export default function AdminMonitorView({
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
+  const [selectedSuggestionClass, setSelectedSuggestionClass] = useState(null);
+  const [selectedSuggestionTeacherIds, setSelectedSuggestionTeacherIds] = useState([]);
   const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
   const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
@@ -93,6 +114,7 @@ export default function AdminMonitorView({
   const [requestView, setRequestView] = useState("leave");
   const [attendanceView, setAttendanceView] = useState("current");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
+  const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
 
   useEffect(() => {
     if (!selectedLeaveRequest) {
@@ -103,19 +125,40 @@ export default function AdminMonitorView({
     setSelectedLeaveRequest(nextSelected);
   }, [leaveRequests, selectedLeaveRequest]);
 
-  const classesByCenter = classes.reduce((groups, item) => {
-    const key = item.center_label || "Unknown Center";
+  const assignmentsByCenter = replacementQueue.reduce((groups, item) => {
+    const key = item.center_id || "UNKNOWN";
     if (!groups[key]) {
-      groups[key] = [];
+      groups[key] = {
+        centerId: key,
+        label: item.center_label || key,
+        classes: [],
+      };
     }
-    groups[key].push(item);
+    groups[key].classes.push(item);
     return groups;
   }, {});
+  const assignmentCenterEntries = Object.values(assignmentsByCenter).sort((left, right) => left.centerId.localeCompare(right.centerId));
+  const assignmentCenterPageCount = Math.max(1, assignmentCenterEntries.length);
+  const currentAssignmentCenterEntry =
+    assignmentCenterEntries[Math.min(assignmentCenterPage - 1, assignmentCenterPageCount - 1)] || null;
+  const currentAssignmentCenterLabel = currentAssignmentCenterEntry?.label || "";
+  const currentAssignmentClasses = currentAssignmentCenterEntry?.classes || [];
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const visibleAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
   const scoresByTeacherId = new Map(teacherScores.map((item) => [item.teacher_id, item]));
+  const selectedClassSuggestions = selectedSuggestionClass
+    ? replacementSuggestions[selectedSuggestionClass.class_id] ?? []
+    : [];
+  const selectedClassTeacherCount = selectedSuggestionClass
+    ? selectedSuggestionClass.teacher_count || selectedSuggestionClass.teacher_ids?.length || (selectedSuggestionClass.teacher_id ? 1 : 0)
+    : 0;
+  const selectedClassAvailableTeacherSlots = Math.max(0, 2 - selectedClassTeacherCount);
+
+  useEffect(() => {
+    setAssignmentCenterPage((current) => Math.min(current, assignmentCenterPageCount));
+  }, [assignmentCenterPageCount]);
 
   const profileEditMeta = {
     elo: {
@@ -253,6 +296,46 @@ export default function AdminMonitorView({
     }
   }
 
+  async function openSuggestionPanel(item) {
+    setSelectedSuggestionClass(item);
+    setSelectedSuggestionTeacherIds([]);
+    await onLoadReplacementSuggestions(item.class_id);
+  }
+
+  function toggleSuggestionTeacher(teacherId) {
+    setSelectedSuggestionTeacherIds((current) => {
+      if (current.includes(teacherId)) {
+        return current.filter((item) => item !== teacherId);
+      }
+
+      if (current.length >= selectedClassAvailableTeacherSlots) {
+        return current;
+      }
+
+      return [...current, teacherId];
+    });
+  }
+
+  async function assignSelectedSuggestions() {
+    if (!selectedSuggestionClass || selectedSuggestionTeacherIds.length === 0) {
+      return;
+    }
+
+    let allSucceeded = true;
+    for (const teacherId of selectedSuggestionTeacherIds) {
+      const success = await onAssignReplacement(selectedSuggestionClass.class_id, teacherId);
+      if (!success) {
+        allSucceeded = false;
+        break;
+      }
+    }
+
+    if (allSucceeded) {
+      setSelectedSuggestionClass(null);
+      setSelectedSuggestionTeacherIds([]);
+    }
+  }
+
   return (
     <>
       <section className="monitor-grid monitor-grid-summary">
@@ -383,229 +466,182 @@ export default function AdminMonitorView({
 
         {resourceView === "teachers" ? (
           <DataTable
-            title="Teachers"
-            columns={[
-              {
-                key: "avatar",
-                label: "Avatar",
-                render: (row) => (
-                  <button
-                    type="button"
-                    className="avatar-preview-button"
-                    onClick={() => setSelectedAvatarTeacher(row)}
-                    aria-label={`View avatar for ${row.name}`}
-                  >
-                    <UserAvatar
-                      apiBase={apiBase}
-                      imageUrl={row.profile_image_url}
-                      name={row.name}
-                      fallbackCode={row.teacher_id}
-                      size="small"
-                    />
+          title="Teachers"
+          columns={[
+            {
+              key: "avatar",
+              label: "Avatar",
+              render: (row) => (
+                <button
+                  type="button"
+                  className="avatar-preview-button"
+                  onClick={() => setSelectedAvatarTeacher(row)}
+                  aria-label={`View avatar for ${row.name}`}
+                >
+                  <UserAvatar
+                    apiBase={apiBase}
+                    imageUrl={row.profile_image_url}
+                    name={row.name}
+                    fallbackCode={row.teacher_id}
+                    size="small"
+                  />
+                </button>
+              ),
+            },
+            { key: "teacher_id", label: "Teacher ID" },
+            { key: "name", label: "Name" },
+            { key: "contact", label: "Phone" },
+            { key: "email", label: "Email" },
+            {
+              key: "elo",
+              label: <span className="table-value-center">ELO</span>,
+              render: (row) => (
+                <span className="table-value-center">
+                  <button type="button" className="score-button" onClick={() => openProfilePanel(row, "elo")}>
+                    {formatValue(row.elo)}
                   </button>
-                ),
+                </span>
+              ),
+            },
+            {
+              key: "education_score",
+              label: <span className="table-value-center">Education</span>,
+              render: (row) => (
+                <span className="table-value-center">
+                  <button type="button" className="score-button" onClick={() => openProfilePanel(row, "education_score")}>
+                    {formatValue(row.education_score)}
+                  </button>
+                </span>
+              ),
+            },
+            {
+              key: "max_slots_per_day",
+              label: <span className="table-value-center">Max Slots</span>,
+              render: (row) => (
+                <span className="table-value-center">
+                  <button type="button" className="score-button" onClick={() => openProfilePanel(row, "max_slots_per_day")}>
+                    {formatValue(row.max_slots_per_day)}
+                  </button>
+                </span>
+              ),
+            },
+            {
+              key: "monthly_score",
+              label: "Monthly Score",
+              render: (row) => {
+                const score = scoresByTeacherId.get(row.teacher_id) || { score: 100, max_score: 110 };
+                return (
+                  <button type="button" className="score-button" onClick={() => openScorePanel(row)}>
+                    {score.score}/{score.max_score}
+                  </button>
+                );
               },
-              { key: "teacher_id", label: "Teacher ID" },
-              { key: "name", label: "Name" },
-              { key: "contact", label: "Phone" },
-              { key: "email", label: "Email" },
-              {
-                key: "elo",
-                label: <span className="table-value-center">ELO</span>,
-                render: (row) => (
-                  <span className="table-value-center">
-                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "elo")}>
-                      {formatValue(row.elo)}
-                    </button>
-                  </span>
-                ),
-              },
-              {
-                key: "education_score",
-                label: <span className="table-value-center">Education</span>,
-                render: (row) => (
-                  <span className="table-value-center">
-                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "education_score")}>
-                      {formatValue(row.education_score)}
-                    </button>
-                  </span>
-                ),
-              },
-              {
-                key: "max_slots_per_day",
-                label: <span className="table-value-center">Max Slots</span>,
-                render: (row) => (
-                  <span className="table-value-center">
-                    <button type="button" className="score-button" onClick={() => openProfilePanel(row, "max_slots_per_day")}>
-                      {formatValue(row.max_slots_per_day)}
-                    </button>
-                  </span>
-                ),
-              },
-              {
-                key: "monthly_score",
-                label: "Monthly Score",
-                render: (row) => {
-                  const score = scoresByTeacherId.get(row.teacher_id) || { score: 100, max_score: 110 };
-                  return (
-                    <button type="button" className="score-button" onClick={() => openScorePanel(row)}>
-                      {score.score}/{score.max_score}
-                    </button>
-                  );
-                },
-              },
-              {
-                key: "active",
-                label: "Active",
-                render: (row) => (
-                  <select
-                    className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
-                    value={row.active ? "yes" : "no"}
-                    disabled={pendingAction === `teacher-active-${row.teacher_id}`}
-                    onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
-                  >
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                ),
-              },
-            ]}
-            rows={teachers}
-            emptyMessage="No teachers found."
-            embedded
-            pageSize={10}
-          />
-        ) : classes.length === 0 ? (
+            },
+            {
+              key: "active",
+              label: "Active",
+              render: (row) => (
+                <select
+                  className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
+                  value={row.active ? "yes" : "no"}
+                  disabled={pendingAction === `teacher-active-${row.teacher_id}`}
+                  onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              ),
+            },
+          ]}
+          rows={teachers}
+          emptyMessage="No teachers found."
+          embedded
+          pageSize={10}
+        />
+        ) : replacementQueue.length === 0 ? (
           <p className="subtle">No classes found.</p>
         ) : (
-          <div className="center-class-groups">
-            {Object.entries(classesByCenter).map(([centerLabel, centerClasses]) => (
-              <div key={centerLabel} className="center-class-group">
-                <div className="center-class-head">
-                  <h3>{centerLabel}</h3>
-                  <span className="subtle">{centerClasses.length} classes</span>
-                </div>
-                <DataTable
-                  title={`${centerLabel} Classes`}
-                  columns={[
-                    { key: "class_id", label: "Class ID" },
-                    { key: "day_of_week", label: "Day" },
-                    {
-                      key: "time",
-                      label: "Time",
-                      render: (row) => `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`,
-                    },
-                    { key: "room_no", label: "Room" },
-                    { key: "teacher_label", label: "Teacher" },
-                    { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
-                  ]}
-                  rows={centerClasses}
-                  emptyMessage="No classes found."
-                  embedded
-                  pageSize={5}
-                  tableClassName="classes-center-table"
-                  colClasses={[
-                    "classes-col-id",
-                    "classes-col-day",
-                    "classes-col-time",
-                    "classes-col-room",
-                    "classes-col-teacher",
-                    "classes-col-status",
-                  ]}
-                />
+          <div className="center-class-group">
+            <div className="center-class-head">
+              <div>
+                <h3>{currentAssignmentCenterLabel}</h3>
+                <span className="subtle">{currentAssignmentClasses.length} classes</span>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+              <span className="subtle">
+                Center {assignmentCenterPage} of {assignmentCenterPageCount}
+              </span>
+            </div>
 
-      <section className="dashboard-section">
-        <div className="section-head">
-          <div>
-            <p className="eyebrow">Assignment</p>
-            <h2>Assignment Queue</h2>
-          </div>
-        </div>
+            <div className="class-week-grid assignment-week-grid" role="table" aria-label={`${currentAssignmentCenterLabel} assignment queue by weekday`}>
+              {CLASS_DAYS.map((day) => {
+                const dayClasses = currentAssignmentClasses
+                  .filter((item) => item.day_of_week === day)
+                  .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)));
 
-        {replacementQueue.length === 0 ? (
-          <p className="subtle">No open or replacement classes are waiting for assignment.</p>
-        ) : (
-          <div className="replacement-queue">
-            {replacementQueue.map((item) => {
-              const suggestions = replacementSuggestions[item.class_id] ?? [];
+                return (
+                  <div className="class-week-column" role="cell" key={`${currentAssignmentCenterLabel}-${day}`}>
+                    <div className="class-week-day">{day}</div>
+                    <div className="class-week-list">
+                      {dayClasses.length === 0 ? (
+                        <span className="class-week-empty">No classes</span>
+                      ) : (
+                        dayClasses.map((item) => {
+                          const teacherCount = item.teacher_count || item.teacher_ids?.length || (item.teacher_id ? 1 : 0);
+                          const canAssignMoreTeachers = teacherCount < 2 && item.status !== "CANCELLED";
 
-              return (
-                <article key={item.class_id} className="replacement-card">
-                  <div className="replacement-card-head">
-                    <div>
-                      <h3>{item.class_id}</h3>
-                      <p className="subtle">
-                        {item.day_of_week} | {item.center_label} | {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
-                      </p>
-                      <p className="subtle">
-                        Room {formatValue(item.room_no)} | Current teacher {formatValue(item.teacher_id)} | Status {formatValue(item.status)}
-                      </p>
+                          return (
+                            <article className="class-week-item assignment-week-item" key={item.class_id}>
+                              <div className="class-week-item-head">
+                                <StatusPill value={item.status} />
+                                <span className="subtle">{teacherCount}/2</span>
+                              </div>
+                              <span>
+                                {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
+                              </span>
+                              {renderTeacherNames(item.teacher_label)}
+                              {canAssignMoreTeachers ? (
+                                <button
+                                  type="button"
+                                  className="table-action-button assignment-load-button"
+                                  disabled={pendingAction === `suggest-${item.class_id}`}
+                                  onClick={() => openSuggestionPanel(item)}
+                                >
+                                  {pendingAction === `suggest-${item.class_id}` ? "Loading..." : "Load suggestions"}
+                                </button>
+                              ) : null}
+                            </article>
+                          );
+                        })
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      className="table-action-button"
-                      disabled={pendingAction === `suggest-${item.class_id}`}
-                      onClick={() => onLoadReplacementSuggestions(item.class_id)}
-                    >
-                      {pendingAction === `suggest-${item.class_id}` ? "Loading..." : "Load suggestions"}
-                    </button>
                   </div>
+                );
+              })}
+            </div>
 
-                  {suggestions.length > 0 ? (
-                    <div className="replacement-suggestions">
-                      {suggestions.map((suggestion) => (
-                        <div key={`${item.class_id}-${suggestion.teacher_id}`} className="replacement-suggestion-row">
-                          <div className="replacement-suggestion-meta">
-                            <button
-                              type="button"
-                              className="suggestion-teacher-button"
-                              onClick={() =>
-                                setSelectedSuggestionTeacher(
-                                  teachersById.get(suggestion.teacher_id) || {
-                                    teacher_id: suggestion.teacher_id,
-                                    name: suggestion.name,
-                                    contact: "",
-                                    email: "",
-                                    elo: suggestion.elo,
-                                    education_score: suggestion.education_score,
-                                  },
-                                )
-                              }
-                            >
-                              {suggestion.teacher_id} - {suggestion.name}
-                            </button>
-                            <span className="subtle">
-                              Final {suggestion.final_score.toFixed(4)} | ELO {suggestion.normalized_score.toFixed(4)} | Education {suggestion.normalized_education_score.toFixed(4)}
-                            </span>
-                            <span className="subtle">
-                              Center match {suggestion.center_match ? "Yes" : "No"} | Time match {suggestion.time_match ? "Yes" : "No"}
-                            </span>
-                            <span className="subtle">
-                              Slots {suggestion.assigned_slots_that_day}/{suggestion.max_slots_per_day}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="table-action-button"
-                            disabled={pendingAction === `assign-${item.class_id}-${suggestion.teacher_id}`}
-                            onClick={() => onAssignReplacement(item.class_id, suggestion.teacher_id)}
-                          >
-                            {pendingAction === `assign-${item.class_id}-${suggestion.teacher_id}` ? "Assigning..." : "Assign"}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="subtle replacement-empty">Load suggestions to see eligible teachers for assignment.</p>
-                  )}
-                </article>
-              );
-            })}
+            <div className="table-pagination class-center-pagination">
+              <span>
+                {currentAssignmentCenterLabel} | {assignmentCenterPage} of {assignmentCenterPageCount}
+              </span>
+              <div className="table-pagination-actions">
+                <button
+                  type="button"
+                  className="table-action-button table-action-button-muted"
+                  disabled={assignmentCenterPage === 1}
+                  onClick={() => setAssignmentCenterPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous center
+                </button>
+                <button
+                  type="button"
+                  className="table-action-button"
+                  disabled={assignmentCenterPage === assignmentCenterPageCount}
+                  onClick={() => setAssignmentCenterPage((current) => Math.min(assignmentCenterPageCount, current + 1))}
+                >
+                  Next center
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -744,6 +780,89 @@ export default function AdminMonitorView({
           />
         )}
       </section>
+
+      {selectedSuggestionClass ? (
+        <FloatingPanel
+          eyebrow="Replacement Suggestions"
+          title={`${selectedSuggestionClass.center_label || selectedSuggestionClass.center_id} | ${selectedSuggestionClass.day_of_week} ${formatTimeValue(selectedSuggestionClass.start_time)} - ${formatTimeValue(selectedSuggestionClass.end_time)}`}
+          titleId="replacement-suggestions-title"
+          onClose={() => {
+            setSelectedSuggestionClass(null);
+            setSelectedSuggestionTeacherIds([]);
+          }}
+        >
+          <div className="floating-panel-section">
+            <div className="replacement-selection-summary">
+              <span className="subtle">Select up to {selectedClassAvailableTeacherSlots} teachers</span>
+              <strong>{selectedSuggestionTeacherIds.length}/{selectedClassAvailableTeacherSlots} selected</strong>
+            </div>
+          </div>
+
+          {selectedClassSuggestions.length === 0 ? (
+            <p className="subtle">No eligible teachers found.</p>
+          ) : (
+            <div className="replacement-suggestions replacement-panel-suggestions">
+              {selectedClassSuggestions.map((suggestion) => {
+                const isSelected = selectedSuggestionTeacherIds.includes(suggestion.teacher_id);
+                const isSelectionFull = selectedSuggestionTeacherIds.length >= selectedClassAvailableTeacherSlots && !isSelected;
+
+                return (
+                  <div key={`${selectedSuggestionClass.class_id}-${suggestion.teacher_id}`} className="replacement-suggestion-row replacement-panel-row">
+                    <div className="suggestion-choice">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isSelectionFull}
+                        onChange={() => toggleSuggestionTeacher(suggestion.teacher_id)}
+                      />
+                      <span className="replacement-suggestion-meta">
+                        <button
+                          type="button"
+                          className="suggestion-teacher-button"
+                          onClick={(event) => {
+                            setSelectedSuggestionTeacher(
+                              teachersById.get(suggestion.teacher_id) || {
+                                teacher_id: suggestion.teacher_id,
+                                name: suggestion.name,
+                                contact: "",
+                                email: "",
+                                elo: suggestion.elo,
+                                education_score: suggestion.education_score,
+                              },
+                            );
+                          }}
+                        >
+                          {suggestion.teacher_id} - {suggestion.name}
+                        </button>
+                        <span className="subtle">
+                          Final {suggestion.final_score.toFixed(4)} | ELO {suggestion.normalized_score.toFixed(4)} | Education {suggestion.normalized_education_score.toFixed(4)}
+                        </span>
+                        <span className="subtle">
+                          Center match {suggestion.center_match ? "Yes" : "No"} | Time match {suggestion.time_match ? "Yes" : "No"}
+                        </span>
+                        <span className="subtle">
+                          Slots {suggestion.assigned_slots_that_day}/{suggestion.max_slots_per_day}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="floating-panel-actions">
+            <button
+              type="button"
+              className="table-action-button"
+              disabled={selectedSuggestionTeacherIds.length === 0 || pendingAction.startsWith(`assign-${selectedSuggestionClass.class_id}-`)}
+              onClick={assignSelectedSuggestions}
+            >
+              {pendingAction.startsWith(`assign-${selectedSuggestionClass.class_id}-`) ? "Assigning..." : "Assign selected"}
+            </button>
+          </div>
+        </FloatingPanel>
+      ) : null}
 
       {selectedLeaveRequest ? (
         <FloatingPanel

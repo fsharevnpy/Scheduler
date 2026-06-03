@@ -10,7 +10,7 @@ export default function TeacherClassCard({ item }) {
       </div>
       <h3>{item.class_id}</h3>
       <p className="subtle">{`${item.day_of_week} | ${formatTimeValue(item.start_time)} - ${formatTimeValue(item.end_time)}`}</p>
-      <p className="subtle">{`${item.center_label} | Room ${item.room_no}`}</p>
+      <p className="subtle">{item.center_label}</p>
     </article>
   );
 }

@@ -7,9 +7,30 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_cur
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import ClassCreate, ClassUpdate
+from services.class_assignments import ensure_class_teachers_table
 
 
 router = APIRouter()
+
+
+def generate_class_id(db: Session, center_id: str, day_of_week: str) -> str:
+    prefix = f"CL_{center_id}_{day_of_week}_"
+    rows = db.execute(
+        text("""
+            SELECT class_id
+            FROM classes
+            WHERE class_id LIKE :prefix_pattern
+        """),
+        {"prefix_pattern": f"{prefix}%"},
+    ).scalars().all()
+
+    max_sequence = 0
+    for class_id in rows:
+        suffix = class_id[len(prefix):]
+        if suffix.isdigit():
+            max_sequence = max(max_sequence, int(suffix))
+
+    return f"{prefix}{max_sequence + 1}"
 
 
 @router.get("/centers")
@@ -32,25 +53,63 @@ def get_classes(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_class_teachers_table(db)
     query = """
-        SELECT class_id, day_of_week, center_id, start_time, end_time,
-               room_no, teacher_id, status
-        FROM classes
+        WITH assignment_rows AS (
+            SELECT ct.class_id, ct.teacher_id, ct.assigned_at
+            FROM class_teachers ct
+            UNION
+            SELECT c.class_id, c.teacher_id, NOW()
+            FROM classes c
+            WHERE c.teacher_id IS NOT NULL
+        ),
+        distinct_assignments AS (
+            SELECT DISTINCT ON (class_id, teacher_id) class_id, teacher_id, assigned_at
+            FROM assignment_rows
+            ORDER BY class_id, teacher_id, assigned_at
+        ),
+        assignment_summary AS (
+            SELECT
+                da.class_id,
+                ARRAY_AGG(da.teacher_id ORDER BY da.assigned_at, da.teacher_id) AS teacher_ids,
+                ARRAY_AGG(CONCAT(da.teacher_id, ' - ', t.name) ORDER BY da.assigned_at, da.teacher_id) AS teacher_labels,
+                COUNT(*) AS teacher_count
+            FROM distinct_assignments da
+            JOIN teachers t ON t.teacher_id = da.teacher_id
+            GROUP BY da.class_id
+        )
+        SELECT c.class_id, c.day_of_week, c.center_id, c.start_time, c.end_time,
+               COALESCE((assignment_summary.teacher_ids)[1], c.teacher_id) AS teacher_id,
+               COALESCE(assignment_summary.teacher_ids, ARRAY[]::VARCHAR[]) AS teacher_ids,
+               COALESCE(assignment_summary.teacher_labels, ARRAY[]::TEXT[]) AS teacher_labels,
+               COALESCE(assignment_summary.teacher_count, 0) AS teacher_count,
+               c.status
+        FROM classes c
+        LEFT JOIN assignment_summary ON assignment_summary.class_id = c.class_id
     """
     params = {}
 
     if current_user.role == ROLE_TEACHER:
         if not current_user.teacher_id:
             raise HTTPException(status_code=403, detail="teacher account is not linked")
-        query += " WHERE teacher_id = :teacher_id"
+        query += """
+            WHERE EXISTS (
+                SELECT 1
+                FROM class_teachers ct
+                WHERE ct.class_id = c.class_id
+                  AND ct.teacher_id = :teacher_id
+            )
+            OR c.teacher_id = :teacher_id
+        """
         params["teacher_id"] = current_user.teacher_id
 
     query += """
-        ORDER BY CASE day_of_week
+        ORDER BY c.center_id,
+        CASE c.day_of_week
             WHEN 'T2' THEN 1 WHEN 'T3' THEN 2 WHEN 'T4' THEN 3
             WHEN 'T5' THEN 4 WHEN 'T6' THEN 5 WHEN 'T7' THEN 6
             ELSE 7
-        END, start_time
+        END, c.start_time
     """
     rows = db.execute(text(query), params).mappings().all()
     return [dict(row) for row in rows]
@@ -62,17 +121,7 @@ def create_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
-    if payload.status not in VALID_CLASS_STATUS:
-        raise HTTPException(status_code=400, detail="invalid class status")
-
-    existing = db.execute(
-        text("SELECT 1 FROM classes WHERE class_id = :class_id"),
-        {"class_id": payload.class_id},
-    ).first()
-
-    if existing:
-        raise HTTPException(status_code=400, detail="class_id already exists")
-
+    ensure_class_teachers_table(db)
     center_exists = db.execute(
         text("SELECT 1 FROM centers WHERE center_id = :center_id"),
         {"center_id": payload.center_id},
@@ -89,21 +138,36 @@ def create_class(
         if not teacher_exists:
             raise HTTPException(status_code=404, detail="teacher not found")
 
+    db.execute(text("LOCK TABLE classes IN SHARE ROW EXCLUSIVE MODE"))
+    class_id = generate_class_id(db, payload.center_id, payload.day_of_week)
+    data = payload.model_dump()
+    data["class_id"] = class_id
+    data["status"] = "ASSIGNED" if payload.teacher_id else "OPEN"
+
     db.execute(
         text("""
             INSERT INTO classes (
                 class_id, day_of_week, center_id, start_time, end_time,
-                room_no, teacher_id, status
+                teacher_id, status
             )
             VALUES (
                 :class_id, :day_of_week, :center_id, :start_time, :end_time,
-                :room_no, :teacher_id, :status
+                :teacher_id, :status
             )
         """),
-        payload.model_dump(),
+        data,
     )
+    if payload.teacher_id:
+        db.execute(
+            text("""
+                INSERT INTO class_teachers (class_id, teacher_id)
+                VALUES (:class_id, :teacher_id)
+                ON CONFLICT (class_id, teacher_id) DO NOTHING
+            """),
+            {"class_id": class_id, "teacher_id": payload.teacher_id},
+        )
     db.commit()
-    return {"message": "class created", "class_id": payload.class_id}
+    return {"message": "class created", "class_id": class_id}
 
 
 @router.put("/classes/{class_id}")
@@ -113,6 +177,7 @@ def update_class(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_class_teachers_table(db)
     existing = db.execute(
         text("SELECT 1 FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},
@@ -148,6 +213,17 @@ def update_class(
     data["class_id"] = class_id
 
     db.execute(text(f"UPDATE classes SET {fields} WHERE class_id = :class_id"), data)
+    if "teacher_id" in data:
+        db.execute(text("DELETE FROM class_teachers WHERE class_id = :class_id"), {"class_id": class_id})
+        if data["teacher_id"] is not None:
+            db.execute(
+                text("""
+                    INSERT INTO class_teachers (class_id, teacher_id)
+                    VALUES (:class_id, :teacher_id)
+                    ON CONFLICT (class_id, teacher_id) DO NOTHING
+                """),
+                {"class_id": class_id, "teacher_id": data["teacher_id"]},
+            )
     db.commit()
     return {"message": "class updated", "class_id": class_id}
 

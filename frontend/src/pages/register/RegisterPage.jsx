@@ -1,27 +1,45 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import AppNotificationBell from "../../components/AppNotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { requestJson } from "../../lib/http.js";
 import { getRoleTitle } from "../../lib/roles.js";
-import DataTable from "../monitor/DataTable.jsx";
 import StatusPill from "../monitor/StatusPill.jsx";
+import { formatTimeValue, formatValue } from "../monitor/monitorUtils.js";
 import UserCreateForm from "./UserCreateForm.jsx";
+
+const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 const EMPTY_PREFERENCE = {
   class_id: "",
 };
 
 const EMPTY_CLASS_FORM = {
-  class_id: "",
   day_of_week: "",
   center_id: "",
   start_time: "",
   end_time: "",
-  room_no: 1,
   teacher_id: "",
-  status: "OPEN",
 };
+
+function renderTeacherNames(label) {
+  if (!label || label === "-") {
+    return <span>-</span>;
+  }
+
+  return (
+    <span className="class-teacher-list">
+      {String(label)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+    </span>
+  );
+}
 
 function formatTimeDraft(value) {
   const digits = value.replace(/\D/g, "").slice(0, 4);
@@ -95,6 +113,7 @@ export default function RegisterPage({ auth }) {
   const [classStatus, setClassStatus] = useState({ kind: "", message: "" });
   const [isClassSubmitting, setIsClassSubmitting] = useState(false);
   const [pendingClassDelete, setPendingClassDelete] = useState("");
+  const [classCenterPage, setClassCenterPage] = useState(1);
 
   const authHeaders = useMemo(
     () => ({
@@ -139,6 +158,47 @@ export default function RegisterPage({ auth }) {
       cancelled = true;
     };
   }, [auth.apiBase, auth.token, authHeaders]);
+
+  const teachersById = useMemo(() => new Map(teachers.map((teacher) => [teacher.teacher_id, teacher.name])), [teachers]);
+  const classesByCenter = useMemo(
+    () =>
+      classes.reduce((groups, item) => {
+        const center = centers.find((centerItem) => centerItem.center_id === item.center_id);
+        const key = item.center_id || "UNKNOWN";
+        if (!groups[key]) {
+          groups[key] = {
+            centerId: key,
+            label: center ? `${center.name} (${center.center_id})` : key,
+            classes: [],
+          };
+        }
+        groups[key].classes.push({
+          ...item,
+          teacher_label:
+            item.teacher_labels?.length > 0
+              ? item.teacher_labels
+                  .map((label) => String(label).replace(/^[^-]+ - /, ""))
+                  .join(", ")
+              : item.teacher_id
+                ? teachersById.get(item.teacher_id) || "-"
+                : "-",
+        });
+        return groups;
+      }, {}),
+    [centers, classes, teachersById],
+  );
+  const classCenterEntries = useMemo(
+    () => Object.values(classesByCenter).sort((left, right) => left.centerId.localeCompare(right.centerId)),
+    [classesByCenter],
+  );
+  const classCenterPageCount = Math.max(1, classCenterEntries.length);
+  const currentCenterEntry = classCenterEntries[Math.min(classCenterPage - 1, classCenterPageCount - 1)] || null;
+  const currentCenterLabel = currentCenterEntry?.label || "";
+  const currentCenterClasses = currentCenterEntry?.classes || [];
+
+  useEffect(() => {
+    setClassCenterPage((current) => Math.min(current, classCenterPageCount));
+  }, [classCenterPageCount]);
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -187,17 +247,14 @@ export default function RegisterPage({ auth }) {
 
     try {
       const payload = {
-        class_id: classForm.class_id.trim(),
         day_of_week: classForm.day_of_week,
         center_id: classForm.center_id,
         start_time: classForm.start_time,
         end_time: classForm.end_time,
-        room_no: Number(classForm.room_no),
         teacher_id: classForm.teacher_id || null,
-        status: classForm.teacher_id ? classForm.status : classForm.status === "ASSIGNED" ? "OPEN" : classForm.status,
       };
 
-      await requestJson(`${auth.apiBase}/classes`, {
+      const createdClass = await requestJson(`${auth.apiBase}/classes`, {
         method: "POST",
         headers: {
           ...authHeaders,
@@ -208,7 +265,7 @@ export default function RegisterPage({ auth }) {
 
       await reloadClasses();
       setClassForm({ ...EMPTY_CLASS_FORM });
-      setClassStatus({ kind: "success", message: `Created class ${payload.class_id}.` });
+      setClassStatus({ kind: "success", message: `Created class ${createdClass.class_id}.` });
     } catch (error) {
       setClassStatus({ kind: "error", message: error.message });
     } finally {
@@ -335,6 +392,7 @@ export default function RegisterPage({ auth }) {
             <p className="subtle">Create new accounts based on the permissions of your current role.</p>
           </div>
           <div className="dashboard-actions">
+            <AppNotificationBell auth={auth} />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}
@@ -387,16 +445,6 @@ export default function RegisterPage({ auth }) {
 
           <form className="auth-form class-create-form" onSubmit={handleClassSubmit}>
             <label className="field">
-              <span>Class ID</span>
-              <input
-                value={classForm.class_id}
-                onChange={(event) => updateClassField("class_id", event.target.value)}
-                type="text"
-                required
-              />
-            </label>
-
-            <label className="field">
               <span>Day</span>
               <select
                 value={classForm.day_of_week}
@@ -428,17 +476,6 @@ export default function RegisterPage({ auth }) {
                   </option>
                 ))}
               </select>
-            </label>
-
-            <label className="field">
-              <span>Room</span>
-              <input
-                value={classForm.room_no}
-                onChange={(event) => updateClassField("room_no", event.target.value)}
-                type="number"
-                min="1"
-                required
-              />
             </label>
 
             <label className="field">
@@ -479,16 +516,6 @@ export default function RegisterPage({ auth }) {
               </select>
             </label>
 
-            <label className="field">
-              <span>Status</span>
-              <select value={classForm.status} onChange={(event) => updateClassField("status", event.target.value)}>
-                <option value="OPEN">OPEN</option>
-                <option value="ASSIGNED">ASSIGNED</option>
-                <option value="NEED_REPLACEMENT">NEED_REPLACEMENT</option>
-                <option value="CANCELLED">CANCELLED</option>
-              </select>
-            </label>
-
             <button className="primary-button" type="submit" disabled={isClassSubmitting}>
               {isClassSubmitting ? "Creating..." : "Create class"}
             </button>
@@ -498,36 +525,84 @@ export default function RegisterPage({ auth }) {
             {classStatus.message}
           </div>
 
-          <DataTable
-            title="Classes"
-            columns={[
-              { key: "class_id", label: "Class ID" },
-              { key: "day_of_week", label: "Day" },
-              { key: "center_id", label: "Center" },
-              { key: "room_no", label: "Room" },
-              { key: "start_time", label: "Start" },
-              { key: "end_time", label: "End" },
-              { key: "teacher_id", label: "Teacher" },
-              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
-              {
-                key: "actions",
-                label: "Actions",
-                render: (row) => (
+          {classes.length === 0 ? (
+            <p className="subtle">No classes found.</p>
+          ) : (
+            <div className="center-class-group">
+              <div className="center-class-head">
+                <div>
+                  <h3>{currentCenterLabel}</h3>
+                  <span className="subtle">{currentCenterClasses.length} classes</span>
+                </div>
+                <span className="subtle">
+                  Center {classCenterPage} of {classCenterPageCount}
+                </span>
+              </div>
+
+              <div className="class-week-grid" role="table" aria-label={`${currentCenterLabel} classes by weekday`}>
+                {CLASS_DAYS.map((day) => {
+                  const dayClasses = currentCenterClasses
+                    .filter((item) => item.day_of_week === day)
+                    .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)));
+
+                  return (
+                    <div className="class-week-column" role="cell" key={`${currentCenterLabel}-${day}`}>
+                      <div className="class-week-day">{day}</div>
+                      <div className="class-week-list">
+                        {dayClasses.length === 0 ? (
+                          <span className="class-week-empty">No classes</span>
+                        ) : (
+                          dayClasses.map((item) => (
+                            <article className="class-week-item" key={item.class_id}>
+                              <div className="class-week-item-head">
+                                <StatusPill value={item.status} />
+                              </div>
+                              <span>
+                                {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
+                              </span>
+                              {renderTeacherNames(item.teacher_label)}
+                              <button
+                                type="button"
+                                className="table-action-button table-action-button-muted class-week-delete-button"
+                                disabled={pendingClassDelete === item.class_id}
+                                onClick={() => handleDeleteClass(item.class_id)}
+                              >
+                                {pendingClassDelete === item.class_id ? "Deleting..." : "Delete"}
+                              </button>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="table-pagination class-center-pagination">
+                <span>
+                  {currentCenterLabel} | {classCenterPage} of {classCenterPageCount}
+                </span>
+                <div className="table-pagination-actions">
                   <button
                     type="button"
                     className="table-action-button table-action-button-muted"
-                    disabled={pendingClassDelete === row.class_id}
-                    onClick={() => handleDeleteClass(row.class_id)}
+                    disabled={classCenterPage === 1}
+                    onClick={() => setClassCenterPage((current) => Math.max(1, current - 1))}
                   >
-                    {pendingClassDelete === row.class_id ? "Deleting..." : "Delete"}
+                    Previous center
                   </button>
-                ),
-              },
-            ]}
-            rows={classes}
-            emptyMessage="No classes found."
-            embedded
-          />
+                  <button
+                    type="button"
+                    className="table-action-button"
+                    disabled={classCenterPage === classCenterPageCount}
+                    onClick={() => setClassCenterPage((current) => Math.min(classCenterPageCount, current + 1))}
+                  >
+                    Next center
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       </section>
     </main>

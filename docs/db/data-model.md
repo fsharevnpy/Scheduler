@@ -82,7 +82,6 @@ Key fields:
 - `center_id`
 - `start_time`
 - `end_time`
-- `room_no`
 - `teacher_id`
 - `status`
 

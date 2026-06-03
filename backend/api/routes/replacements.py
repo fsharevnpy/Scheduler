@@ -6,6 +6,7 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import AssignReplacementPayload
+from services.class_assignments import class_teacher_count, ensure_class_teachers_table
 
 
 router = APIRouter()
@@ -22,6 +23,7 @@ def get_replacement_suggestions(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_class_teachers_table(db)
     target_class = db.execute(
         text(f"""
             SELECT
@@ -29,8 +31,7 @@ def get_replacement_suggestions(
                 c.day_of_week,
                 c.center_id,
                 c.start_time,
-                c.end_time,
-                c.teacher_id AS original_teacher_id
+                c.end_time
             FROM classes c
             WHERE c.class_id = :class_id
         """),
@@ -39,6 +40,9 @@ def get_replacement_suggestions(
 
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
+
+    if class_teacher_count(db, class_id) >= 2:
+        return []
 
     elo_range = db.execute(
         text("""
@@ -77,8 +81,9 @@ def get_replacement_suggestions(
                 t.active,
                 COALESCE((
                     SELECT COUNT(*)
-                    FROM classes c2
-                    WHERE c2.teacher_id = t.teacher_id
+                    FROM class_teachers ct2
+                    JOIN classes c2 ON c2.class_id = ct2.class_id
+                    WHERE ct2.teacher_id = t.teacher_id
                       AND c2.day_of_week = :day_of_week
                       AND c2.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
                 ), 0) AS assigned_slots_that_day,
@@ -102,7 +107,12 @@ def get_replacement_suggestions(
                 END AS time_match
             FROM teachers t
             WHERE t.active = TRUE
-              AND (:original_teacher_id IS NULL OR t.teacher_id <> :original_teacher_id)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM class_teachers existing_assignment
+                  WHERE existing_assignment.class_id = :class_id
+                    AND existing_assignment.teacher_id = t.teacher_id
+              )
               AND NOT EXISTS (
                   SELECT 1
                   FROM leave_requests lr
@@ -113,20 +123,22 @@ def get_replacement_suggestions(
               )
               AND NOT EXISTS (
                   SELECT 1
-                  FROM classes c3
-                  WHERE c3.teacher_id = t.teacher_id
+                  FROM class_teachers ct3
+                  JOIN classes c3 ON c3.class_id = ct3.class_id
+                  WHERE ct3.teacher_id = t.teacher_id
                     AND c3.day_of_week = :day_of_week
                     AND c3.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
+                    AND c3.class_id <> :class_id
                     AND c3.start_time < :end_time
                     AND c3.end_time > :start_time
               )
         """),
         {
             "center_id": target_class["center_id"],
+            "class_id": class_id,
             "day_of_week": target_class["day_of_week"],
             "start_time": target_class["start_time"],
             "end_time": target_class["end_time"],
-            "original_teacher_id": target_class["original_teacher_id"],
         },
     ).mappings().all()
 
@@ -176,6 +188,7 @@ def assign_replacement(
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
+    ensure_class_teachers_table(db)
     target_class = db.execute(
         text(f"""
             SELECT
@@ -184,7 +197,6 @@ def assign_replacement(
                 c.center_id,
                 c.start_time,
                 c.end_time,
-                c.teacher_id AS current_teacher_id,
                 c.status
             FROM classes c
             WHERE c.class_id = :class_id
@@ -194,6 +206,23 @@ def assign_replacement(
 
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
+
+    existing_assignment_count = class_teacher_count(db, class_id)
+    if existing_assignment_count >= 2:
+        raise HTTPException(status_code=400, detail="class already has maximum 2 teachers")
+
+    already_assigned = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": payload.teacher_id},
+    ).first()
+
+    if already_assigned:
+        raise HTTPException(status_code=400, detail="teacher is already assigned to this class")
 
     teacher_row = db.execute(
         text("""
@@ -231,8 +260,9 @@ def assign_replacement(
     overlap = db.execute(
         text("""
             SELECT 1
-            FROM classes c
-            WHERE c.teacher_id = :teacher_id
+            FROM class_teachers ct
+            JOIN classes c ON c.class_id = ct.class_id
+            WHERE ct.teacher_id = :teacher_id
               AND c.day_of_week = :day_of_week
               AND c.class_id <> :class_id
               AND c.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
@@ -254,10 +284,11 @@ def assign_replacement(
     assigned_count = db.execute(
         text("""
             SELECT COUNT(*)
-            FROM classes
-            WHERE teacher_id = :teacher_id
-              AND day_of_week = :day_of_week
-              AND status IN ('ASSIGNED', 'NEED_REPLACEMENT')
+            FROM class_teachers ct
+            JOIN classes c ON c.class_id = ct.class_id
+            WHERE ct.teacher_id = :teacher_id
+              AND c.day_of_week = :day_of_week
+              AND c.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
         """),
         {
             "teacher_id": payload.teacher_id,
@@ -270,8 +301,20 @@ def assign_replacement(
 
     db.execute(
         text("""
+            INSERT INTO class_teachers (class_id, teacher_id)
+            VALUES (:class_id, :teacher_id)
+            ON CONFLICT (class_id, teacher_id) DO NOTHING
+        """),
+        {
+            "teacher_id": payload.teacher_id,
+            "class_id": class_id,
+        },
+    )
+
+    db.execute(
+        text("""
             UPDATE classes
-            SET teacher_id = :teacher_id,
+            SET teacher_id = COALESCE(teacher_id, :teacher_id),
                 status = 'ASSIGNED'
             WHERE class_id = :class_id
         """),

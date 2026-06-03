@@ -16,6 +16,7 @@ from db import get_db
 from db import SessionLocal
 from schemas.auth import CurrentUser
 from schemas.scheduling import LeaveRequestCreate
+from services.class_assignments import ensure_class_teachers_table
 from services.user_event_broker import user_event_broker
 
 
@@ -97,6 +98,7 @@ def mark_class_needs_replacement(class_id: str, db: Session) -> None:
 
 
 def reset_class_status_if_no_active_leave(class_id: str, db: Session) -> None:
+    ensure_class_teachers_table(db)
     remaining_active_requests = db.execute(
         text("""
             SELECT COUNT(*)
@@ -114,8 +116,12 @@ def reset_class_status_if_no_active_leave(class_id: str, db: Session) -> None:
         text("""
             UPDATE classes
             SET status = CASE
-                WHEN teacher_id IS NULL THEN 'OPEN'
-                ELSE 'ASSIGNED'
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM class_teachers ct
+                    WHERE ct.class_id = classes.class_id
+                ) THEN 'ASSIGNED'
+                ELSE 'OPEN'
             END
             WHERE class_id = :class_id
         """),
@@ -129,6 +135,7 @@ def get_leave_requests(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     ensure_leave_request_constraints(db)
+    ensure_class_teachers_table(db)
 
     query = """
         SELECT
@@ -205,18 +212,17 @@ def create_leave_request(
 
     class_row = db.execute(
         text("""
-            SELECT c.class_id, c.teacher_id, c.status, c.day_of_week, t.name AS teacher_name
+            SELECT c.class_id, c.status, c.day_of_week, t.name AS teacher_name
             FROM classes c
-            JOIN teachers t ON t.teacher_id = c.teacher_id
+            JOIN class_teachers ct ON ct.class_id = c.class_id
+            JOIN teachers t ON t.teacher_id = ct.teacher_id
             WHERE c.class_id = :class_id
+              AND ct.teacher_id = :teacher_id
         """),
-        {"class_id": payload.class_id},
+        {"class_id": payload.class_id, "teacher_id": payload.teacher_id},
     ).mappings().first()
 
     if not class_row:
-        raise HTTPException(status_code=404, detail="class not found")
-
-    if class_row["teacher_id"] != payload.teacher_id:
         raise HTTPException(status_code=400, detail="teacher is not assigned to the class")
 
     assigned_manager = db.execute(

@@ -13,6 +13,9 @@ CREATE INDEX IF NOT EXISTS idx_classes_day
 CREATE INDEX IF NOT EXISTS idx_classes_teacher_day
     ON classes(teacher_id, day_of_week);
 
+CREATE INDEX IF NOT EXISTS idx_class_teachers_teacher_class
+    ON class_teachers(teacher_id, class_id);
+
 CREATE INDEX IF NOT EXISTS idx_classes_center_day
     ON classes(center_id, day_of_week);
 

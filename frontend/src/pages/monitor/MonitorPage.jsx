@@ -341,7 +341,7 @@ export default function MonitorPage({ auth }) {
 
         return {
           ...item,
-          status: item.teacher_id ? "ASSIGNED" : "OPEN",
+          status: (item.teacher_count || item.teacher_ids?.length || (item.teacher_id ? 1 : 0)) > 0 ? "ASSIGNED" : "OPEN",
         };
       }),
     };
@@ -483,8 +483,10 @@ export default function MonitorPage({ auth }) {
       const suggestions = await requestJson(`${auth.apiBase}/classes/${classId}/replacement-suggestions`, { headers });
       setReplacementSuggestions((current) => ({ ...current, [classId]: suggestions }));
       setActionStatus({ kind: "success", message: `Loaded replacement suggestions for ${classId}.` });
+      return suggestions;
     } catch (error) {
       setActionStatus({ kind: "error", message: error.message });
+      return [];
     } finally {
       setPendingAction("");
     }
@@ -503,15 +505,27 @@ export default function MonitorPage({ auth }) {
       () => {
         setState((current) => ({
           ...current,
-          classes: current.classes.map((item) =>
-            item.class_id === classId
-              ? {
-                  ...item,
-                  teacher_id: teacherId,
-                  status: "ASSIGNED",
-                }
-              : item,
-          ),
+          classes: current.classes.map((item) => {
+            if (item.class_id !== classId) {
+              return item;
+            }
+
+            const teacherIds = item.teacher_ids || (item.teacher_id ? [item.teacher_id] : []);
+            const nextTeacherIds = teacherIds.includes(teacherId) ? teacherIds : [...teacherIds, teacherId];
+            const teacherLabels = item.teacher_labels || (item.teacher_label && item.teacher_label !== "-" ? [item.teacher_label] : []);
+            const teacherName = teachersById.get(teacherId) || "-";
+            const teacherLabel = teacherName;
+            const nextTeacherLabels = teacherLabels.includes(teacherLabel) ? teacherLabels : [...teacherLabels, teacherLabel];
+            return {
+              ...item,
+              teacher_id: item.teacher_id || teacherId,
+              teacher_ids: nextTeacherIds,
+              teacher_labels: nextTeacherLabels,
+              teacher_label: nextTeacherLabels.join(", "),
+              teacher_count: nextTeacherIds.length,
+              status: "ASSIGNED",
+            };
+          }),
         }));
       },
     );
@@ -523,6 +537,8 @@ export default function MonitorPage({ auth }) {
         return next;
       });
     }
+
+    return success;
   }
 
   async function updateTeacherActive(teacherId, active) {
@@ -681,18 +697,25 @@ export default function MonitorPage({ auth }) {
   const teachersById = new Map(state.teachers.map((item) => [item.teacher_id, item.name]));
   const classesWithCenterAndTeacher = classesWithCenter.map((item) => ({
     ...item,
-    teacher_label: item.teacher_id ? `${item.teacher_id} - ${teachersById.get(item.teacher_id) || "-"}` : "-",
+    teacher_label:
+      item.teacher_labels?.length > 0
+        ? item.teacher_labels
+            .map((label) => String(label).replace(/^[^-]+ - /, ""))
+            .join(", ")
+        : item.teacher_id
+          ? teachersById.get(item.teacher_id) || "-"
+          : "-",
   }));
-  const highlightedClasses = classesWithCenterAndTeacher.filter((item) => item.teacher_id === user.teacher_id);
+  const highlightedClasses = classesWithCenterAndTeacher.filter((item) =>
+    item.teacher_ids?.length > 0 ? item.teacher_ids.includes(user.teacher_id) : item.teacher_id === user.teacher_id,
+  );
   const classesById = new Map(state.classes.map((item) => [item.class_id, item]));
   const leaveRequestsWithCenter = state.leaveRequests.map((item) => ({
     ...item,
     center_id: formatCenter(classesById.get(item.class_id)?.center_id),
     teacher_name: teachersById.get(item.teacher_id) || item.teacher_id || "-",
   }));
-  const assignmentQueue = classesWithCenterAndTeacher.filter(
-    (item) => item.status === "OPEN" || item.status === "NEED_REPLACEMENT",
-  );
+  const assignmentQueue = classesWithCenterAndTeacher;
   const currentTeacherScore =
     state.teacherScores.find((item) => item.teacher_id === user.teacher_id) || {
       score: 100,

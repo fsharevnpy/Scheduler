@@ -68,14 +68,12 @@ class TeacherUpdate(BaseModel):
 
 
 class ClassCreate(BaseModel):
-    class_id: str
+    class_id: Optional[str] = None
     day_of_week: Literal["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
     center_id: str
     start_time: time
     end_time: time
-    room_no: int
     teacher_id: Optional[str] = None
-    status: str = "OPEN"
 
 
 class ClassUpdate(BaseModel):
@@ -83,7 +81,6 @@ class ClassUpdate(BaseModel):
     center_id: Optional[str] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    room_no: Optional[int] = None
     teacher_id: Optional[str] = None
     status: Optional[str] = None
 

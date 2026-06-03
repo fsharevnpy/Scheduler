@@ -457,10 +457,6 @@ export default function TeacherMonitorView({
                         <span>Center</span>
                         <strong>{formatValue(selectedClass.center_label)}</strong>
                       </div>
-                      <div className="floating-panel-summary-row">
-                        <span>Room</span>
-                        <strong>{formatValue(selectedClass.room_no)}</strong>
-                      </div>
                     </div>
                   ) : null}
 

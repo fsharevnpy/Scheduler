@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
+import AppNotificationBell from "../../components/AppNotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import FloatingPanel from "../monitor/FloatingPanel.jsx";
@@ -260,6 +261,7 @@ export default function ProfileSettingsPage({ auth }) {
             <p className="subtle">Manage your profile image, password, and account details in one place.</p>
           </div>
           <div className="dashboard-actions">
+            <AppNotificationBell auth={auth} />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}

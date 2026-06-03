@@ -53,7 +53,6 @@
   .dashboard-action-stack,
   .section-head,
   .floating-panel-head,
-  .replacement-card-head,
   .center-class-head {
     width: 100%;
     flex-direction: column;
@@ -93,10 +92,6 @@
 
   .table-actions {
     min-width: 132px;
-  }
-
-  .classes-center-table {
-    min-width: 760px;
   }
 
   .floating-panel-backdrop {
@@ -159,7 +154,6 @@
   }
 
   .dashboard-section,
-  .replacement-card,
   .center-class-group,
   .class-highlight-card,
   .teacher-profile-card {
