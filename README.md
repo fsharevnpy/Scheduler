@@ -117,6 +117,15 @@ Create a tailscale funnel:
 sudo tailscale funnel --bg 8080
 ```
 
+If an issue with tailscale occured, reset funnel:
+
+```bash
+sudo tailscale funnel off
+sudo tailscale serve reset
+sudo tailscale funnel --bg 8080
+tailscale funnel status
+```
+
 ## Default Accounts
 
 Available after reseeding the database:
