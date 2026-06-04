@@ -34,6 +34,7 @@ def get_teachers(
                 t.education_score,
                 t.max_slots_per_day,
                 t.active,
+                u.user_code,
                 u.profile_image_url
             FROM teachers t
             LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'

@@ -488,7 +488,7 @@ export default function AdminMonitorView({
                 </button>
               ),
             },
-            { key: "teacher_id", label: "Teacher ID" },
+            { key: "user_code", label: "User Code" },
             { key: "name", label: "Name" },
             { key: "contact", label: "Phone" },
             { key: "email", label: "Email" },

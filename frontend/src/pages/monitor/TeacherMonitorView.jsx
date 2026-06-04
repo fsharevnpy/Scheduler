@@ -154,6 +154,33 @@ export default function TeacherMonitorView({
     );
   }
 
+  function handleResetLocationAccess() {
+    if (!navigator.geolocation) {
+      setAttendanceError("This browser does not support location access.");
+      return;
+    }
+
+    setAttendanceError("");
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setAttendanceError("Location access is ready. You can confirm check-in now.");
+      },
+      (error) => {
+        if (error.code === 1) {
+          setAttendanceError("Location permission is blocked. On iOS, allow Location for Safari and this website in Settings, then try again.");
+          return;
+        }
+
+        setAttendanceError(error.message || "Unable to refresh location access.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 0,
+      },
+    );
+  }
+
   return (
     <>
       <section className="monitor-grid monitor-grid-summary">
@@ -390,6 +417,14 @@ export default function TeacherMonitorView({
               onClick={handleConfirmAttendance}
             >
               {pendingAction === "attendance-check-in" ? "Recording..." : "Confirm check-in"}
+            </button>
+            <button
+              type="button"
+              className="table-action-button table-action-button-muted"
+              disabled={pendingAction === "attendance-check-in"}
+              onClick={handleResetLocationAccess}
+            >
+              Reset location
             </button>
             <button
               type="button"
