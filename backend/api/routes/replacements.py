@@ -20,6 +20,7 @@ TIME_MATCH_WEIGHT = 0.25
 @router.get("/classes/{class_id}/replacement-suggestions")
 def get_replacement_suggestions(
     class_id: str,
+    replace_teacher_id: str | None = None,
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
@@ -41,7 +42,7 @@ def get_replacement_suggestions(
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
 
-    if class_teacher_count(db, class_id) >= 2:
+    if class_teacher_count(db, class_id) >= 2 and not replace_teacher_id:
         return []
 
     elo_range = db.execute(
@@ -179,6 +180,47 @@ def get_replacement_suggestions(
 
     suggestions.sort(key=lambda item: item["final_score"], reverse=True)
     return suggestions
+
+
+def update_class_assignment_state(db: Session, class_id: str) -> None:
+    remaining_teacher_id = db.execute(
+        text("""
+            SELECT teacher_id
+            FROM class_teachers
+            WHERE class_id = :class_id
+            ORDER BY assigned_at, teacher_id
+            LIMIT 1
+        """),
+        {"class_id": class_id},
+    ).scalar_one_or_none()
+
+    active_leave_count = db.execute(
+        text("""
+            SELECT COUNT(*)
+            FROM leave_requests
+            WHERE class_id = :class_id
+              AND status IN ('REQUESTED', 'APPROVED')
+        """),
+        {"class_id": class_id},
+    ).scalar_one()
+
+    next_status = "OPEN"
+    if remaining_teacher_id:
+        next_status = "NEED_REPLACEMENT" if active_leave_count > 0 else "ASSIGNED"
+
+    db.execute(
+        text("""
+            UPDATE classes
+            SET teacher_id = :teacher_id,
+                status = :status
+            WHERE class_id = :class_id
+        """),
+        {
+            "class_id": class_id,
+            "teacher_id": remaining_teacher_id,
+            "status": next_status,
+        },
+    )
 
 
 @router.put("/classes/{class_id}/assign-replacement")
@@ -328,5 +370,187 @@ def assign_replacement(
     return {
         "message": "replacement assigned",
         "class_id": class_id,
+        "teacher_id": payload.teacher_id,
+    }
+
+
+@router.delete("/classes/{class_id}/teachers/{teacher_id}")
+def remove_class_teacher(
+    class_id: str,
+    teacher_id: str,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    ensure_class_teachers_table(db)
+
+    existing_assignment = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    ).first()
+
+    if not existing_assignment:
+        raise HTTPException(status_code=404, detail="teacher is not assigned to this class")
+
+    db.execute(
+        text("""
+            DELETE FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    )
+    update_class_assignment_state(db, class_id)
+    db.commit()
+
+    return {"message": "teacher removed from class", "class_id": class_id, "teacher_id": teacher_id}
+
+
+@router.put("/classes/{class_id}/teachers/{teacher_id}/reassign")
+def reassign_class_teacher(
+    class_id: str,
+    teacher_id: str,
+    payload: AssignReplacementPayload,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    ensure_class_teachers_table(db)
+
+    if teacher_id == payload.teacher_id:
+        raise HTTPException(status_code=400, detail="replacement teacher must be different")
+
+    existing_assignment = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    ).first()
+
+    if not existing_assignment:
+        raise HTTPException(status_code=404, detail="teacher is not assigned to this class")
+
+    target_class = db.execute(
+        text("""
+            SELECT class_id, day_of_week, center_id, start_time, end_time, status
+            FROM classes
+            WHERE class_id = :class_id
+        """),
+        {"class_id": class_id},
+    ).mappings().first()
+
+    if not target_class:
+        raise HTTPException(status_code=404, detail="class not found")
+
+    replacement_exists = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": payload.teacher_id},
+    ).first()
+
+    if replacement_exists:
+        raise HTTPException(status_code=400, detail="replacement teacher is already assigned to this class")
+
+    teacher_row = db.execute(
+        text("""
+            SELECT teacher_id, name, active, max_slots_per_day
+            FROM teachers
+            WHERE teacher_id = :teacher_id
+        """),
+        {"teacher_id": payload.teacher_id},
+    ).mappings().first()
+
+    if not teacher_row:
+        raise HTTPException(status_code=404, detail="replacement teacher not found")
+
+    if not teacher_row["active"]:
+        raise HTTPException(status_code=400, detail="replacement teacher is inactive")
+
+    active_leave_request = db.execute(
+        text("""
+            SELECT 1
+            FROM leave_requests lr
+            JOIN classes lc ON lc.class_id = lr.class_id
+            WHERE lr.teacher_id = :teacher_id
+              AND lc.day_of_week = :day_of_week
+              AND lr.status IN ('REQUESTED', 'APPROVED')
+        """),
+        {"teacher_id": payload.teacher_id, "day_of_week": target_class["day_of_week"]},
+    ).first()
+
+    if active_leave_request:
+        raise HTTPException(status_code=400, detail="replacement teacher already has a leave request on that day")
+
+    overlap = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers ct
+            JOIN classes c ON c.class_id = ct.class_id
+            WHERE ct.teacher_id = :teacher_id
+              AND c.day_of_week = :day_of_week
+              AND c.class_id <> :class_id
+              AND c.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
+              AND c.start_time < :end_time
+              AND c.end_time > :start_time
+        """),
+        {
+            "teacher_id": payload.teacher_id,
+            "day_of_week": target_class["day_of_week"],
+            "class_id": class_id,
+            "start_time": target_class["start_time"],
+            "end_time": target_class["end_time"],
+        },
+    ).first()
+
+    if overlap:
+        raise HTTPException(status_code=400, detail="replacement teacher has schedule conflict")
+
+    assigned_count = db.execute(
+        text("""
+            SELECT COUNT(*)
+            FROM class_teachers ct
+            JOIN classes c ON c.class_id = ct.class_id
+            WHERE ct.teacher_id = :teacher_id
+              AND c.day_of_week = :day_of_week
+              AND c.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
+        """),
+        {"teacher_id": payload.teacher_id, "day_of_week": target_class["day_of_week"]},
+    ).scalar_one()
+
+    if assigned_count >= teacher_row["max_slots_per_day"]:
+        raise HTTPException(status_code=400, detail="replacement teacher exceeds max slots per day")
+
+    db.execute(
+        text("""
+            DELETE FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    )
+    db.execute(
+        text("""
+            INSERT INTO class_teachers (class_id, teacher_id)
+            VALUES (:class_id, :teacher_id)
+        """),
+        {"class_id": class_id, "teacher_id": payload.teacher_id},
+    )
+    update_class_assignment_state(db, class_id)
+    db.commit()
+
+    return {
+        "message": "teacher reassigned",
+        "class_id": class_id,
+        "old_teacher_id": teacher_id,
         "teacher_id": payload.teacher_id,
     }

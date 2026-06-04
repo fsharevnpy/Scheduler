@@ -46,20 +46,35 @@ function filterAdminAttendanceByView(attendanceRecords, view) {
   return view === "history" ? historyRecords : currentRecords;
 }
 
-function renderTeacherNames(label) {
+function renderTeacherNames(label, teacherIds = [], onSelect = null) {
   if (!label || label === "-") {
     return <span>-</span>;
   }
 
+  const teacherNames = String(label)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
   return (
     <span className="class-teacher-list">
-      {String(label)
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((item) => (
-          <span key={item}>{item}</span>
-        ))}
+      {teacherNames.map((item, index) => {
+        const teacherId = teacherIds[index] || "";
+        if (!onSelect || !teacherId) {
+          return <span key={`${teacherId}-${item}`}>{item}</span>;
+        }
+
+        return (
+          <button
+            type="button"
+            className="class-teacher-button"
+            key={`${teacherId}-${item}`}
+            onClick={() => onSelect(teacherId, item)}
+          >
+            {item}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -81,6 +96,8 @@ export default function AdminMonitorView({
   classes,
   onApproveLeaveRequest,
   onAssignReplacement,
+  onRemoveClassTeacher,
+  onReassignClassTeacher,
   onRejectLeaveRequest,
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
@@ -93,6 +110,10 @@ export default function AdminMonitorView({
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
   const [selectedSuggestionClass, setSelectedSuggestionClass] = useState(null);
   const [selectedSuggestionTeacherIds, setSelectedSuggestionTeacherIds] = useState([]);
+  const [selectedClassTeacher, setSelectedClassTeacher] = useState(null);
+  const [classTeacherAction, setClassTeacherAction] = useState("manage");
+  const [classTeacherSuggestions, setClassTeacherSuggestions] = useState([]);
+  const [selectedReassignTeacherId, setSelectedReassignTeacherId] = useState("");
   const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
   const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
@@ -333,6 +354,55 @@ export default function AdminMonitorView({
     if (allSucceeded) {
       setSelectedSuggestionClass(null);
       setSelectedSuggestionTeacherIds([]);
+    }
+  }
+
+  async function openClassTeacherPanel(classItem, teacherId, teacherName) {
+    setSelectedClassTeacher({ classItem, teacherId, teacherName });
+    setClassTeacherAction("manage");
+    setClassTeacherSuggestions([]);
+    setSelectedReassignTeacherId("");
+  }
+
+  async function openReassignClassTeacher() {
+    if (!selectedClassTeacher) {
+      return;
+    }
+
+    setClassTeacherAction("reassign");
+    const suggestions = await onLoadReplacementSuggestions(
+      selectedClassTeacher.classItem.class_id,
+      selectedClassTeacher.teacherId,
+    );
+    setClassTeacherSuggestions(suggestions);
+    setSelectedReassignTeacherId(suggestions[0]?.teacher_id || "");
+  }
+
+  async function handleRemoveClassTeacher() {
+    if (!selectedClassTeacher) {
+      return;
+    }
+
+    const success = await onRemoveClassTeacher(selectedClassTeacher.classItem.class_id, selectedClassTeacher.teacherId);
+    if (success) {
+      setSelectedClassTeacher(null);
+    }
+  }
+
+  async function handleReassignClassTeacher() {
+    if (!selectedClassTeacher || !selectedReassignTeacherId) {
+      return;
+    }
+
+    const success = await onReassignClassTeacher(
+      selectedClassTeacher.classItem.class_id,
+      selectedClassTeacher.teacherId,
+      selectedReassignTeacherId,
+    );
+    if (success) {
+      setSelectedClassTeacher(null);
+      setClassTeacherSuggestions([]);
+      setSelectedReassignTeacherId("");
     }
   }
 
@@ -598,7 +668,9 @@ export default function AdminMonitorView({
                               <span>
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                               </span>
-                              {renderTeacherNames(item.teacher_label)}
+                              {renderTeacherNames(item.teacher_label, item.teacher_ids, (teacherId, teacherName) =>
+                                openClassTeacherPanel(item, teacherId, teacherName),
+                              )}
                               {canAssignMoreTeachers ? (
                                 <button
                                   type="button"
@@ -780,6 +852,103 @@ export default function AdminMonitorView({
           />
         )}
       </section>
+
+      {selectedClassTeacher ? (
+        <FloatingPanel
+          eyebrow="Class Teacher"
+          title={selectedClassTeacher.teacherName}
+          titleId="class-teacher-action-title"
+          onClose={() => {
+            setSelectedClassTeacher(null);
+            setClassTeacherAction("manage");
+            setClassTeacherSuggestions([]);
+            setSelectedReassignTeacherId("");
+          }}
+        >
+          <div className="floating-panel-grid">
+            <div>
+              <p className="subtle">Class</p>
+              <strong>{selectedClassTeacher.classItem.day_of_week}</strong>
+            </div>
+            <div>
+              <p className="subtle">Time</p>
+              <strong>
+                {formatTimeValue(selectedClassTeacher.classItem.start_time)} - {formatTimeValue(selectedClassTeacher.classItem.end_time)}
+              </strong>
+            </div>
+            <div>
+              <p className="subtle">Center</p>
+              <strong>{formatValue(selectedClassTeacher.classItem.center_label)}</strong>
+            </div>
+            <div>
+              <p className="subtle">Teacher</p>
+              <strong>{selectedClassTeacher.teacherName}</strong>
+            </div>
+          </div>
+
+          {classTeacherAction === "reassign" ? (
+            <div className="floating-panel-section">
+              <label className="field">
+                <span>Reassign to</span>
+                <select
+                  value={selectedReassignTeacherId}
+                  onChange={(event) => setSelectedReassignTeacherId(event.target.value)}
+                >
+                  {classTeacherSuggestions.map((suggestion) => (
+                    <option key={suggestion.teacher_id} value={suggestion.teacher_id}>
+                      {suggestion.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {classTeacherSuggestions.length === 0 ? (
+                <p className="subtle">No eligible teachers found for this class.</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="floating-panel-actions">
+            {classTeacherAction === "manage" ? (
+              <>
+                <button
+                  type="button"
+                  className="table-action-button table-action-button-muted"
+                  disabled={pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`}
+                  onClick={handleRemoveClassTeacher}
+                >
+                  {pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}` ? "Removing..." : "Remove"}
+                </button>
+                <button type="button" className="table-action-button" onClick={openReassignClassTeacher}>
+                  Reassign
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="table-action-button"
+                  disabled={
+                    !selectedReassignTeacherId ||
+                    pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`
+                  }
+                  onClick={handleReassignClassTeacher}
+                >
+                  {pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`
+                    ? "Reassigning..."
+                    : "Save reassign"}
+                </button>
+                <button
+                  type="button"
+                  className="table-action-button table-action-button-muted"
+                  onClick={() => setClassTeacherAction("manage")}
+                >
+                  Back
+                </button>
+              </>
+            )}
+          </div>
+        </FloatingPanel>
+      ) : null}
 
       {selectedSuggestionClass ? (
         <FloatingPanel

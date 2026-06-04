@@ -993,6 +993,24 @@
   gap: 2px;
 }
 
+.class-teacher-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.class-teacher-button:hover,
+.class-teacher-button:focus-visible {
+  text-decoration: underline;
+}
+
 .class-week-delete-button {
   margin-top: 4px;
   width: 100%;

@@ -475,13 +475,16 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function loadReplacementSuggestions(classId) {
+  async function loadReplacementSuggestions(classId, replaceTeacherId = "") {
     setPendingAction(`suggest-${classId}`);
     setActionStatus({ kind: "", message: "" });
 
     try {
-      const suggestions = await requestJson(`${auth.apiBase}/classes/${classId}/replacement-suggestions`, { headers });
-      setReplacementSuggestions((current) => ({ ...current, [classId]: suggestions }));
+      const query = replaceTeacherId ? `?replace_teacher_id=${encodeURIComponent(replaceTeacherId)}` : "";
+      const suggestions = await requestJson(`${auth.apiBase}/classes/${classId}/replacement-suggestions${query}`, { headers });
+      if (!replaceTeacherId) {
+        setReplacementSuggestions((current) => ({ ...current, [classId]: suggestions }));
+      }
       setActionStatus({ kind: "success", message: `Loaded replacement suggestions for ${classId}.` });
       return suggestions;
     } catch (error) {
@@ -539,6 +542,76 @@ export default function MonitorPage({ auth }) {
     }
 
     return success;
+  }
+
+  function updateClassTeacherList(item, nextTeacherIds) {
+    const nextTeacherLabels = nextTeacherIds.map((teacherId) => teachersById.get(teacherId) || teacherId);
+    return {
+      ...item,
+      teacher_id: nextTeacherIds[0] || null,
+      teacher_ids: nextTeacherIds,
+      teacher_labels: nextTeacherLabels,
+      teacher_label: nextTeacherLabels.length > 0 ? nextTeacherLabels.join(", ") : "-",
+      teacher_count: nextTeacherIds.length,
+      status: nextTeacherIds.length > 0 ? item.status === "NEED_REPLACEMENT" ? "NEED_REPLACEMENT" : "ASSIGNED" : "OPEN",
+    };
+  }
+
+  async function removeClassTeacher(classId, teacherId) {
+    return runAction(
+      `class-teacher-remove-${classId}-${teacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/classes/${classId}/teachers/${teacherId}`, {
+          method: "DELETE",
+          headers,
+        }),
+      `Removed ${teacherId} from class ${classId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          classes: current.classes.map((item) => {
+            if (item.class_id !== classId) {
+              return item;
+            }
+
+            const teacherIds = item.teacher_ids || (item.teacher_id ? [item.teacher_id] : []);
+            return updateClassTeacherList(
+              item,
+              teacherIds.filter((itemTeacherId) => itemTeacherId !== teacherId),
+            );
+          }),
+        }));
+      },
+    );
+  }
+
+  async function reassignClassTeacher(classId, oldTeacherId, nextTeacherId) {
+    return runAction(
+      `class-teacher-reassign-${classId}-${oldTeacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/classes/${classId}/teachers/${oldTeacherId}/reassign`, {
+          method: "PUT",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ teacher_id: nextTeacherId }),
+        }),
+      `Reassigned class ${classId} to ${nextTeacherId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          classes: current.classes.map((item) => {
+            if (item.class_id !== classId) {
+              return item;
+            }
+
+            const teacherIds = item.teacher_ids || (item.teacher_id ? [item.teacher_id] : []);
+            return updateClassTeacherList(
+              item,
+              teacherIds.map((itemTeacherId) => (itemTeacherId === oldTeacherId ? nextTeacherId : itemTeacherId)),
+            );
+          }),
+        }));
+      },
+    );
   }
 
   async function updateTeacherActive(teacherId, active) {
@@ -840,6 +913,8 @@ export default function MonitorPage({ auth }) {
             teachers={state.teachers}
             onApproveLeaveRequest={approveLeaveRequest}
             onAssignReplacement={assignReplacement}
+            onRemoveClassTeacher={removeClassTeacher}
+            onReassignClassTeacher={reassignClassTeacher}
             onRejectLeaveRequest={rejectLeaveRequest}
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
