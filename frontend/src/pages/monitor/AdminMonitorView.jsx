@@ -121,12 +121,17 @@ function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today 
       });
     })
     .sort((left, right) => {
+      const timeCompare = String(left.start_time).localeCompare(String(right.start_time));
+      if (timeCompare !== 0) {
+        return timeCompare;
+      }
+
       const centerCompare = String(left.nearest_center_name).localeCompare(String(right.nearest_center_name));
       if (centerCompare !== 0) {
         return centerCompare;
       }
 
-      return String(left.start_time).localeCompare(String(right.start_time));
+      return String(left.display_name).localeCompare(String(right.display_name));
     });
 }
 
