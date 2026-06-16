@@ -130,6 +130,9 @@ def create_class(
     if not center_exists:
         raise HTTPException(status_code=404, detail="center not found")
 
+    if payload.start_time >= payload.end_time:
+        raise HTTPException(status_code=400, detail="start time must be before end time")
+
     if payload.teacher_id:
         teacher_exists = db.execute(
             text("SELECT 1 FROM teachers WHERE teacher_id = :teacher_id"),
@@ -179,9 +182,9 @@ def update_class(
 ):
     ensure_class_teachers_table(db)
     existing = db.execute(
-        text("SELECT 1 FROM classes WHERE class_id = :class_id"),
+        text("SELECT start_time, end_time FROM classes WHERE class_id = :class_id"),
         {"class_id": class_id},
-    ).first()
+    ).mappings().first()
 
     if not existing:
         raise HTTPException(status_code=404, detail="class not found")
@@ -208,6 +211,11 @@ def update_class(
         ).first()
         if not teacher_exists:
             raise HTTPException(status_code=404, detail="teacher not found")
+
+    next_start_time = data.get("start_time", existing["start_time"])
+    next_end_time = data.get("end_time", existing["end_time"])
+    if next_start_time >= next_end_time:
+        raise HTTPException(status_code=400, detail="start time must be before end time")
 
     fields = ", ".join([f"{key} = :{key}" for key in data.keys()])
     data["class_id"] = class_id

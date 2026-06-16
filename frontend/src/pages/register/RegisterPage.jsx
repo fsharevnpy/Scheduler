@@ -5,8 +5,9 @@ import AppNotificationBell from "../../components/AppNotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import { requestJson } from "../../lib/http.js";
 import { getRoleTitle } from "../../lib/roles.js";
+import FloatingPanel from "../monitor/FloatingPanel.jsx";
 import StatusPill from "../monitor/StatusPill.jsx";
-import { formatTimeValue, formatValue } from "../monitor/monitorUtils.js";
+import { formatTimeDraft, formatTimeValue, formatValue } from "../monitor/monitorUtils.js";
 import UserCreateForm from "./UserCreateForm.jsx";
 
 const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -41,52 +42,6 @@ function renderTeacherNames(label) {
   );
 }
 
-function formatTimeDraft(value) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-
-  if (digits.length === 0) {
-    return "";
-  }
-
-  if (digits.length === 1) {
-    return digits;
-  }
-
-  if (digits.length === 2) {
-    const hour = Number.parseInt(digits, 10);
-
-    if (hour <= 23) {
-      return `${digits}:`;
-    }
-
-    return `0${digits[0]}:${digits[1]}`;
-  }
-
-  if (digits.length === 3) {
-    if (digits[0] === "0") {
-      return `${digits.slice(0, 2)}:${digits[2]}`;
-    }
-
-    const hour = Number.parseInt(digits.slice(0, 2), 10);
-    if (hour <= 23) {
-      return `${digits.slice(0, 2)}:${digits[2]}`;
-    }
-
-    return `0${digits[0]}:${digits.slice(1)}`;
-  }
-
-  if (digits[0] === "0") {
-    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-  }
-
-  const hour = Number.parseInt(digits.slice(0, 2), 10);
-  if (hour <= 23) {
-    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-  }
-
-  return `0${digits[0]}:${digits.slice(1, 3)}`;
-}
-
 export default function RegisterPage({ auth }) {
   const roleOptions = useMemo(
     () => (auth.user.role === "developer" ? ["developer", "manager", "teacher"] : ["manager", "teacher"]),
@@ -113,7 +68,13 @@ export default function RegisterPage({ auth }) {
   const [classStatus, setClassStatus] = useState({ kind: "", message: "" });
   const [isClassSubmitting, setIsClassSubmitting] = useState(false);
   const [pendingClassDelete, setPendingClassDelete] = useState("");
+  const [pendingClassUpdate, setPendingClassUpdate] = useState("");
   const [classCenterPage, setClassCenterPage] = useState(1);
+  const [selectedClassTime, setSelectedClassTime] = useState(null);
+  const [classTimeForm, setClassTimeForm] = useState({
+    start_time: "",
+    end_time: "",
+  });
 
   const authHeaders = useMemo(
     () => ({
@@ -292,6 +253,46 @@ export default function RegisterPage({ auth }) {
       setClassStatus({ kind: "error", message: error.message });
     } finally {
       setPendingClassDelete("");
+    }
+  }
+
+  function openClassTimePanel(classItem) {
+    setSelectedClassTime(classItem);
+    setClassTimeForm({
+      start_time: formatTimeValue(classItem.start_time),
+      end_time: formatTimeValue(classItem.end_time),
+    });
+  }
+
+  async function handleClassTimeSubmit(event) {
+    event.preventDefault();
+
+    if (!selectedClassTime) {
+      return;
+    }
+
+    setPendingClassUpdate(selectedClassTime.class_id);
+    setClassStatus({ kind: "", message: "Updating class time..." });
+
+    try {
+      await requestJson(`${auth.apiBase}/classes/${selectedClassTime.class_id}`, {
+        method: "PUT",
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          start_time: classTimeForm.start_time,
+          end_time: classTimeForm.end_time,
+        }),
+      });
+      await reloadClasses();
+      setSelectedClassTime(null);
+      setClassStatus({ kind: "success", message: `Updated class time ${selectedClassTime.class_id}.` });
+    } catch (error) {
+      setClassStatus({ kind: "error", message: error.message });
+    } finally {
+      setPendingClassUpdate("");
     }
   }
 
@@ -486,6 +487,8 @@ export default function RegisterPage({ auth }) {
                 type="text"
                 inputMode="numeric"
                 placeholder="HH:MM"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
                 maxLength="5"
                 required
               />
@@ -499,6 +502,8 @@ export default function RegisterPage({ auth }) {
                 type="text"
                 inputMode="numeric"
                 placeholder="HH:MM"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
                 maxLength="5"
                 required
               />
@@ -557,9 +562,14 @@ export default function RegisterPage({ auth }) {
                               <div className="class-week-item-head">
                                 <StatusPill value={item.status} />
                               </div>
-                              <span>
+                              <button
+                                type="button"
+                                className="class-time-button"
+                                onClick={() => openClassTimePanel(item)}
+                                title="Edit class time"
+                              >
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
-                              </span>
+                              </button>
                               {renderTeacherNames(item.teacher_label)}
                               <button
                                 type="button"
@@ -604,6 +614,85 @@ export default function RegisterPage({ auth }) {
             </div>
           )}
         </section>
+
+        {selectedClassTime ? (
+          <FloatingPanel
+            eyebrow="Class Time"
+            title={`${currentCenterLabel} | ${selectedClassTime.day_of_week}`}
+            titleId="register-class-time-edit-title"
+            onClose={() => setSelectedClassTime(null)}
+          >
+            <form className="floating-panel-form" onSubmit={handleClassTimeSubmit}>
+              <div className="floating-panel-grid">
+                <div>
+                  <p className="subtle">Status</p>
+                  <StatusPill value={selectedClassTime.status} />
+                </div>
+                <div>
+                  <p className="subtle">Teacher</p>
+                  <strong>{formatValue(selectedClassTime.teacher_label)}</strong>
+                </div>
+              </div>
+
+              <label className="field">
+                <span>Start Time</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="HH:MM"
+                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                  title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                  maxLength="5"
+                  value={classTimeForm.start_time}
+                  required
+                  onChange={(event) =>
+                    setClassTimeForm((current) => ({
+                      ...current,
+                      start_time: formatTimeDraft(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>End Time</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="HH:MM"
+                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                  title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                  maxLength="5"
+                  value={classTimeForm.end_time}
+                  required
+                  onChange={(event) =>
+                    setClassTimeForm((current) => ({
+                      ...current,
+                      end_time: formatTimeDraft(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+
+              <div className="floating-panel-actions">
+                <button
+                  type="submit"
+                  className="table-action-button"
+                  disabled={pendingClassUpdate === selectedClassTime.class_id}
+                >
+                  {pendingClassUpdate === selectedClassTime.class_id ? "Saving..." : "Save time"}
+                </button>
+                <button
+                  type="button"
+                  className="table-action-button table-action-button-muted"
+                  onClick={() => setSelectedClassTime(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </FloatingPanel>
+        ) : null}
       </section>
     </main>
   );

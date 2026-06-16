@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import Literal, Optional
 
 from pydantic import BaseModel, field_validator
@@ -141,6 +141,20 @@ class AttendanceCheckInPayload(BaseModel):
             return value
         if value < 0:
             raise ValueError("accuracy_meters must be at least 0")
+        return value
+
+
+class ManualAttendancePayload(BaseModel):
+    teacher_id: str
+    center_id: str
+    checked_at: datetime
+
+    @field_validator("teacher_id", "center_id")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value is required")
         return value
 
 

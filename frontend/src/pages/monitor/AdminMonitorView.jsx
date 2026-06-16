@@ -5,11 +5,35 @@ import BackupManagement from "./BackupManagement.jsx";
 import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
-import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatClockTimeValue, formatDateTimeValue, formatTimeDraft, formatTimeValue, formatValue } from "./monitorUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
 const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+const WEEKDAY_BY_INDEX = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+function getDatetimeLocalValue(date = new Date()) {
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localTime.toISOString().slice(0, 16);
+}
+
+function getLocalDateKey(date = new Date()) {
+  return getDatetimeLocalValue(date).slice(0, 10);
+}
+
+function getDayCode(date = new Date()) {
+  return WEEKDAY_BY_INDEX[date.getDay()];
+}
+
+function getTimeMinutes(value) {
+  const timeValue = formatTimeValue(value);
+  const [hours, minutes] = String(timeValue).split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return 0;
+  }
+
+  return hours * 60 + minutes;
+}
 
 function filterLeaveRequestsByView(leaveRequests, view) {
   if (view === "active") {
@@ -44,6 +68,66 @@ function filterAdminAttendanceByView(attendanceRecords, view) {
   });
 
   return view === "history" ? historyRecords : currentRecords;
+}
+
+function getFallbackAttendanceStatus(classItem, now) {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const endMinutes = getTimeMinutes(classItem.end_time);
+
+  return currentMinutes > endMinutes ? "MISSED" : "PENDING";
+}
+
+function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today }) {
+  const todayKey = getLocalDateKey(today);
+  const todayDayCode = getDayCode(today);
+  const teachersById = new Map(teachers.map((teacher) => [teacher.teacher_id, teacher]));
+  const latestRecordByClassTeacher = new Map();
+
+  attendanceRecords.forEach((record) => {
+    if (!record.teacher_id || !record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
+      return;
+    }
+
+    const key = `${record.class_id}:${record.teacher_id}`;
+    const current = latestRecordByClassTeacher.get(key);
+    if (!current || new Date(record.checked_at) > new Date(current.checked_at)) {
+      latestRecordByClassTeacher.set(key, record);
+    }
+  });
+
+  return classes
+    .filter((classItem) => classItem.day_of_week === todayDayCode)
+    .flatMap((classItem) => {
+      const teacherIds = classItem.teacher_ids || (classItem.teacher_id ? [classItem.teacher_id] : []);
+
+      return teacherIds.map((teacherId) => {
+        const teacher = teachersById.get(teacherId) || {};
+        const record = latestRecordByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
+
+        return {
+          record_id: record?.record_id || `today-${classItem.class_id}-${teacherId}`,
+          display_name: teacher.name || record?.display_name || teacherId,
+          user_code: teacher.user_code || record?.user_code || "-",
+          teacher_id: teacherId,
+          class_id: classItem.class_id,
+          checked_at: record?.checked_at || null,
+          nearest_center_name: record?.nearest_center_name || classItem.center_label || classItem.center_id,
+          status: record?.status || "-",
+          attendance_status: record?.attendance_status || getFallbackAttendanceStatus(classItem, today),
+          accuracy_meters: record?.accuracy_meters ?? null,
+          start_time: classItem.start_time,
+          end_time: classItem.end_time,
+        };
+      });
+    })
+    .sort((left, right) => {
+      const centerCompare = String(left.nearest_center_name).localeCompare(String(right.nearest_center_name));
+      if (centerCompare !== 0) {
+        return centerCompare;
+      }
+
+      return String(left.start_time).localeCompare(String(right.start_time));
+    });
 }
 
 function renderTeacherNames(label, teacherIds = [], onSelect = null) {
@@ -84,6 +168,7 @@ export default function AdminMonitorView({
   attendanceRecords,
   apiBase,
   token,
+  centers = [],
   leaveRequests,
   managerUsers,
   pendingAction,
@@ -105,6 +190,8 @@ export default function AdminMonitorView({
   onUpdateTeacherProfile,
   onDeleteTeacherProfileImage,
   onCreateTeacherScoreEvent,
+  onCreateManualAttendance,
+  onUpdateClassTime,
 }) {
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
@@ -136,6 +223,18 @@ export default function AdminMonitorView({
   const [attendanceView, setAttendanceView] = useState("current");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
+  const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
+  const [manualAttendanceForm, setManualAttendanceForm] = useState({
+    teacher_id: "",
+    center_id: "",
+    checked_at: getDatetimeLocalValue(),
+  });
+  const [selectedClassTime, setSelectedClassTime] = useState(null);
+  const [classTimeForm, setClassTimeForm] = useState({
+    start_time: "",
+    end_time: "",
+  });
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
     if (!selectedLeaveRequest) {
@@ -145,6 +244,17 @@ export default function AdminMonitorView({
     const nextSelected = leaveRequests.find((item) => item.request_id === selectedLeaveRequest.request_id) || null;
     setSelectedLeaveRequest(nextSelected);
   }, [leaveRequests, selectedLeaveRequest]);
+
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const timeout = window.setTimeout(() => {
+      setCurrentDate(new Date());
+    }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 1000));
+
+    return () => window.clearTimeout(timeout);
+  }, [currentDate]);
 
   const assignmentsByCenter = replacementQueue.reduce((groups, item) => {
     const key = item.center_id || "UNKNOWN";
@@ -167,7 +277,20 @@ export default function AdminMonitorView({
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
-  const visibleAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
+  const todayAttendanceRows = buildTodayAttendanceRows({
+    attendanceRecords,
+    classes,
+    teachers,
+    today: currentDate,
+  });
+  const visibleAttendanceRecords =
+    attendanceView === "current" ? todayAttendanceRows : filterAdminAttendanceByView(attendanceRecords, attendanceView);
+  const todayLabel = currentDate.toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
   const scoresByTeacherId = new Map(teacherScores.map((item) => [item.teacher_id, item]));
   const selectedClassSuggestions = selectedSuggestionClass
     ? replacementSuggestions[selectedSuggestionClass.class_id] ?? []
@@ -317,6 +440,58 @@ export default function AdminMonitorView({
     }
   }
 
+  function openManualAttendancePanel() {
+    setManualAttendanceForm({
+      teacher_id: teachers[0]?.teacher_id || "",
+      center_id: centers[0]?.center_id || "",
+      checked_at: getDatetimeLocalValue(),
+    });
+    setIsManualAttendancePanelOpen(true);
+  }
+
+  async function handleManualAttendanceSubmit(event) {
+    event.preventDefault();
+
+    if (!manualAttendanceForm.teacher_id || !manualAttendanceForm.center_id || !manualAttendanceForm.checked_at) {
+      return;
+    }
+
+    const success = await onCreateManualAttendance({
+      teacherId: manualAttendanceForm.teacher_id,
+      centerId: manualAttendanceForm.center_id,
+      checkedAt: new Date(manualAttendanceForm.checked_at).toISOString(),
+    });
+
+    if (success) {
+      setIsManualAttendancePanelOpen(false);
+    }
+  }
+
+  function openClassTimePanel(classItem) {
+    setSelectedClassTime(classItem);
+    setClassTimeForm({
+      start_time: formatTimeValue(classItem.start_time),
+      end_time: formatTimeValue(classItem.end_time),
+    });
+  }
+
+  async function handleClassTimeSubmit(event) {
+    event.preventDefault();
+
+    if (!selectedClassTime) {
+      return;
+    }
+
+    const success = await onUpdateClassTime(selectedClassTime.class_id, {
+      start_time: classTimeForm.start_time,
+      end_time: classTimeForm.end_time,
+    });
+
+    if (success) {
+      setSelectedClassTime(null);
+    }
+  }
+
   async function openSuggestionPanel(item) {
     setSelectedSuggestionClass(item);
     setSelectedSuggestionTeacherIds([]);
@@ -450,7 +625,21 @@ export default function AdminMonitorView({
         <div className="section-head">
           <div>
             <p className="eyebrow">Attendance</p>
-            <h2>Check-in records</h2>
+            <div className="section-title-row">
+              <h2>Check-in records</h2>
+              <button
+                type="button"
+                className="section-add-button"
+                onClick={openManualAttendancePanel}
+                aria-label="Create manual attendance"
+                title="Create manual attendance"
+              >
+                +
+              </button>
+            </div>
+            <p className="subtle">
+              Today: {todayLabel} | {getDayCode(currentDate)} | Teachers scheduled: {todayAttendanceRows.length}
+            </p>
           </div>
           <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
             <button
@@ -483,16 +672,29 @@ export default function AdminMonitorView({
             { key: "display_name", label: "User" },
             { key: "user_code", label: "User Code" },
             { key: "teacher_id", label: "Teacher ID" },
-            { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
+            { key: "class_id", label: "Class", render: (row) => formatValue(row.class_id) },
+            {
+              key: "checked_at",
+              label: "Time",
+              render: (row) => formatClockTimeValue(row.checked_at),
+            },
             {
               key: "nearest_center_name",
               label: "Location",
-              render: (row) => (row.status === "VALID" ? row.nearest_center_name || "Nearest center" : "INVALID"),
+              render: (row) =>
+                !row.checked_at || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
+                  ? row.nearest_center_name || "Nearest center"
+                  : "INVALID",
             },
             {
               key: "status",
-              label: "Status",
-              render: (row) => <StatusPill value={row.status || "INVALID"} />,
+              label: "Location Status",
+              render: (row) => <StatusPill value={!row.checked_at || row.status === "-" ? "PENDING" : row.status || "PENDING"} />,
+            },
+            {
+              key: "attendance_status",
+              label: "Class Status",
+              render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
             },
             {
               key: "accuracy_meters",
@@ -509,6 +711,181 @@ export default function AdminMonitorView({
           pageSize={10}
         />
       </section>
+
+      {isManualAttendancePanelOpen ? (
+        <FloatingPanel
+          eyebrow="Attendance"
+          title="Manual check-in"
+          titleId="manual-attendance-title"
+          onClose={() => setIsManualAttendancePanelOpen(false)}
+        >
+          <form className="floating-panel-form" onSubmit={handleManualAttendanceSubmit}>
+            <label className="field">
+              <span>Teacher</span>
+              <select
+                value={manualAttendanceForm.teacher_id}
+                required
+                onChange={(event) =>
+                  setManualAttendanceForm((current) => ({
+                    ...current,
+                    teacher_id: event.target.value,
+                  }))
+                }
+              >
+                {teachers.map((teacher) => (
+                  <option key={teacher.teacher_id} value={teacher.teacher_id}>
+                    {teacher.user_code ? `${teacher.user_code} - ` : ""}{teacher.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Center</span>
+              <select
+                value={manualAttendanceForm.center_id}
+                required
+                onChange={(event) =>
+                  setManualAttendanceForm((current) => ({
+                    ...current,
+                    center_id: event.target.value,
+                  }))
+                }
+              >
+                {centers.map((center) => (
+                  <option key={center.center_id} value={center.center_id}>
+                    {center.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Check-in time</span>
+              <input
+                type="datetime-local"
+                value={manualAttendanceForm.checked_at}
+                required
+                onChange={(event) =>
+                  setManualAttendanceForm((current) => ({
+                    ...current,
+                    checked_at: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <div className="floating-panel-summary">
+              <div className="floating-panel-summary-row">
+                <span>Status</span>
+                <StatusPill value="MANUAL" />
+              </div>
+            </div>
+
+            <div className="floating-panel-actions">
+              <button
+                type="submit"
+                className="table-action-button"
+                disabled={
+                  pendingAction === "manual-attendance" ||
+                  teachers.length === 0 ||
+                  centers.length === 0 ||
+                  !manualAttendanceForm.teacher_id ||
+                  !manualAttendanceForm.center_id
+                }
+              >
+                {pendingAction === "manual-attendance" ? "Saving..." : "Save manual check-in"}
+              </button>
+              <button
+                type="button"
+                className="table-action-button table-action-button-muted"
+                onClick={() => setIsManualAttendancePanelOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </FloatingPanel>
+      ) : null}
+
+      {selectedClassTime ? (
+        <FloatingPanel
+          eyebrow="Class Time"
+          title={`${selectedClassTime.center_label || selectedClassTime.center_id} | ${selectedClassTime.day_of_week}`}
+          titleId="class-time-edit-title"
+          onClose={() => setSelectedClassTime(null)}
+        >
+          <form className="floating-panel-form" onSubmit={handleClassTimeSubmit}>
+            <div className="floating-panel-grid">
+              <div>
+                <p className="subtle">Status</p>
+                <StatusPill value={selectedClassTime.status} />
+              </div>
+              <div>
+                <p className="subtle">Teachers</p>
+                <strong>{selectedClassTime.teacher_count || selectedClassTime.teacher_ids?.length || 0}/2</strong>
+              </div>
+            </div>
+
+            <label className="field">
+              <span>Start Time</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="HH:MM"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                maxLength="5"
+                value={classTimeForm.start_time}
+                required
+                onChange={(event) =>
+                  setClassTimeForm((current) => ({
+                    ...current,
+                    start_time: formatTimeDraft(event.target.value),
+                  }))
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>End Time</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="HH:MM"
+                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                maxLength="5"
+                value={classTimeForm.end_time}
+                required
+                onChange={(event) =>
+                  setClassTimeForm((current) => ({
+                    ...current,
+                    end_time: formatTimeDraft(event.target.value),
+                  }))
+                }
+              />
+            </label>
+
+            <div className="floating-panel-actions">
+              <button
+                type="submit"
+                className="table-action-button"
+                disabled={pendingAction === `class-time-${selectedClassTime.class_id}`}
+              >
+                {pendingAction === `class-time-${selectedClassTime.class_id}` ? "Saving..." : "Save time"}
+              </button>
+              <button
+                type="button"
+                className="table-action-button table-action-button-muted"
+                onClick={() => setSelectedClassTime(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </FloatingPanel>
+      ) : null}
 
       <section className="dashboard-section">
         <div className="section-head">
@@ -665,9 +1042,14 @@ export default function AdminMonitorView({
                                 <StatusPill value={item.status} />
                                 <span className="subtle">{teacherCount}/2</span>
                               </div>
-                              <span>
+                              <button
+                                type="button"
+                                className="class-time-button"
+                                onClick={() => openClassTimePanel(item)}
+                                title="Edit class time"
+                              >
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
-                              </span>
+                              </button>
                               {renderTeacherNames(item.teacher_label, item.teacher_ids, (teacherId, teacherName) =>
                                 openClassTeacherPanel(item, teacherId, teacherName),
                               )}

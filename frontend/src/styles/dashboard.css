@@ -156,6 +156,36 @@
   margin-bottom: 16px;
 }
 
+.section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title-row h2 {
+  margin-bottom: 0;
+}
+
+.section-add-button {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 27, 23, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(31, 27, 23, 0.08);
+}
+
+.section-add-button:hover {
+  border-color: rgba(31, 27, 23, 0.28);
+  transform: translateY(-1px);
+}
+
 .section-head-actions,
 .table-filter-row {
   display: flex;
@@ -334,6 +364,41 @@
 .status-pill-valid {
   background: rgba(42, 123, 86, 0.12);
   color: var(--success);
+}
+
+.status-pill-on_time {
+  background: rgba(42, 123, 86, 0.12);
+  color: var(--success);
+}
+
+.status-pill-early {
+  background: rgba(47, 97, 154, 0.12);
+  color: #2f619a;
+}
+
+.status-pill-late {
+  background: rgba(180, 79, 33, 0.14);
+  color: var(--accent-dark);
+}
+
+.status-pill-manual {
+  background: rgba(47, 97, 154, 0.12);
+  color: #2f619a;
+}
+
+.status-pill-unmatched {
+  background: rgba(31, 27, 23, 0.08);
+  color: var(--muted);
+}
+
+.status-pill-pending {
+  background: rgba(31, 27, 23, 0.08);
+  color: var(--muted);
+}
+
+.status-pill-missed {
+  background: rgba(164, 55, 45, 0.12);
+  color: var(--error);
 }
 
 .status-pill-invalid {
@@ -986,6 +1051,26 @@
   min-width: 0;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.class-time-button {
+  appearance: none;
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 1px 3px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.class-time-button:hover {
+  background: rgba(31, 27, 23, 0.08);
+  color: var(--ink);
 }
 
 .class-week-item .class-teacher-list {

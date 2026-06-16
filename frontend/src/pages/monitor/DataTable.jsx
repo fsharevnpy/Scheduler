@@ -28,6 +28,10 @@ export default function DataTable({
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [rows]);
+
   const content = (
     <>
       {embedded ? null : (
@@ -60,7 +64,7 @@ export default function DataTable({
             </thead>
             <tbody>
               {visibleRows.map((row, index) => (
-                <tr key={row.id || row.class_id || row.teacher_id || row.request_id || row.user_code || index}>
+                <tr key={row.id || row.record_id || row.class_id || row.request_id || row.teacher_id || row.user_code || index}>
                   {columns.map((column) => (
                     <td key={column.key}>
                       {column.render ? column.render(row) : formatValue(row[column.key])}

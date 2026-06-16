@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from math import atan2, cos, radians, sin, sqrt
 from uuid import uuid4
 
@@ -14,11 +15,12 @@ from core.permissions import (
 )
 from db import get_db
 from schemas.auth import CurrentUser
-from schemas.scheduling import AttendanceCheckInPayload
+from schemas.scheduling import AttendanceCheckInPayload, ManualAttendancePayload
 
 
 router = APIRouter()
 CHECK_IN_COOLDOWN_MINUTES = 5
+LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
 
 
 def ensure_attendance_table(db: Session) -> None:
@@ -33,7 +35,9 @@ def ensure_attendance_table(db: Session) -> None:
                 longitude NUMERIC(9,6) NOT NULL,
                 accuracy_meters NUMERIC(10,2),
                 status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
-                nearest_center_name VARCHAR(100)
+                nearest_center_name VARCHAR(100),
+                class_id VARCHAR(20) REFERENCES classes(class_id) ON DELETE SET NULL,
+                attendance_status VARCHAR(20) NOT NULL DEFAULT 'UNMATCHED'
             )
         """)
     )
@@ -47,6 +51,18 @@ def ensure_attendance_table(db: Session) -> None:
         text("""
             ALTER TABLE attendance_records
             ADD COLUMN IF NOT EXISTS nearest_center_name VARCHAR(100)
+        """)
+    )
+    db.execute(
+        text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS class_id VARCHAR(20) REFERENCES classes(class_id) ON DELETE SET NULL
+        """)
+    )
+    db.execute(
+        text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS attendance_status VARCHAR(20) NOT NULL DEFAULT 'UNMATCHED'
         """)
     )
     db.execute(
@@ -71,6 +87,75 @@ def ensure_attendance_table(db: Session) -> None:
     db.commit()
 
 
+def find_matching_class_session(db: Session, teacher_id: str | None, center_id: str | None, checked_at: datetime):
+    if not teacher_id:
+        return {"class_id": None, "attendance_status": "UNMATCHED"}
+
+    params = {
+        "teacher_id": teacher_id,
+        "center_id": center_id,
+        "checked_at": checked_at,
+    }
+    center_filter = "AND c.center_id = :center_id" if center_id else ""
+
+    session = db.execute(
+        text(f"""
+            WITH checked AS (
+                SELECT
+                    CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
+            ),
+            assigned_classes AS (
+                SELECT ct.class_id
+                FROM class_teachers ct
+                WHERE ct.teacher_id = :teacher_id
+                UNION
+                SELECT c.class_id
+                FROM classes c
+                WHERE c.teacher_id = :teacher_id
+            )
+            SELECT
+                c.class_id,
+                CASE
+                    WHEN CAST(checked.local_checked_at AS TIME) < c.start_time - INTERVAL '30 minutes'
+                        THEN 'EARLY'
+                    WHEN CAST(checked.local_checked_at AS TIME) <= c.start_time
+                        THEN 'ON_TIME'
+                    WHEN CAST(checked.local_checked_at AS TIME) <= c.end_time
+                        THEN 'LATE'
+                    ELSE 'UNMATCHED'
+                END AS attendance_status
+            FROM classes c
+            JOIN assigned_classes ac ON ac.class_id = c.class_id
+            CROSS JOIN checked
+            WHERE c.day_of_week = CASE EXTRACT(ISODOW FROM checked.local_checked_at)
+                    WHEN 1 THEN 'T2'
+                    WHEN 2 THEN 'T3'
+                    WHEN 3 THEN 'T4'
+                    WHEN 4 THEN 'T5'
+                    WHEN 5 THEN 'T6'
+                    WHEN 6 THEN 'T7'
+                    ELSE 'CN'
+                END
+              {center_filter}
+              AND CAST(checked.local_checked_at AS TIME) <= c.end_time
+            ORDER BY
+                CASE
+                    WHEN CAST(checked.local_checked_at AS TIME) > c.start_time
+                     AND CAST(checked.local_checked_at AS TIME) <= c.end_time THEN 1
+                    ELSE 2
+                END,
+                c.start_time
+            LIMIT 1
+        """),
+        params,
+    ).mappings().first()
+
+    if not session:
+        return {"class_id": None, "attendance_status": "UNMATCHED"}
+
+    return dict(session)
+
+
 @router.get("/attendance-records")
 def get_attendance_records(
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER)),
@@ -90,7 +175,9 @@ def get_attendance_records(
             ar.longitude,
             ar.accuracy_meters,
             ar.status,
-            ar.nearest_center_name
+            ar.nearest_center_name,
+            ar.class_id,
+            ar.attendance_status
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
@@ -135,6 +222,7 @@ def check_in_attendance(
         )
 
     record_id = str(uuid4())
+    record_checked_at = datetime.now(timezone.utc)
     centers = db.execute(text("SELECT center_id, name, latitude, longitude FROM centers")).mappings().all()
 
     def haversine_distance(lat1, lon1, lat2, lon2):
@@ -146,6 +234,7 @@ def check_in_attendance(
         return r * c
 
     closest_distance = None
+    closest_center_id = None
     closest_center_name = None
     for center in centers:
         distance = haversine_distance(
@@ -156,17 +245,21 @@ def check_in_attendance(
         )
         if closest_distance is None or distance < closest_distance:
             closest_distance = distance
+            closest_center_id = center.get("center_id")
             closest_center_name = center.get("name")
 
     check_in_status = "VALID" if closest_distance is not None and closest_distance <= 200 else "INVALID"
+    session_match = find_matching_class_session(db, current_user.teacher_id, closest_center_id, record_checked_at)
 
     record = db.execute(
         text("""
             INSERT INTO attendance_records (
-                record_id, user_code, teacher_id, latitude, longitude, accuracy_meters, status, nearest_center_name
+                record_id, user_code, teacher_id, checked_at, latitude, longitude, accuracy_meters,
+                status, nearest_center_name, class_id, attendance_status
             )
             VALUES (
-                :record_id, :user_code, :teacher_id, :latitude, :longitude, :accuracy_meters, :status, :nearest_center_name
+                :record_id, :user_code, :teacher_id, :checked_at, :latitude, :longitude, :accuracy_meters,
+                :status, :nearest_center_name, :class_id, :attendance_status
             )
             RETURNING
                 record_id,
@@ -177,17 +270,22 @@ def check_in_attendance(
                 longitude,
                 accuracy_meters,
                 status,
-                nearest_center_name
+                nearest_center_name,
+                class_id,
+                attendance_status
         """),
         {
             "record_id": record_id,
             "user_code": current_user.user_code,
             "teacher_id": current_user.teacher_id,
+            "checked_at": record_checked_at,
             "latitude": payload.latitude,
             "longitude": payload.longitude,
             "accuracy_meters": payload.accuracy_meters,
             "status": check_in_status,
             "nearest_center_name": closest_center_name,
+            "class_id": session_match["class_id"],
+            "attendance_status": session_match["attendance_status"],
         },
     ).mappings().first()
     db.commit()
@@ -195,4 +293,103 @@ def check_in_attendance(
     return {
         **dict(record),
         "display_name": current_user.display_name,
+    }
+
+
+@router.post("/attendance-records/manual")
+def create_manual_attendance(
+    payload: ManualAttendancePayload,
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    db: Session = Depends(get_db),
+):
+    ensure_attendance_table(db)
+
+    teacher = db.execute(
+        text("""
+            SELECT t.teacher_id, t.name, u.user_code, u.display_name
+            FROM teachers t
+            JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
+            WHERE t.teacher_id = :teacher_id
+              AND t.active = TRUE
+              AND u.active = TRUE
+            LIMIT 1
+        """),
+        {"teacher_id": payload.teacher_id},
+    ).mappings().first()
+
+    if not teacher:
+        raise HTTPException(status_code=404, detail="teacher not found")
+
+    center = db.execute(
+        text("""
+            SELECT center_id, name, latitude, longitude
+            FROM centers
+            WHERE center_id = :center_id
+            LIMIT 1
+        """),
+        {"center_id": payload.center_id},
+    ).mappings().first()
+
+    if not center:
+        raise HTTPException(status_code=404, detail="center not found")
+
+    record_id = str(uuid4())
+    session_match = find_matching_class_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
+    record = db.execute(
+        text("""
+            INSERT INTO attendance_records (
+                record_id,
+                user_code,
+                teacher_id,
+                checked_at,
+                latitude,
+                longitude,
+                accuracy_meters,
+                status,
+                nearest_center_name,
+                class_id,
+                attendance_status
+            )
+            VALUES (
+                :record_id,
+                :user_code,
+                :teacher_id,
+                :checked_at,
+                :latitude,
+                :longitude,
+                NULL,
+                'MANUAL',
+                :nearest_center_name,
+                :class_id,
+                'MANUAL'
+            )
+            RETURNING
+                record_id,
+                user_code,
+                teacher_id,
+                checked_at,
+                latitude,
+                longitude,
+                accuracy_meters,
+                status,
+                nearest_center_name,
+                class_id,
+                attendance_status
+        """),
+        {
+            "record_id": record_id,
+            "user_code": teacher["user_code"],
+            "teacher_id": teacher["teacher_id"],
+            "checked_at": payload.checked_at,
+            "latitude": center["latitude"],
+            "longitude": center["longitude"],
+            "nearest_center_name": center["name"],
+            "class_id": session_match["class_id"],
+        },
+    ).mappings().first()
+    db.commit()
+
+    return {
+        **dict(record),
+        "display_name": teacher["display_name"],
     }

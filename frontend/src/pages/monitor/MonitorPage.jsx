@@ -447,6 +447,55 @@ export default function MonitorPage({ auth }) {
     );
   }
 
+  async function createManualAttendance({ teacherId, centerId, checkedAt }) {
+    return runAction(
+      "manual-attendance",
+      () =>
+        requestJson(`${auth.apiBase}/attendance-records/manual`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teacher_id: teacherId,
+            center_id: centerId,
+            checked_at: checkedAt,
+          }),
+        }),
+      "Manual attendance recorded.",
+      (record) => {
+        setState((current) => ({
+          ...current,
+          attendanceRecords: [record, ...current.attendanceRecords],
+        }));
+      },
+    );
+  }
+
+  async function updateClassTime(classId, payload) {
+    return runAction(
+      `class-time-${classId}`,
+      () =>
+        requestJson(`${auth.apiBase}/classes/${classId}`, {
+          method: "PUT",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      `Updated class time for ${classId}.`,
+      () => {
+        setState((current) => ({
+          ...current,
+          classes: current.classes.map((item) =>
+            item.class_id === classId
+              ? {
+                  ...item,
+                  ...payload,
+                }
+              : item,
+          ),
+        }));
+      },
+    );
+  }
+
   async function resetPasswordRequest(requestId) {
     await runAction(
       `reset-request-${requestId}`,
@@ -902,6 +951,7 @@ export default function MonitorPage({ auth }) {
             apiBase={auth.apiBase}
             token={auth.token}
             classes={classesWithCenterAndTeacher}
+            centers={state.centers}
             leaveRequests={leaveRequestsWithCenter}
             managerUsers={managerUsers}
             pendingAction={pendingAction}
@@ -922,6 +972,8 @@ export default function MonitorPage({ auth }) {
             onUpdateTeacherProfile={updateTeacherProfile}
             onDeleteTeacherProfileImage={deleteTeacherProfileImage}
             onCreateTeacherScoreEvent={createTeacherScoreEvent}
+            onCreateManualAttendance={createManualAttendance}
+            onUpdateClassTime={updateClassTime}
           />
         )}
       </section>
