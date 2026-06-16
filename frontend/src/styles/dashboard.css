@@ -237,6 +237,23 @@
   background: rgba(42, 123, 86, 0.16);
 }
 
+.teacher-name-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teacher-name-button:hover,
+.teacher-name-button:focus-visible {
+  text-decoration: underline;
+}
+
 .score-event-list {
   display: grid;
   gap: 10px;
@@ -539,6 +556,48 @@
 .teacher-avatar-verification-copy {
   display: grid;
   gap: 8px;
+}
+
+.teacher-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.teacher-detail-head strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.teacher-detail-session-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.teacher-detail-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 27, 23, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.teacher-detail-session strong,
+.teacher-detail-session span {
+  display: block;
+}
+
+.teacher-detail-session-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .profile-image-panel {

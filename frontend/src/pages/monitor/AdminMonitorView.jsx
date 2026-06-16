@@ -202,6 +202,7 @@ export default function AdminMonitorView({
   const [classTeacherSuggestions, setClassTeacherSuggestions] = useState([]);
   const [selectedReassignTeacherId, setSelectedReassignTeacherId] = useState("");
   const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
+  const [selectedTeacherDetail, setSelectedTeacherDetail] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
   const [selectedScoreTeacher, setSelectedScoreTeacher] = useState(null);
   const [profileForm, setProfileForm] = useState({
@@ -299,6 +300,16 @@ export default function AdminMonitorView({
     ? selectedSuggestionClass.teacher_count || selectedSuggestionClass.teacher_ids?.length || (selectedSuggestionClass.teacher_id ? 1 : 0)
     : 0;
   const selectedClassAvailableTeacherSlots = Math.max(0, 2 - selectedClassTeacherCount);
+  const selectedTeacherAssignedClasses = selectedTeacherDetail
+    ? classes.filter((item) =>
+        item.teacher_ids?.length > 0
+          ? item.teacher_ids.includes(selectedTeacherDetail.teacher_id)
+          : item.teacher_id === selectedTeacherDetail.teacher_id,
+      )
+    : [];
+  const selectedTeacherTodayRows = selectedTeacherDetail
+    ? todayAttendanceRows.filter((item) => item.teacher_id === selectedTeacherDetail.teacher_id)
+    : [];
 
   useEffect(() => {
     setAssignmentCenterPage((current) => Math.min(current, assignmentCenterPageCount));
@@ -936,7 +947,15 @@ export default function AdminMonitorView({
               ),
             },
             { key: "user_code", label: "User Code" },
-            { key: "name", label: "Name" },
+            {
+              key: "name",
+              label: "Name",
+              render: (row) => (
+                <button type="button" className="teacher-name-button" onClick={() => setSelectedTeacherDetail(row)}>
+                  {formatValue(row.name)}
+                </button>
+              ),
+            },
             { key: "contact", label: "Phone" },
             { key: "email", label: "Email" },
             {
@@ -1544,6 +1563,68 @@ export default function AdminMonitorView({
               <p className="subtle">Name</p>
               <strong>{formatValue(selectedAvatarTeacher.name)}</strong>
             </div>
+          </div>
+        </FloatingPanel>
+      ) : null}
+
+      {selectedTeacherDetail ? (
+        <FloatingPanel
+          eyebrow="Teacher Detail"
+          title={`${selectedTeacherDetail.user_code || selectedTeacherDetail.teacher_id} - ${selectedTeacherDetail.name}`}
+          titleId="teacher-detail-title"
+          onClose={() => setSelectedTeacherDetail(null)}
+        >
+          <div className="teacher-detail-head">
+            <UserAvatar
+              apiBase={apiBase}
+              imageUrl={selectedTeacherDetail.profile_image_url}
+              name={selectedTeacherDetail.name}
+              fallbackCode={selectedTeacherDetail.teacher_id}
+              size="medium"
+            />
+            <div>
+              <strong>{formatValue(selectedTeacherDetail.name)}</strong>
+              <p className="subtle">{formatValue(selectedTeacherDetail.email)}</p>
+            </div>
+          </div>
+
+          <div className="floating-panel-grid score-summary-grid">
+            <div>
+              <p className="subtle">Assigned Classes</p>
+              <strong>{selectedTeacherAssignedClasses.length}</strong>
+            </div>
+            <div>
+              <p className="subtle">Today Classes</p>
+              <strong>{selectedTeacherTodayRows.length}</strong>
+            </div>
+            <div>
+              <p className="subtle">Checked In Today</p>
+              <strong>{selectedTeacherTodayRows.filter((item) => item.checked_at).length}</strong>
+            </div>
+          </div>
+
+          <div className="floating-panel-section">
+            <p className="subtle">Today check-in status</p>
+            {selectedTeacherTodayRows.length === 0 ? (
+              <p className="subtle">No classes scheduled today.</p>
+            ) : (
+              <div className="teacher-detail-session-list">
+                {selectedTeacherTodayRows.map((item) => (
+                  <article className="teacher-detail-session" key={`${item.class_id}-${item.teacher_id}`}>
+                    <div>
+                      <strong>
+                        {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
+                      </strong>
+                      <span>{formatValue(item.nearest_center_name)}</span>
+                    </div>
+                    <div className="teacher-detail-session-status">
+                      <StatusPill value={item.attendance_status || "PENDING"} />
+                      <span className="subtle">{formatClockTimeValue(item.checked_at)}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </FloatingPanel>
       ) : null}
