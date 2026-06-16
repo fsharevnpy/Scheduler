@@ -281,6 +281,7 @@ export default function AdminMonitorView({
   const currentAssignmentCenterLabel = currentAssignmentCenterEntry?.label || "";
   const currentAssignmentClasses = currentAssignmentCenterEntry?.classes || [];
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
+  const classesById = new Map(classes.map((item) => [item.class_id, item]));
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const todayAttendanceRows = buildTodayAttendanceRows({
@@ -290,7 +291,16 @@ export default function AdminMonitorView({
     today: currentDate,
   });
   const visibleAttendanceRecords =
-    attendanceView === "current" ? todayAttendanceRows : filterAdminAttendanceByView(attendanceRecords, attendanceView);
+    attendanceView === "current"
+      ? todayAttendanceRows
+      : filterAdminAttendanceByView(attendanceRecords, attendanceView).map((record) => {
+          const classItem = classesById.get(record.class_id);
+          return {
+            ...record,
+            start_time: record.start_time || classItem?.start_time || "",
+            end_time: record.end_time || classItem?.end_time || "",
+          };
+        });
   const todayLabel = currentDate.toLocaleDateString(undefined, {
     weekday: "long",
     day: "2-digit",
@@ -688,7 +698,14 @@ export default function AdminMonitorView({
             { key: "display_name", label: "User" },
             { key: "user_code", label: "User Code" },
             { key: "teacher_id", label: "Teacher ID" },
-            { key: "class_id", label: "Class", render: (row) => formatValue(row.class_id) },
+            {
+              key: "expected_shift",
+              label: "Expected Shift",
+              render: (row) =>
+                row.start_time && row.end_time
+                  ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
+                  : "-",
+            },
             {
               key: "checked_at",
               label: "Time",
