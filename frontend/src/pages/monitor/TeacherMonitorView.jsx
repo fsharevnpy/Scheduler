@@ -1,13 +1,36 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
-import { formatDateTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatClockTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
+const WEEKDAY_BY_INDEX = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+function getDatetimeLocalValue(date = new Date()) {
+  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localTime.toISOString().slice(0, 16);
+}
+
+function getLocalDateKey(date = new Date()) {
+  return getDatetimeLocalValue(date).slice(0, 10);
+}
+
+function getDayCode(date = new Date()) {
+  return WEEKDAY_BY_INDEX[date.getDay()];
+}
+
+function getTimeMinutes(value) {
+  const [hours, minutes] = String(formatTimeValue(value)).split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return 0;
+  }
+
+  return hours * 60 + minutes;
+}
 
 function filterLeaveRequestsByView(leaveRequests, view) {
   if (view === "active") {
@@ -31,6 +54,47 @@ function filterTeacherAttendanceByView(attendanceRecords, view) {
   }
 
   return attendanceRecords;
+}
+
+function getFallbackAttendanceStatus(classItem, now) {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const endMinutes = getTimeMinutes(classItem.end_time);
+
+  return currentMinutes > endMinutes ? "MISSED" : "PENDING";
+}
+
+function buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today }) {
+  const todayKey = getLocalDateKey(today);
+  const todayDayCode = getDayCode(today);
+  const latestRecordByClass = new Map();
+
+  attendanceRecords.forEach((record) => {
+    if (!record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
+      return;
+    }
+
+    const current = latestRecordByClass.get(record.class_id);
+    if (!current || new Date(record.checked_at) > new Date(current.checked_at)) {
+      latestRecordByClass.set(record.class_id, record);
+    }
+  });
+
+  return highlightedClasses
+    .filter((classItem) => classItem.day_of_week === todayDayCode)
+    .map((classItem) => {
+      const record = latestRecordByClass.get(classItem.class_id);
+      return {
+        record_id: record?.record_id || `today-${classItem.class_id}`,
+        checked_at: record?.checked_at || null,
+        nearest_center_name: record?.nearest_center_name || classItem.center_label || classItem.center_id,
+        status: record?.status || "-",
+        attendance_status: record?.attendance_status || getFallbackAttendanceStatus(classItem, today),
+        class_id: classItem.class_id,
+        start_time: classItem.start_time,
+        end_time: classItem.end_time,
+      };
+    })
+    .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)));
 }
 
 function getScoreBand(score) {
@@ -70,6 +134,18 @@ export default function TeacherMonitorView({
   const [attendanceError, setAttendanceError] = useState("");
   const [attendanceView, setAttendanceView] = useState("current");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const timeout = window.setTimeout(() => {
+      setCurrentDate(new Date());
+    }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 1000));
+
+    return () => window.clearTimeout(timeout);
+  }, [currentDate]);
 
   const activeLeaveClassIds = useMemo(
     () =>
@@ -93,7 +169,30 @@ export default function TeacherMonitorView({
     creatableClasses.find((item) => item.class_id === selectedClassId) || creatableClasses[0] || null;
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
-  const visibleAttendanceRecords = filterTeacherAttendanceByView(attendanceRecords, attendanceView);
+  const classesById = useMemo(
+    () => new Map(highlightedClasses.map((item) => [item.class_id, item])),
+    [highlightedClasses],
+  );
+  const todayAttendanceRows = useMemo(
+    () => buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today: currentDate }),
+    [attendanceRecords, currentDate, highlightedClasses],
+  );
+  const visibleAttendanceRecords =
+    attendanceView === "current"
+      ? todayAttendanceRows
+      : filterTeacherAttendanceByView(attendanceRecords, attendanceView).map((record) => {
+          const classItem = classesById.get(record.class_id);
+          return {
+            ...record,
+            start_time: record.start_time || classItem?.start_time || "",
+            end_time: record.end_time || classItem?.end_time || "",
+          };
+        });
+  const todayLabel = currentDate.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
   const scoreValue = teacherScore?.score ?? 100;
   const scoreMax = teacherScore?.max_score ?? 110;
   const scoreBand = getScoreBand(scoreValue);
@@ -209,6 +308,9 @@ export default function TeacherMonitorView({
           <div>
             <p className="eyebrow">Attendance</p>
             <h2>Check in with current location</h2>
+            <p className="subtle">
+              Today: {todayLabel} | {getDayCode(currentDate)} | Classes scheduled: {todayAttendanceRows.length}
+            </p>
           </div>
           <div className="section-head-actions">
             <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
@@ -263,19 +365,32 @@ export default function TeacherMonitorView({
         <DataTable
           title="Attendance Records"
           columns={[
-            { key: "checked_at", label: "Time", render: (row) => formatDateTimeValue(row.checked_at) },
+            {
+              key: "expected_shift",
+              label: "Expected Shift",
+              render: (row) =>
+                row.start_time && row.end_time
+                  ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
+                  : "-",
+            },
+            { key: "checked_at", label: "Time", render: (row) => formatClockTimeValue(row.checked_at) },
             {
               key: "nearest_center_name",
               label: "Location",
               render: (row) =>
-                row.status === "VALID"
+                !row.checked_at || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
                   ? row.nearest_center_name || "Nearest center"
                   : "Outside valid area",
             },
             {
               key: "status",
-              label: "Status",
-              render: (row) => <StatusPill value={row.status || "INVALID"} />,
+              label: "Location Status",
+              render: (row) => <StatusPill value={!row.checked_at || row.status === "-" ? "PENDING" : row.status || "PENDING"} />,
+            },
+            {
+              key: "attendance_status",
+              label: "Class Status",
+              render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
             },
           ]}
           rows={visibleAttendanceRecords}

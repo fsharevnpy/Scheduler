@@ -302,7 +302,6 @@ export default function AdminMonitorView({
           };
         });
   const todayLabel = currentDate.toLocaleDateString(undefined, {
-    weekday: "long",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
