@@ -70,6 +70,17 @@ function filterAdminAttendanceByView(attendanceRecords, view) {
   return view === "history" ? historyRecords : currentRecords;
 }
 
+function groupAttendanceRecordsByDate(records) {
+  return records.reduce((groups, record) => {
+    const key = getLocalDateKey(new Date(record.checked_at));
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(record);
+    return groups;
+  }, {});
+}
+
 function getFallbackAttendanceStatus(classItem, now) {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const endMinutes = getTimeMinutes(classItem.end_time);
@@ -227,6 +238,7 @@ export default function AdminMonitorView({
   const [resourceView, setResourceView] = useState("teachers");
   const [requestView, setRequestView] = useState("leave");
   const [attendanceView, setAttendanceView] = useState("current");
+  const [attendanceDatePage, setAttendanceDatePage] = useState(1);
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
@@ -262,6 +274,10 @@ export default function AdminMonitorView({
     return () => window.clearTimeout(timeout);
   }, [currentDate]);
 
+  useEffect(() => {
+    setAttendanceDatePage(1);
+  }, [attendanceView]);
+
   const assignmentsByCenter = replacementQueue.reduce((groups, item) => {
     const key = item.center_id || "UNKNOWN";
     if (!groups[key]) {
@@ -290,10 +306,16 @@ export default function AdminMonitorView({
     teachers,
     today: currentDate,
   });
+  const datedAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
+  const attendanceRecordsByDate = groupAttendanceRecordsByDate(datedAttendanceRecords);
+  const attendanceDateKeys = Object.keys(attendanceRecordsByDate).sort((left, right) => right.localeCompare(left));
+  const attendanceDatePageCount = Math.max(1, attendanceDateKeys.length);
+  const selectedAttendanceDateKey = attendanceDateKeys[Math.min(attendanceDatePage - 1, attendanceDatePageCount - 1)] || "";
+  const selectedAttendanceDateRows = selectedAttendanceDateKey ? attendanceRecordsByDate[selectedAttendanceDateKey] || [] : [];
   const visibleAttendanceRecords =
     attendanceView === "current"
       ? todayAttendanceRows
-      : filterAdminAttendanceByView(attendanceRecords, attendanceView).map((record) => {
+      : selectedAttendanceDateRows.map((record) => {
           const classItem = classesById.get(record.class_id);
           return {
             ...record,
@@ -306,6 +328,20 @@ export default function AdminMonitorView({
     month: "2-digit",
     year: "numeric",
   });
+  const selectedAttendanceDateLabel = selectedAttendanceDateKey
+    ? new Date(`${selectedAttendanceDateKey}T00:00:00`).toLocaleDateString(undefined, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : "-";
+  const selectedAttendanceDate = selectedAttendanceDateKey
+    ? new Date(`${selectedAttendanceDateKey}T00:00:00`)
+    : currentDate;
+  const selectedAttendanceDayCode = getDayCode(selectedAttendanceDate);
+  const selectedAttendanceScheduledCount = classes
+    .filter((item) => item.day_of_week === selectedAttendanceDayCode)
+    .reduce((count, item) => count + (item.teacher_ids?.length || (item.teacher_id ? 1 : 0)), 0);
   const scoresByTeacherId = new Map(teacherScores.map((item) => [item.teacher_id, item]));
   const selectedClassSuggestions = selectedSuggestionClass
     ? replacementSuggestions[selectedSuggestionClass.class_id] ?? []
@@ -328,6 +364,10 @@ export default function AdminMonitorView({
   useEffect(() => {
     setAssignmentCenterPage((current) => Math.min(current, assignmentCenterPageCount));
   }, [assignmentCenterPageCount]);
+
+  useEffect(() => {
+    setAttendanceDatePage((current) => Math.min(current, attendanceDatePageCount));
+  }, [attendanceDatePageCount]);
 
   const profileEditMeta = {
     elo: {
@@ -663,7 +703,9 @@ export default function AdminMonitorView({
               </button>
             </div>
             <p className="subtle">
-              Today: {todayLabel} | {getDayCode(currentDate)} | Teachers scheduled: {todayAttendanceRows.length}
+              {attendanceView === "current"
+                ? `Today: ${todayLabel} | ${getDayCode(currentDate)} | Teachers scheduled: ${todayAttendanceRows.length}`
+                : `${attendanceView === "history" ? "History" : "All"}: ${selectedAttendanceDateLabel} | ${selectedAttendanceDayCode} | Teachers scheduled: ${selectedAttendanceScheduledCount}`}
             </p>
           </div>
           <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
@@ -740,8 +782,33 @@ export default function AdminMonitorView({
           rows={visibleAttendanceRecords}
           emptyMessage="No attendance records found."
           embedded
-          pageSize={10}
+          pageSize={attendanceView === "current" ? 10 : null}
         />
+        {attendanceView !== "current" && attendanceDateKeys.length > 0 ? (
+          <div className="table-pagination">
+            <span>
+              Page {attendanceDatePage} of {attendanceDatePageCount}
+            </span>
+            <div className="table-pagination-actions">
+              <button
+                type="button"
+                className="table-action-button table-action-button-muted"
+                disabled={attendanceDatePage === 1}
+                onClick={() => setAttendanceDatePage((current) => Math.max(1, current - 1))}
+              >
+                Newer day
+              </button>
+              <button
+                type="button"
+                className="table-action-button"
+                disabled={attendanceDatePage === attendanceDatePageCount}
+                onClick={() => setAttendanceDatePage((current) => Math.min(attendanceDatePageCount, current + 1))}
+              >
+                Older day
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {isManualAttendancePanelOpen ? (
