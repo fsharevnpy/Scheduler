@@ -1,10 +1,10 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
-import LoginPage from "./pages/LoginPage.jsx";
-import ProfileSettingsPage from "./pages/ProfileSettingsPage.jsx";
-import MonitorPage from "./pages/MonitorPage.jsx";
-import RegisterPage from "./pages/RegisterPage.jsx";
+import LoginPage from "./pages/login/LoginPage.jsx";
+import ProfileSettingsPage from "./pages/profile-settings/ProfileSettingsPage.jsx";
+import MonitorPage from "./pages/monitor/MonitorPage.jsx";
+import RegisterPage from "./pages/register/RegisterPage.jsx";
 import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
 import { requestJson } from "./lib/http.js";
 

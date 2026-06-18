@@ -63,32 +63,75 @@ function getFallbackAttendanceStatus(classItem, now) {
   return currentMinutes > endMinutes ? "MISSED" : "PENDING";
 }
 
+function findContiguousClass(highlightedClasses, classItem, direction) {
+  return highlightedClasses.find((item) => {
+    if (item.class_id === classItem.class_id || item.center_id !== classItem.center_id || item.day_of_week !== classItem.day_of_week) {
+      return false;
+    }
+
+    return direction === "previous"
+      ? formatTimeValue(item.end_time) === formatTimeValue(classItem.start_time)
+      : formatTimeValue(item.start_time) === formatTimeValue(classItem.end_time);
+  });
+}
+
+function getClassBlock(highlightedClasses, classItem) {
+  let startClass = classItem;
+  let endClass = classItem;
+  let previousClass = findContiguousClass(highlightedClasses, startClass, "previous");
+  let nextClass = findContiguousClass(highlightedClasses, endClass, "next");
+
+  while (previousClass) {
+    startClass = previousClass;
+    previousClass = findContiguousClass(highlightedClasses, startClass, "previous");
+  }
+
+  while (nextClass) {
+    endClass = nextClass;
+    nextClass = findContiguousClass(highlightedClasses, endClass, "next");
+  }
+
+  return { startClass, endClass };
+}
+
 function buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today }) {
   const todayKey = getLocalDateKey(today);
   const todayDayCode = getDayCode(today);
-  const latestRecordByClass = new Map();
+  const latestCheckInByClass = new Map();
+  const latestCheckOutByClass = new Map();
 
   attendanceRecords.forEach((record) => {
     if (!record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
       return;
     }
 
-    const current = latestRecordByClass.get(record.class_id);
+    const target = record.event_type === "CHECK_OUT" ? latestCheckOutByClass : latestCheckInByClass;
+    const current = target.get(record.class_id);
     if (!current || new Date(record.checked_at) > new Date(current.checked_at)) {
-      latestRecordByClass.set(record.class_id, record);
+      target.set(record.class_id, record);
     }
   });
 
   return highlightedClasses
     .filter((classItem) => classItem.day_of_week === todayDayCode)
     .map((classItem) => {
-      const record = latestRecordByClass.get(classItem.class_id);
+      const { startClass, endClass } = getClassBlock(highlightedClasses, classItem);
+      const checkInRecord = latestCheckInByClass.get(startClass.class_id) || latestCheckInByClass.get(classItem.class_id);
+      const checkOutRecord = latestCheckOutByClass.get(startClass.class_id) || latestCheckOutByClass.get(endClass.class_id);
+      const isBlockStart = classItem.class_id === startClass.class_id;
+      const isBlockEnd = classItem.class_id === endClass.class_id;
       return {
-        record_id: record?.record_id || `today-${classItem.class_id}`,
-        checked_at: record?.checked_at || null,
-        nearest_center_name: record?.nearest_center_name || classItem.center_label || classItem.center_id,
-        status: record?.status || "-",
-        attendance_status: record?.attendance_status || getFallbackAttendanceStatus(classItem, today),
+        record_id: checkInRecord?.record_id || checkOutRecord?.record_id || `today-${classItem.class_id}`,
+        checked_at: checkInRecord?.checked_at || null,
+        check_out_at: checkOutRecord?.checked_at || null,
+        nearest_center_name: checkInRecord?.nearest_center_name || checkOutRecord?.nearest_center_name || classItem.center_label || classItem.center_id,
+        status: checkInRecord?.status || "-",
+        attendance_status: checkInRecord
+          ? isBlockStart
+            ? checkInRecord.attendance_status
+            : "COVERED"
+          : getFallbackAttendanceStatus(classItem, today),
+        checkout_status: !isBlockEnd && checkInRecord ? "CONTINUED" : checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
         class_id: classItem.class_id,
         start_time: classItem.start_time,
         end_time: classItem.end_time,
@@ -123,11 +166,13 @@ export default function TeacherMonitorView({
   actionStatus,
   teacherScore,
   onCheckInAttendance,
+  onCheckOutAttendance,
   onCreateLeaveRequest,
   onCancelLeaveRequest,
 }) {
   const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
   const [isAttendancePanelOpen, setIsAttendancePanelOpen] = useState(false);
+  const [attendancePanelAction, setAttendancePanelAction] = useState("check-in");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedManagerCode, setSelectedManagerCode] = useState("");
   const [reason, setReason] = useState("");
@@ -196,6 +241,9 @@ export default function TeacherMonitorView({
   const scoreValue = teacherScore?.score ?? 100;
   const scoreMax = teacherScore?.max_score ?? 110;
   const scoreBand = getScoreBand(scoreValue);
+  const isCheckoutPanel = attendancePanelAction === "checkout";
+  const attendancePendingKey = isCheckoutPanel ? "attendance-check-out" : "attendance-check-in";
+  const attendanceActionLabel = isCheckoutPanel ? "checkout" : "check-in";
 
   async function handleCreateLeaveRequest(event) {
     event.preventDefault();
@@ -232,7 +280,8 @@ export default function TeacherMonitorView({
     setAttendanceError("");
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const success = await onCheckInAttendance({
+        const attendanceAction = isCheckoutPanel ? onCheckOutAttendance : onCheckInAttendance;
+        const success = await attendanceAction({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
@@ -262,7 +311,7 @@ export default function TeacherMonitorView({
     setAttendanceError("");
     navigator.geolocation.getCurrentPosition(
       () => {
-        setAttendanceError("Location access is ready. You can confirm check-in now.");
+        setAttendanceError(`Location access is ready. You can confirm ${attendanceActionLabel} now.`);
       },
       (error) => {
         if (error.code === 1) {
@@ -307,45 +356,68 @@ export default function TeacherMonitorView({
         <div className="section-head">
           <div>
             <p className="eyebrow">Attendance</p>
-            <h2>Check in with current location</h2>
+            <h2>Check-in/Checkout Records</h2>
             <p className="subtle">
               Today: {todayLabel} | {getDayCode(currentDate)} | Classes scheduled: {todayAttendanceRows.length}
             </p>
           </div>
-          <div className="section-head-actions">
-            <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
-              <button
-                type="button"
-                className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
-                onClick={() => setAttendanceView("current")}
-              >
-                Current
-              </button>
-              <button
-                type="button"
-                className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
-                onClick={() => setAttendanceView("history")}
-              >
-                History
-              </button>
-              <button
-                type="button"
-                className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
-                onClick={() => setAttendanceView("all")}
-              >
-                All
-              </button>
-            </div>
+        </div>
+
+        <div className="attendance-action-strip" aria-label="Attendance actions">
+          <button
+            type="button"
+            className="attendance-action-card attendance-action-card-primary"
+            disabled={pendingAction === "attendance-check-in"}
+            onClick={() => {
+              setAttendanceError("");
+              setAttendancePanelAction("check-in");
+              setIsAttendancePanelOpen(true);
+            }}
+          >
+            <span>{pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}</span>
+            <strong>Start teaching session</strong>
+          </button>
+          <button
+            type="button"
+            className="attendance-action-card"
+            disabled={pendingAction === "attendance-check-out"}
+            onClick={() => {
+              setAttendanceError("");
+              setAttendancePanelAction("checkout");
+              setIsAttendancePanelOpen(true);
+            }}
+          >
+            <span>{pendingAction === "attendance-check-out" ? "Recording..." : "Checkout"}</span>
+            <strong>Finish teaching session</strong>
+          </button>
+        </div>
+
+        <div className="attendance-records-head">
+          <div>
+            <p className="eyebrow">Records</p>
+            <h3>Attendance records</h3>
+          </div>
+          <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
             <button
               type="button"
-              className="table-action-button"
-              disabled={pendingAction === "attendance-check-in"}
-              onClick={() => {
-                setAttendanceError("");
-                setIsAttendancePanelOpen(true);
-              }}
+              className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("current")}
             >
-              {pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}
+              Current
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("history")}
+            >
+              History
+            </button>
+            <button
+              type="button"
+              className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
+              onClick={() => setAttendanceView("all")}
+            >
+              All
             </button>
           </div>
         </div>
@@ -373,7 +445,8 @@ export default function TeacherMonitorView({
                   ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
                   : "-",
             },
-            { key: "checked_at", label: "Time", render: (row) => formatClockTimeValue(row.checked_at) },
+            { key: "checked_at", label: "Check-in", render: (row) => formatClockTimeValue(row.checked_at) },
+            { key: "check_out_at", label: "Checkout", render: (row) => formatClockTimeValue(row.check_out_at) },
             {
               key: "nearest_center_name",
               label: "Location",
@@ -389,8 +462,13 @@ export default function TeacherMonitorView({
             },
             {
               key: "attendance_status",
-              label: "Class Status",
+              label: "Check-in Status",
               render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
+            },
+            {
+              key: "checkout_status",
+              label: "Checkout Status",
+              render: (row) => <StatusPill value={row.checkout_status || "-"} />,
             },
           ]}
           rows={visibleAttendanceRecords}
@@ -515,12 +593,14 @@ export default function TeacherMonitorView({
       {isAttendancePanelOpen ? (
         <FloatingPanel
           eyebrow="Attendance"
-          title="Confirm check-in"
+          title={`Confirm ${attendanceActionLabel}`}
           titleId="attendance-confirm-title"
           onClose={() => setIsAttendancePanelOpen(false)}
         >
           <div className="floating-panel-reason-box">
-            <p>This will record the current server time and your phone's location for this account.</p>
+            <p>
+              This will record the current server time and your phone's location for this account.
+            </p>
           </div>
           {attendanceError ? <div className="status error">{attendanceError}</div> : null}
 
@@ -528,15 +608,15 @@ export default function TeacherMonitorView({
             <button
               type="button"
               className="table-action-button"
-              disabled={pendingAction === "attendance-check-in"}
+              disabled={pendingAction === attendancePendingKey}
               onClick={handleConfirmAttendance}
             >
-              {pendingAction === "attendance-check-in" ? "Recording..." : "Confirm check-in"}
+              {pendingAction === attendancePendingKey ? "Recording..." : `Confirm ${attendanceActionLabel}`}
             </button>
             <button
               type="button"
               className="table-action-button table-action-button-muted"
-              disabled={pendingAction === "attendance-check-in"}
+              disabled={pendingAction === attendancePendingKey}
               onClick={handleResetLocationAccess}
             >
               Reset location
@@ -544,7 +624,7 @@ export default function TeacherMonitorView({
             <button
               type="button"
               className="table-action-button table-action-button-muted"
-              disabled={pendingAction === "attendance-check-in"}
+              disabled={pendingAction === attendancePendingKey}
               onClick={() => setIsAttendancePanelOpen(false)}
             >
               Cancel

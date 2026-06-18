@@ -447,7 +447,30 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function createManualAttendance({ teacherId, centerId, checkedAt }) {
+  async function checkOutAttendance({ latitude, longitude, accuracy }) {
+    return runAction(
+      "attendance-check-out",
+      () =>
+        requestJson(`${auth.apiBase}/attendance-records/check-out`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude,
+            longitude,
+            accuracy_meters: accuracy ?? null,
+          }),
+        }),
+      "Checkout recorded.",
+      (record) => {
+        setState((current) => ({
+          ...current,
+          attendanceRecords: [record, ...current.attendanceRecords],
+        }));
+      },
+    );
+  }
+
+  async function createManualAttendance({ teacherId, centerId, checkedAt, eventType }) {
     return runAction(
       "manual-attendance",
       () =>
@@ -458,6 +481,7 @@ export default function MonitorPage({ auth }) {
             teacher_id: teacherId,
             center_id: centerId,
             checked_at: checkedAt,
+            event_type: eventType,
           }),
         }),
       "Manual attendance recorded.",
@@ -941,6 +965,7 @@ export default function MonitorPage({ auth }) {
             actionStatus={actionStatus}
             teacherScore={currentTeacherScore}
             onCheckInAttendance={checkInAttendance}
+            onCheckOutAttendance={checkOutAttendance}
             onCreateLeaveRequest={createLeaveRequest}
             onCancelLeaveRequest={cancelLeaveRequest}
           />

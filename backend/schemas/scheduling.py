@@ -148,6 +148,7 @@ class ManualAttendancePayload(BaseModel):
     teacher_id: str
     center_id: str
     checked_at: datetime
+    event_type: Literal["CHECK_IN", "CHECK_OUT"] = "CHECK_IN"
 
     @field_validator("teacher_id", "center_id")
     @classmethod

@@ -199,6 +199,78 @@
   margin-bottom: 12px;
 }
 
+.attendance-action-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.attendance-action-card {
+  appearance: none;
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  padding: 16px 18px;
+  border: 1px solid rgba(31, 27, 23, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(31, 27, 23, 0.07);
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.attendance-action-card:hover {
+  border-color: rgba(31, 27, 23, 0.24);
+  box-shadow: 0 14px 30px rgba(31, 27, 23, 0.1);
+  transform: translateY(-1px);
+}
+
+.attendance-action-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+}
+
+.attendance-action-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.attendance-action-card strong {
+  font-size: 1.03rem;
+  line-height: 1.25;
+}
+
+.attendance-action-card-primary {
+  border-color: rgba(42, 123, 86, 0.24);
+  background: rgba(42, 123, 86, 0.1);
+}
+
+.attendance-records-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(31, 27, 23, 0.08);
+  flex-wrap: wrap;
+}
+
+.attendance-records-head h3 {
+  margin: 0;
+  font-size: 1.04rem;
+}
+
 .section-toggle-group {
   display: flex;
   align-items: center;
@@ -388,12 +460,20 @@
   color: var(--success);
 }
 
+.status-pill-completed,
+.status-pill-covered {
+  background: rgba(42, 123, 86, 0.12);
+  color: var(--success);
+}
+
 .status-pill-early {
   background: rgba(47, 97, 154, 0.12);
   color: #2f619a;
 }
 
-.status-pill-late {
+.status-pill-late,
+.status-pill-left_early,
+.status-pill-overtime {
   background: rgba(180, 79, 33, 0.14);
   color: var(--accent-dark);
 }
@@ -411,6 +491,11 @@
 .status-pill-pending {
   background: rgba(31, 27, 23, 0.08);
   color: var(--muted);
+}
+
+.status-pill-continued {
+  background: rgba(47, 97, 154, 0.12);
+  color: #2f619a;
 }
 
 .status-pill-missed {
@@ -598,6 +683,16 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.teacher-detail-session-status-grid {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.teacher-detail-session-status-grid .teacher-detail-session-status {
+  gap: 8px;
 }
 
 .profile-image-panel {

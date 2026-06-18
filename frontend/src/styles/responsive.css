@@ -74,6 +74,20 @@
     width: 100%;
   }
 
+  .attendance-action-strip,
+  .attendance-records-head,
+  .attendance-records-head .section-toggle-group {
+    width: 100%;
+  }
+
+  .attendance-action-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-records-head {
+    align-items: stretch;
+  }
+
   .table-wrap {
     margin-inline: -4px;
     padding-bottom: 6px;
@@ -111,10 +125,20 @@
   }
 
   .floating-panel-summary-row,
+  .teacher-detail-session,
   .teacher-profile-row {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .teacher-detail-session-status-grid {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .teacher-detail-session-status {
+    justify-content: flex-start;
   }
 
   .teacher-profile-row strong,

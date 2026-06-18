@@ -88,11 +88,52 @@ function getFallbackAttendanceStatus(classItem, now) {
   return currentMinutes > endMinutes ? "MISSED" : "PENDING";
 }
 
+function getClassTeacherIds(classItem) {
+  return classItem.teacher_ids || (classItem.teacher_id ? [classItem.teacher_id] : []);
+}
+
+function findContiguousClassForTeacher(classes, classItem, teacherId, direction) {
+  return classes.find((item) => {
+    if (
+      item.class_id === classItem.class_id ||
+      item.center_id !== classItem.center_id ||
+      item.day_of_week !== classItem.day_of_week ||
+      !getClassTeacherIds(item).includes(teacherId)
+    ) {
+      return false;
+    }
+
+    return direction === "previous"
+      ? formatTimeValue(item.end_time) === formatTimeValue(classItem.start_time)
+      : formatTimeValue(item.start_time) === formatTimeValue(classItem.end_time);
+  });
+}
+
+function getClassBlockForTeacher(classes, classItem, teacherId) {
+  let startClass = classItem;
+  let endClass = classItem;
+  let previousClass = findContiguousClassForTeacher(classes, startClass, teacherId, "previous");
+  let nextClass = findContiguousClassForTeacher(classes, endClass, teacherId, "next");
+
+  while (previousClass) {
+    startClass = previousClass;
+    previousClass = findContiguousClassForTeacher(classes, startClass, teacherId, "previous");
+  }
+
+  while (nextClass) {
+    endClass = nextClass;
+    nextClass = findContiguousClassForTeacher(classes, endClass, teacherId, "next");
+  }
+
+  return { startClass, endClass };
+}
+
 function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today }) {
   const todayKey = getLocalDateKey(today);
   const todayDayCode = getDayCode(today);
   const teachersById = new Map(teachers.map((teacher) => [teacher.teacher_id, teacher]));
-  const latestRecordByClassTeacher = new Map();
+  const latestCheckInByClassTeacher = new Map();
+  const latestCheckOutByClassTeacher = new Map();
 
   attendanceRecords.forEach((record) => {
     if (!record.teacher_id || !record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
@@ -100,32 +141,46 @@ function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today 
     }
 
     const key = `${record.class_id}:${record.teacher_id}`;
-    const current = latestRecordByClassTeacher.get(key);
+    const target = record.event_type === "CHECK_OUT" ? latestCheckOutByClassTeacher : latestCheckInByClassTeacher;
+    const current = target.get(key);
     if (!current || new Date(record.checked_at) > new Date(current.checked_at)) {
-      latestRecordByClassTeacher.set(key, record);
+      target.set(key, record);
     }
   });
 
   return classes
     .filter((classItem) => classItem.day_of_week === todayDayCode)
     .flatMap((classItem) => {
-      const teacherIds = classItem.teacher_ids || (classItem.teacher_id ? [classItem.teacher_id] : []);
+      const teacherIds = getClassTeacherIds(classItem);
 
       return teacherIds.map((teacherId) => {
         const teacher = teachersById.get(teacherId) || {};
-        const record = latestRecordByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
+        const { startClass, endClass } = getClassBlockForTeacher(classes, classItem, teacherId);
+        const checkInRecord =
+          latestCheckInByClassTeacher.get(`${startClass.class_id}:${teacherId}`) ||
+          latestCheckInByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
+        const checkOutRecord =
+          latestCheckOutByClassTeacher.get(`${startClass.class_id}:${teacherId}`) ||
+          latestCheckOutByClassTeacher.get(`${endClass.class_id}:${teacherId}`);
+        const isBlockStart = classItem.class_id === startClass.class_id;
+        const isBlockEnd = classItem.class_id === endClass.class_id;
 
         return {
-          record_id: record?.record_id || `today-${classItem.class_id}-${teacherId}`,
-          display_name: teacher.name || record?.display_name || teacherId,
-          user_code: teacher.user_code || record?.user_code || "-",
+          record_id: checkInRecord?.record_id || checkOutRecord?.record_id || `today-${classItem.class_id}-${teacherId}`,
+          display_name: teacher.name || checkInRecord?.display_name || checkOutRecord?.display_name || teacherId,
+          user_code: teacher.user_code || checkInRecord?.user_code || checkOutRecord?.user_code || "-",
           teacher_id: teacherId,
           class_id: classItem.class_id,
-          checked_at: record?.checked_at || null,
-          nearest_center_name: record?.nearest_center_name || classItem.center_label || classItem.center_id,
-          status: record?.status || "-",
-          attendance_status: record?.attendance_status || getFallbackAttendanceStatus(classItem, today),
-          accuracy_meters: record?.accuracy_meters ?? null,
+          checked_at: checkInRecord?.checked_at || null,
+          check_out_at: checkOutRecord?.checked_at || null,
+          nearest_center_name: checkInRecord?.nearest_center_name || checkOutRecord?.nearest_center_name || classItem.center_label || classItem.center_id,
+          status: checkInRecord?.status || "-",
+          attendance_status: checkInRecord
+            ? isBlockStart
+              ? checkInRecord.attendance_status
+              : "COVERED"
+            : getFallbackAttendanceStatus(classItem, today),
+          checkout_status: !isBlockEnd && checkInRecord ? "CONTINUED" : checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
           start_time: classItem.start_time,
           end_time: classItem.end_time,
         };
@@ -243,9 +298,11 @@ export default function AdminMonitorView({
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
   const [manualAttendanceForm, setManualAttendanceForm] = useState({
+    event_type: "CHECK_IN",
     teacher_id: "",
     center_id: "",
-    checked_at: getDatetimeLocalValue(),
+    checked_date: getDatetimeLocalValue().slice(0, 10),
+    checked_time: getDatetimeLocalValue().slice(11, 16),
   });
   const [selectedClassTime, setSelectedClassTime] = useState(null);
   const [classTimeForm, setClassTimeForm] = useState({
@@ -507,9 +564,11 @@ export default function AdminMonitorView({
 
   function openManualAttendancePanel() {
     setManualAttendanceForm({
+      event_type: "CHECK_IN",
       teacher_id: teachers[0]?.teacher_id || "",
       center_id: centers[0]?.center_id || "",
-      checked_at: getDatetimeLocalValue(),
+      checked_date: getDatetimeLocalValue().slice(0, 10),
+      checked_time: getDatetimeLocalValue().slice(11, 16),
     });
     setIsManualAttendancePanelOpen(true);
   }
@@ -517,14 +576,15 @@ export default function AdminMonitorView({
   async function handleManualAttendanceSubmit(event) {
     event.preventDefault();
 
-    if (!manualAttendanceForm.teacher_id || !manualAttendanceForm.center_id || !manualAttendanceForm.checked_at) {
+    if (!manualAttendanceForm.teacher_id || !manualAttendanceForm.center_id || !manualAttendanceForm.checked_date || !manualAttendanceForm.checked_time) {
       return;
     }
 
     const success = await onCreateManualAttendance({
       teacherId: manualAttendanceForm.teacher_id,
       centerId: manualAttendanceForm.center_id,
-      checkedAt: new Date(manualAttendanceForm.checked_at).toISOString(),
+      checkedAt: new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00`).toISOString(),
+      eventType: manualAttendanceForm.event_type,
     });
 
     if (success) {
@@ -670,7 +730,7 @@ export default function AdminMonitorView({
         <article className="info-card">
           <p className="eyebrow">Attendance</p>
           <h2>{attendanceRecords.length}</h2>
-          <p className="subtle">Recorded check-ins from users.</p>
+          <p className="subtle">Recorded attendance events from users.</p>
         </article>
 
         {role === "developer" ? (
@@ -691,13 +751,13 @@ export default function AdminMonitorView({
           <div>
             <p className="eyebrow">Attendance</p>
             <div className="section-title-row">
-              <h2>Check-in records</h2>
+              <h2>Attendance records</h2>
               <button
                 type="button"
                 className="section-add-button"
                 onClick={openManualAttendancePanel}
-                aria-label="Create manual attendance"
-                title="Create manual attendance"
+                aria-label="Create manual attendance event"
+                title="Create manual attendance event"
               >
                 +
               </button>
@@ -749,9 +809,10 @@ export default function AdminMonitorView({
             },
             {
               key: "checked_at",
-              label: "Time",
+              label: "Check-in",
               render: (row) => formatClockTimeValue(row.checked_at),
             },
+            { key: "check_out_at", label: "Checkout", render: (row) => formatClockTimeValue(row.check_out_at) },
             {
               key: "nearest_center_name",
               label: "Location",
@@ -767,16 +828,13 @@ export default function AdminMonitorView({
             },
             {
               key: "attendance_status",
-              label: "Class Status",
+              label: "Check-in Status",
               render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
             },
             {
-              key: "accuracy_meters",
-              label: "Accuracy",
-              render: (row) =>
-                row.accuracy_meters === null || row.accuracy_meters === undefined
-                  ? "-"
-                  : `${Math.round(Number(row.accuracy_meters))} m`,
+              key: "checkout_status",
+              label: "Checkout Status",
+              render: (row) => <StatusPill value={row.checkout_status || "-"} />,
             },
           ]}
           rows={visibleAttendanceRecords}
@@ -814,11 +872,28 @@ export default function AdminMonitorView({
       {isManualAttendancePanelOpen ? (
         <FloatingPanel
           eyebrow="Attendance"
-          title="Manual check-in"
+          title="Manual attendance"
           titleId="manual-attendance-title"
           onClose={() => setIsManualAttendancePanelOpen(false)}
         >
           <form className="floating-panel-form" onSubmit={handleManualAttendanceSubmit}>
+            <label className="field">
+              <span>Type</span>
+              <select
+                value={manualAttendanceForm.event_type}
+                required
+                onChange={(event) =>
+                  setManualAttendanceForm((current) => ({
+                    ...current,
+                    event_type: event.target.value,
+                  }))
+                }
+              >
+                <option value="CHECK_IN">Check-in</option>
+                <option value="CHECK_OUT">Checkout</option>
+              </select>
+            </label>
+
             <label className="field">
               <span>Teacher</span>
               <select
@@ -859,20 +934,42 @@ export default function AdminMonitorView({
               </select>
             </label>
 
-            <label className="field">
-              <span>Check-in time</span>
-              <input
-                type="datetime-local"
-                value={manualAttendanceForm.checked_at}
-                required
-                onChange={(event) =>
-                  setManualAttendanceForm((current) => ({
-                    ...current,
-                    checked_at: event.target.value,
-                  }))
-                }
-              />
-            </label>
+            <div className="floating-panel-grid">
+              <label className="field">
+                <span>Date</span>
+                <input
+                  type="date"
+                  value={manualAttendanceForm.checked_date}
+                  required
+                  onChange={(event) =>
+                    setManualAttendanceForm((current) => ({
+                      ...current,
+                      checked_date: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>{manualAttendanceForm.event_type === "CHECK_OUT" ? "Checkout time" : "Check-in time"}</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="HH:MM"
+                  pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                  title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                  maxLength="5"
+                  value={manualAttendanceForm.checked_time}
+                  required
+                  onChange={(event) =>
+                    setManualAttendanceForm((current) => ({
+                      ...current,
+                      checked_time: formatTimeDraft(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+            </div>
 
             <div className="floating-panel-summary">
               <div className="floating-panel-summary-row">
@@ -893,7 +990,9 @@ export default function AdminMonitorView({
                   !manualAttendanceForm.center_id
                 }
               >
-                {pendingAction === "manual-attendance" ? "Saving..." : "Save manual check-in"}
+                {pendingAction === "manual-attendance"
+                  ? "Saving..."
+                  : `Save manual ${manualAttendanceForm.event_type === "CHECK_OUT" ? "checkout" : "check-in"}`}
               </button>
               <button
                 type="button"
@@ -1689,10 +1788,14 @@ export default function AdminMonitorView({
               <p className="subtle">Checked In Today</p>
               <strong>{selectedTeacherTodayRows.filter((item) => item.checked_at).length}</strong>
             </div>
+            <div>
+              <p className="subtle">Checked Out Today</p>
+              <strong>{selectedTeacherTodayRows.filter((item) => item.check_out_at).length}</strong>
+            </div>
           </div>
 
           <div className="floating-panel-section">
-            <p className="subtle">Today check-in status</p>
+            <p className="subtle">Today attendance status</p>
             {selectedTeacherTodayRows.length === 0 ? (
               <p className="subtle">No classes scheduled today.</p>
             ) : (
@@ -1705,9 +1808,17 @@ export default function AdminMonitorView({
                       </strong>
                       <span>{formatValue(item.nearest_center_name)}</span>
                     </div>
-                    <div className="teacher-detail-session-status">
-                      <StatusPill value={item.attendance_status || "PENDING"} />
-                      <span className="subtle">{formatClockTimeValue(item.checked_at)}</span>
+                    <div className="teacher-detail-session-status-grid">
+                      <div className="teacher-detail-session-status">
+                        <span className="subtle">Check-in</span>
+                        <StatusPill value={item.attendance_status || "PENDING"} />
+                        <span className="subtle">{formatClockTimeValue(item.checked_at)}</span>
+                      </div>
+                      <div className="teacher-detail-session-status">
+                        <span className="subtle">Checkout</span>
+                        <StatusPill value={item.checkout_status || "-"} />
+                        <span className="subtle">{formatClockTimeValue(item.check_out_at)}</span>
+                      </div>
                     </div>
                   </article>
                 ))}

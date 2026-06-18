@@ -20,6 +20,7 @@ from schemas.scheduling import AttendanceCheckInPayload, ManualAttendancePayload
 
 router = APIRouter()
 CHECK_IN_COOLDOWN_MINUTES = 5
+CHECK_OUT_COOLDOWN_MINUTES = 5
 LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
 
 
@@ -37,7 +38,8 @@ def ensure_attendance_table(db: Session) -> None:
                 status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
                 nearest_center_name VARCHAR(100),
                 class_id VARCHAR(20) REFERENCES classes(class_id) ON DELETE SET NULL,
-                attendance_status VARCHAR(20) NOT NULL DEFAULT 'UNMATCHED'
+                attendance_status VARCHAR(20) NOT NULL DEFAULT 'UNMATCHED',
+                event_type VARCHAR(10) NOT NULL DEFAULT 'CHECK_IN'
             )
         """)
     )
@@ -67,6 +69,12 @@ def ensure_attendance_table(db: Session) -> None:
     )
     db.execute(
         text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS event_type VARCHAR(10) NOT NULL DEFAULT 'CHECK_IN'
+        """)
+    )
+    db.execute(
+        text("""
             UPDATE attendance_records
             SET status = 'INVALID'
             WHERE status = 'NON_VALID'
@@ -85,6 +93,47 @@ def ensure_attendance_table(db: Session) -> None:
         """)
     )
     db.commit()
+
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    r = 6371000.0
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return r * c
+
+
+def get_closest_center(db: Session, latitude: float, longitude: float):
+    centers = db.execute(text("SELECT center_id, name, latitude, longitude FROM centers")).mappings().all()
+    closest_distance = None
+    closest_center = None
+
+    for center in centers:
+        distance = haversine_distance(
+            latitude,
+            longitude,
+            float(center["latitude"]),
+            float(center["longitude"]),
+        )
+        if closest_distance is None or distance < closest_distance:
+            closest_distance = distance
+            closest_center = center
+
+    if not closest_center:
+        return {
+            "center_id": None,
+            "name": None,
+            "distance": None,
+            "status": "INVALID",
+        }
+
+    return {
+        "center_id": closest_center["center_id"],
+        "name": closest_center["name"],
+        "distance": closest_distance,
+        "status": "VALID" if closest_distance is not None and closest_distance <= 200 else "INVALID",
+    }
 
 
 def find_matching_class_session(db: Session, teacher_id: str | None, center_id: str | None, checked_at: datetime):
@@ -156,6 +205,110 @@ def find_matching_class_session(db: Session, teacher_id: str | None, center_id: 
     return dict(session)
 
 
+def get_checkout_status(db: Session, class_id: str, checked_at: datetime) -> str:
+    row = db.execute(
+        text(f"""
+            WITH checked AS (
+                SELECT CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
+            )
+            SELECT
+                CASE
+                    WHEN CAST(checked.local_checked_at AS TIME) < c.end_time
+                        THEN 'LEFT_EARLY'
+                    WHEN CAST(checked.local_checked_at AS TIME) <= c.end_time + INTERVAL '30 minutes'
+                        THEN 'COMPLETED'
+                    ELSE 'OVERTIME'
+                END AS checkout_status
+            FROM classes c
+            CROSS JOIN checked
+            WHERE c.class_id = :class_id
+        """),
+        {"class_id": class_id, "checked_at": checked_at},
+    ).mappings().first()
+
+    return row["checkout_status"] if row else "UNMATCHED"
+
+
+def find_matching_checkout_session(db: Session, teacher_id: str | None, center_id: str | None, checked_at: datetime):
+    if not teacher_id:
+        return {"class_id": None, "attendance_status": "UNMATCHED"}
+
+    center_filter = "AND c.center_id = :center_id" if center_id else ""
+    session = db.execute(
+        text(f"""
+            WITH checked AS (
+                SELECT CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
+            ),
+            assigned_classes AS (
+                SELECT ct.class_id
+                FROM class_teachers ct
+                WHERE ct.teacher_id = :teacher_id
+                UNION
+                SELECT c.class_id
+                FROM classes c
+                WHERE c.teacher_id = :teacher_id
+            )
+            SELECT c.class_id
+            FROM classes c
+            JOIN assigned_classes ac ON ac.class_id = c.class_id
+            CROSS JOIN checked
+            WHERE c.day_of_week = CASE EXTRACT(ISODOW FROM checked.local_checked_at)
+                    WHEN 1 THEN 'T2'
+                    WHEN 2 THEN 'T3'
+                    WHEN 3 THEN 'T4'
+                    WHEN 4 THEN 'T5'
+                    WHEN 5 THEN 'T6'
+                    WHEN 6 THEN 'T7'
+                    ELSE 'CN'
+                END
+              {center_filter}
+              AND CAST(checked.local_checked_at AS TIME) >= c.start_time
+            ORDER BY c.start_time DESC
+            LIMIT 1
+        """),
+        {"teacher_id": teacher_id, "center_id": center_id, "checked_at": checked_at},
+    ).mappings().first()
+
+    if not session:
+        return {"class_id": None, "attendance_status": "UNMATCHED"}
+
+    return {
+        "class_id": session["class_id"],
+        "attendance_status": get_checkout_status(db, session["class_id"], checked_at),
+    }
+
+
+def find_open_check_in(db: Session, user_code: str):
+    row = db.execute(
+        text(f"""
+            WITH checked AS (
+                SELECT NOW() AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
+            )
+            SELECT ar.class_id
+            FROM attendance_records ar
+            JOIN classes c ON c.class_id = ar.class_id
+            CROSS JOIN checked
+            WHERE ar.user_code = :user_code
+              AND ar.event_type = 'CHECK_IN'
+              AND ar.class_id IS NOT NULL
+              AND (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date = checked.local_checked_at::date
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM attendance_records checkout
+                  WHERE checkout.user_code = ar.user_code
+                    AND checkout.class_id = ar.class_id
+                    AND checkout.event_type = 'CHECK_OUT'
+                    AND checkout.checked_at > ar.checked_at
+              )
+            ORDER BY c.end_time DESC, ar.checked_at DESC
+            LIMIT 1
+        """),
+        {"user_code": user_code},
+    ).mappings().first()
+
+    return row["class_id"] if row else None
+
+
 @router.get("/attendance-records")
 def get_attendance_records(
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER)),
@@ -177,7 +330,8 @@ def get_attendance_records(
             ar.status,
             ar.nearest_center_name,
             ar.class_id,
-            ar.attendance_status
+            ar.attendance_status,
+            ar.event_type
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
@@ -205,6 +359,7 @@ def check_in_attendance(
             SELECT checked_at
             FROM attendance_records
             WHERE user_code = :user_code
+              AND event_type = 'CHECK_IN'
               AND checked_at > NOW() - (:cooldown_minutes * INTERVAL '1 minute')
             ORDER BY checked_at DESC
             LIMIT 1
@@ -223,43 +378,18 @@ def check_in_attendance(
 
     record_id = str(uuid4())
     record_checked_at = datetime.now(timezone.utc)
-    centers = db.execute(text("SELECT center_id, name, latitude, longitude FROM centers")).mappings().all()
-
-    def haversine_distance(lat1, lon1, lat2, lon2):
-        r = 6371000.0
-        dlat = radians(lat2 - lat1)
-        dlon = radians(lon2 - lon1)
-        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-        c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return r * c
-
-    closest_distance = None
-    closest_center_id = None
-    closest_center_name = None
-    for center in centers:
-        distance = haversine_distance(
-            payload.latitude,
-            payload.longitude,
-            float(center["latitude"]),
-            float(center["longitude"]),
-        )
-        if closest_distance is None or distance < closest_distance:
-            closest_distance = distance
-            closest_center_id = center.get("center_id")
-            closest_center_name = center.get("name")
-
-    check_in_status = "VALID" if closest_distance is not None and closest_distance <= 200 else "INVALID"
-    session_match = find_matching_class_session(db, current_user.teacher_id, closest_center_id, record_checked_at)
+    closest_center = get_closest_center(db, payload.latitude, payload.longitude)
+    session_match = find_matching_class_session(db, current_user.teacher_id, closest_center["center_id"], record_checked_at)
 
     record = db.execute(
         text("""
             INSERT INTO attendance_records (
                 record_id, user_code, teacher_id, checked_at, latitude, longitude, accuracy_meters,
-                status, nearest_center_name, class_id, attendance_status
+                status, nearest_center_name, class_id, attendance_status, event_type
             )
             VALUES (
                 :record_id, :user_code, :teacher_id, :checked_at, :latitude, :longitude, :accuracy_meters,
-                :status, :nearest_center_name, :class_id, :attendance_status
+                :status, :nearest_center_name, :class_id, :attendance_status, 'CHECK_IN'
             )
             RETURNING
                 record_id,
@@ -272,7 +402,8 @@ def check_in_attendance(
                 status,
                 nearest_center_name,
                 class_id,
-                attendance_status
+                attendance_status,
+                event_type
         """),
         {
             "record_id": record_id,
@@ -282,10 +413,95 @@ def check_in_attendance(
             "latitude": payload.latitude,
             "longitude": payload.longitude,
             "accuracy_meters": payload.accuracy_meters,
-            "status": check_in_status,
-            "nearest_center_name": closest_center_name,
+            "status": closest_center["status"],
+            "nearest_center_name": closest_center["name"],
             "class_id": session_match["class_id"],
             "attendance_status": session_match["attendance_status"],
+        },
+    ).mappings().first()
+    db.commit()
+
+    return {
+        **dict(record),
+        "display_name": current_user.display_name,
+    }
+
+
+@router.post("/attendance-records/check-out")
+def check_out_attendance(
+    payload: AttendanceCheckInPayload,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ensure_attendance_table(db)
+
+    recent_check_out = db.execute(
+        text("""
+            SELECT checked_at
+            FROM attendance_records
+            WHERE user_code = :user_code
+              AND event_type = 'CHECK_OUT'
+              AND checked_at > NOW() - (:cooldown_minutes * INTERVAL '1 minute')
+            ORDER BY checked_at DESC
+            LIMIT 1
+        """),
+        {
+            "user_code": current_user.user_code,
+            "cooldown_minutes": CHECK_OUT_COOLDOWN_MINUTES,
+        },
+    ).mappings().first()
+
+    if recent_check_out:
+        raise HTTPException(
+            status_code=429,
+            detail=f"please wait {CHECK_OUT_COOLDOWN_MINUTES} minutes between check-outs",
+        )
+
+    class_id = find_open_check_in(db, current_user.user_code)
+    if not class_id:
+        raise HTTPException(status_code=400, detail="no open check-in found for today")
+
+    record_id = str(uuid4())
+    record_checked_at = datetime.now(timezone.utc)
+    closest_center = get_closest_center(db, payload.latitude, payload.longitude)
+    checkout_status = get_checkout_status(db, class_id, record_checked_at)
+
+    record = db.execute(
+        text("""
+            INSERT INTO attendance_records (
+                record_id, user_code, teacher_id, checked_at, latitude, longitude, accuracy_meters,
+                status, nearest_center_name, class_id, attendance_status, event_type
+            )
+            VALUES (
+                :record_id, :user_code, :teacher_id, :checked_at, :latitude, :longitude, :accuracy_meters,
+                :status, :nearest_center_name, :class_id, :attendance_status, 'CHECK_OUT'
+            )
+            RETURNING
+                record_id,
+                user_code,
+                teacher_id,
+                checked_at,
+                latitude,
+                longitude,
+                accuracy_meters,
+                status,
+                nearest_center_name,
+                class_id,
+                attendance_status,
+                event_type
+        """),
+        {
+            "record_id": record_id,
+            "user_code": current_user.user_code,
+            "teacher_id": current_user.teacher_id,
+            "checked_at": record_checked_at,
+            "latitude": payload.latitude,
+            "longitude": payload.longitude,
+            "accuracy_meters": payload.accuracy_meters,
+            "status": closest_center["status"],
+            "nearest_center_name": closest_center["name"],
+            "class_id": class_id,
+            "attendance_status": checkout_status,
         },
     ).mappings().first()
     db.commit()
@@ -334,7 +550,11 @@ def create_manual_attendance(
         raise HTTPException(status_code=404, detail="center not found")
 
     record_id = str(uuid4())
-    session_match = find_matching_class_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
+    session_match = (
+        find_matching_checkout_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
+        if payload.event_type == "CHECK_OUT"
+        else find_matching_class_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
+    )
     record = db.execute(
         text("""
             INSERT INTO attendance_records (
@@ -348,7 +568,8 @@ def create_manual_attendance(
                 status,
                 nearest_center_name,
                 class_id,
-                attendance_status
+                attendance_status,
+                event_type
             )
             VALUES (
                 :record_id,
@@ -358,10 +579,11 @@ def create_manual_attendance(
                 :latitude,
                 :longitude,
                 NULL,
-                'MANUAL',
+                :record_status,
                 :nearest_center_name,
                 :class_id,
-                'MANUAL'
+                :attendance_status,
+                :event_type
             )
             RETURNING
                 record_id,
@@ -374,7 +596,8 @@ def create_manual_attendance(
                 status,
                 nearest_center_name,
                 class_id,
-                attendance_status
+                attendance_status,
+                event_type
         """),
         {
             "record_id": record_id,
@@ -383,8 +606,11 @@ def create_manual_attendance(
             "checked_at": payload.checked_at,
             "latitude": center["latitude"],
             "longitude": center["longitude"],
+            "record_status": "MANUAL",
             "nearest_center_name": center["name"],
             "class_id": session_match["class_id"],
+            "attendance_status": "MANUAL" if payload.event_type == "CHECK_IN" else session_match["attendance_status"],
+            "event_type": payload.event_type,
         },
     ).mappings().first()
     db.commit()
