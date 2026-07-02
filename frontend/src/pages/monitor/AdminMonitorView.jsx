@@ -21,6 +21,16 @@ function getLocalDateKey(date = new Date()) {
   return getDatetimeLocalValue(date).slice(0, 10);
 }
 
+function getPreviousMonthDateRange(date = new Date()) {
+  const startDate = new Date(date.getFullYear(), date.getMonth() - 1, 1);
+  const endDate = new Date(date.getFullYear(), date.getMonth(), 0);
+
+  return {
+    start_date: getLocalDateKey(startDate),
+    end_date: getLocalDateKey(endDate),
+  };
+}
+
 function getDayCode(date = new Date()) {
   return WEEKDAY_BY_INDEX[date.getDay()];
 }
@@ -47,42 +57,34 @@ function filterLeaveRequestsByView(leaveRequests, view) {
   return leaveRequests;
 }
 
-function filterAdminAttendanceByView(attendanceRecords, view) {
-  if (view === "all") {
-    return attendanceRecords;
+function getPreviousDate(date) {
+  const previousDate = new Date(date);
+  previousDate.setDate(previousDate.getDate() - 1);
+  return previousDate;
+}
+
+function getAttendanceDateKeys(attendanceRecords, view, currentDate) {
+  const todayKey = getLocalDateKey(currentDate);
+  const yesterdayKey = getLocalDateKey(getPreviousDate(currentDate));
+  const dateKeys = new Set(attendanceRecords.map((record) => getLocalDateKey(new Date(record.checked_at))));
+
+  if (view === "history") {
+    dateKeys.delete(todayKey);
+    dateKeys.add(yesterdayKey);
+  } else {
+    dateKeys.add(todayKey);
+    dateKeys.add(yesterdayKey);
   }
 
-  const latestByUser = new Set();
-  const currentRecords = [];
-  const historyRecords = [];
-
-  attendanceRecords.forEach((record) => {
-    const key = record.user_code || record.teacher_id || record.record_id;
-    if (!latestByUser.has(key)) {
-      latestByUser.add(key);
-      currentRecords.push(record);
-      return;
-    }
-
-    historyRecords.push(record);
-  });
-
-  return view === "history" ? historyRecords : currentRecords;
+  return [...dateKeys].sort((left, right) => right.localeCompare(left));
 }
 
-function groupAttendanceRecordsByDate(records) {
-  return records.reduce((groups, record) => {
-    const key = getLocalDateKey(new Date(record.checked_at));
-    if (!groups[key]) {
-      groups[key] = [];
-    }
-    groups[key].push(record);
-    return groups;
-  }, {});
-}
+function getFallbackAttendanceStatus(classItem, attendanceDate, currentDate = new Date()) {
+  if (getLocalDateKey(attendanceDate) < getLocalDateKey(currentDate)) {
+    return "MISSED";
+  }
 
-function getFallbackAttendanceStatus(classItem, now) {
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
   const endMinutes = getTimeMinutes(classItem.end_time);
 
   return currentMinutes > endMinutes ? "MISSED" : "PENDING";
@@ -128,15 +130,15 @@ function getClassBlockForTeacher(classes, classItem, teacherId) {
   return { startClass, endClass };
 }
 
-function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today }) {
-  const todayKey = getLocalDateKey(today);
-  const todayDayCode = getDayCode(today);
+function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, attendanceDate, currentDate = new Date() }) {
+  const attendanceDateKey = getLocalDateKey(attendanceDate);
+  const attendanceDayCode = getDayCode(attendanceDate);
   const teachersById = new Map(teachers.map((teacher) => [teacher.teacher_id, teacher]));
   const latestCheckInByClassTeacher = new Map();
   const latestCheckOutByClassTeacher = new Map();
 
   attendanceRecords.forEach((record) => {
-    if (!record.teacher_id || !record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
+    if (!record.teacher_id || !record.class_id || getLocalDateKey(new Date(record.checked_at)) !== attendanceDateKey) {
       return;
     }
 
@@ -149,7 +151,7 @@ function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today 
   });
 
   return classes
-    .filter((classItem) => classItem.day_of_week === todayDayCode)
+    .filter((classItem) => classItem.day_of_week === attendanceDayCode)
     .flatMap((classItem) => {
       const teacherIds = getClassTeacherIds(classItem);
 
@@ -179,7 +181,7 @@ function buildTodayAttendanceRows({ attendanceRecords, classes, teachers, today 
             ? isBlockStart
               ? checkInRecord.attendance_status
               : "COVERED"
-            : getFallbackAttendanceStatus(classItem, today),
+            : getFallbackAttendanceStatus(classItem, attendanceDate, currentDate),
           checkout_status: !isBlockEnd && checkInRecord ? "CONTINUED" : checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
           start_time: classItem.start_time,
           end_time: classItem.end_time,
@@ -232,6 +234,12 @@ function renderTeacherNames(label, teacherIds = [], onSelect = null) {
       })}
     </span>
   );
+}
+
+function getDownloadFilename(response, fallback) {
+  const contentDisposition = response.headers.get("content-disposition") || "";
+  const match = /filename="?([^"]+)"?/i.exec(contentDisposition);
+  return match?.[1] || fallback;
 }
 
 export default function AdminMonitorView({
@@ -297,6 +305,10 @@ export default function AdminMonitorView({
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
+  const [isAttendanceExportPanelOpen, setIsAttendanceExportPanelOpen] = useState(false);
+  const [isAttendanceExporting, setIsAttendanceExporting] = useState(false);
+  const [attendanceExportStatus, setAttendanceExportStatus] = useState({ kind: "", message: "" });
+  const [attendanceExportForm, setAttendanceExportForm] = useState(() => getPreviousMonthDateRange());
   const [manualAttendanceForm, setManualAttendanceForm] = useState({
     event_type: "CHECK_IN",
     teacher_id: "",
@@ -354,32 +366,32 @@ export default function AdminMonitorView({
   const currentAssignmentCenterLabel = currentAssignmentCenterEntry?.label || "";
   const currentAssignmentClasses = currentAssignmentCenterEntry?.classes || [];
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
-  const classesById = new Map(classes.map((item) => [item.class_id, item]));
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
-  const todayAttendanceRows = buildTodayAttendanceRows({
+  const todayAttendanceRows = buildAttendanceRowsForDate({
     attendanceRecords,
     classes,
     teachers,
-    today: currentDate,
+    attendanceDate: currentDate,
+    currentDate,
   });
-  const datedAttendanceRecords = filterAdminAttendanceByView(attendanceRecords, attendanceView);
-  const attendanceRecordsByDate = groupAttendanceRecordsByDate(datedAttendanceRecords);
-  const attendanceDateKeys = Object.keys(attendanceRecordsByDate).sort((left, right) => right.localeCompare(left));
+  const attendanceDateKeys = getAttendanceDateKeys(attendanceRecords, attendanceView, currentDate);
   const attendanceDatePageCount = Math.max(1, attendanceDateKeys.length);
   const selectedAttendanceDateKey = attendanceDateKeys[Math.min(attendanceDatePage - 1, attendanceDatePageCount - 1)] || "";
-  const selectedAttendanceDateRows = selectedAttendanceDateKey ? attendanceRecordsByDate[selectedAttendanceDateKey] || [] : [];
+  const selectedAttendanceDate = selectedAttendanceDateKey
+    ? new Date(`${selectedAttendanceDateKey}T00:00:00`)
+    : currentDate;
+  const selectedAttendanceDateRows = buildAttendanceRowsForDate({
+    attendanceRecords,
+    classes,
+    teachers,
+    attendanceDate: selectedAttendanceDate,
+    currentDate,
+  });
   const visibleAttendanceRecords =
     attendanceView === "current"
       ? todayAttendanceRows
-      : selectedAttendanceDateRows.map((record) => {
-          const classItem = classesById.get(record.class_id);
-          return {
-            ...record,
-            start_time: record.start_time || classItem?.start_time || "",
-            end_time: record.end_time || classItem?.end_time || "",
-          };
-        });
+      : selectedAttendanceDateRows;
   const todayLabel = currentDate.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "2-digit",
@@ -392,9 +404,6 @@ export default function AdminMonitorView({
         year: "numeric",
       })
     : "-";
-  const selectedAttendanceDate = selectedAttendanceDateKey
-    ? new Date(`${selectedAttendanceDateKey}T00:00:00`)
-    : currentDate;
   const selectedAttendanceDayCode = getDayCode(selectedAttendanceDate);
   const selectedAttendanceScheduledCount = classes
     .filter((item) => item.day_of_week === selectedAttendanceDayCode)
@@ -571,6 +580,65 @@ export default function AdminMonitorView({
       checked_time: getDatetimeLocalValue().slice(11, 16),
     });
     setIsManualAttendancePanelOpen(true);
+  }
+
+  function openAttendanceExportPanel() {
+    setAttendanceExportForm(getPreviousMonthDateRange());
+    setAttendanceExportStatus({ kind: "", message: "" });
+    setIsAttendanceExportPanelOpen(true);
+  }
+
+  async function handleAttendanceExportSubmit(event) {
+    event.preventDefault();
+
+    if (!attendanceExportForm.start_date || !attendanceExportForm.end_date) {
+      setAttendanceExportStatus({ kind: "error", message: "Select both start and end dates." });
+      return;
+    }
+
+    if (attendanceExportForm.end_date < attendanceExportForm.start_date) {
+      setAttendanceExportStatus({ kind: "error", message: "End date must be after start date." });
+      return;
+    }
+
+    setIsAttendanceExporting(true);
+    setAttendanceExportStatus({ kind: "", message: "" });
+
+    try {
+      const params = new URLSearchParams({
+        start_date: attendanceExportForm.start_date,
+        end_date: attendanceExportForm.end_date,
+      });
+      const response = await fetch(`${apiBase}/attendance-records/export?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "Failed to export attendance report");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = getDownloadFilename(
+        response,
+        `teacher_attendance_${attendanceExportForm.start_date}_to_${attendanceExportForm.end_date}.xlsx`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      setAttendanceExportStatus({ kind: "success", message: "Excel report downloaded." });
+    } catch (error) {
+      setAttendanceExportStatus({ kind: "error", message: error.message });
+    } finally {
+      setIsAttendanceExporting(false);
+    }
   }
 
   async function handleManualAttendanceSubmit(event) {
@@ -760,6 +828,13 @@ export default function AdminMonitorView({
                 title="Create manual attendance event"
               >
                 +
+              </button>
+              <button
+                type="button"
+                className="table-action-button"
+                onClick={openAttendanceExportPanel}
+              >
+                Export Excel
               </button>
             </div>
             <p className="subtle">
@@ -998,6 +1073,72 @@ export default function AdminMonitorView({
                 type="button"
                 className="table-action-button table-action-button-muted"
                 onClick={() => setIsManualAttendancePanelOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </FloatingPanel>
+      ) : null}
+
+      {isAttendanceExportPanelOpen ? (
+        <FloatingPanel
+          eyebrow="Attendance"
+          title="Export teacher report"
+          titleId="attendance-export-title"
+          onClose={() => setIsAttendanceExportPanelOpen(false)}
+        >
+          <form className="floating-panel-form" onSubmit={handleAttendanceExportSubmit}>
+            <div className="floating-panel-grid">
+              <label className="field">
+                <span>Start date</span>
+                <input
+                  type="date"
+                  value={attendanceExportForm.start_date}
+                  required
+                  onChange={(event) =>
+                    setAttendanceExportForm((current) => ({
+                      ...current,
+                      start_date: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>End date</span>
+                <input
+                  type="date"
+                  value={attendanceExportForm.end_date}
+                  required
+                  onChange={(event) =>
+                    setAttendanceExportForm((current) => ({
+                      ...current,
+                      end_date: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            {attendanceExportStatus.message ? (
+              <p className={`status-banner ${attendanceExportStatus.kind}`}>
+                {attendanceExportStatus.message}
+              </p>
+            ) : null}
+
+            <div className="floating-panel-actions">
+              <button
+                type="submit"
+                className="table-action-button"
+                disabled={isAttendanceExporting}
+              >
+                {isAttendanceExporting ? "Exporting..." : "Download Excel"}
+              </button>
+              <button
+                type="button"
+                className="table-action-button table-action-button-muted"
+                onClick={() => setIsAttendanceExportPanelOpen(false)}
               >
                 Cancel
               </button>

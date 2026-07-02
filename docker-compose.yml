@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: scheduler
       POSTGRES_USER: chessfighter
       POSTGRES_PASSWORD: 123456
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db:/docker-entrypoint-initdb.d
@@ -26,6 +28,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: scheduler
+      ACCESS_TOKEN_EXPIRE_MINUTES: 10080
       PROFILE_IMAGE_BASE_URL: /storage
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: chessfighter

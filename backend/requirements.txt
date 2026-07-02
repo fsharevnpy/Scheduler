@@ -6,3 +6,4 @@ python-jose
 python-multipart
 minio
 Pillow
+openpyxl

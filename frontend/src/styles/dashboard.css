@@ -1113,6 +1113,28 @@
   color: var(--muted);
 }
 
+.status-banner {
+  margin: 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.status-banner.success {
+  border-color: rgba(42, 123, 86, 0.2);
+  background: rgba(42, 123, 86, 0.1);
+  color: var(--success);
+}
+
+.status-banner.error {
+  border-color: rgba(180, 53, 53, 0.22);
+  background: rgba(180, 53, 53, 0.1);
+  color: #9d2f2f;
+}
+
 .floating-panel-actions {
   display: flex;
   flex-wrap: wrap;
