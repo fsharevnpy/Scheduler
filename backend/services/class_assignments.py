@@ -30,6 +30,32 @@ def ensure_class_teachers_table(db: Session) -> None:
     )
 
 
+def ensure_class_teacher_reassignment_overrides_table(db: Session) -> None:
+    db.execute(
+        text("""
+            CREATE TABLE IF NOT EXISTS class_teacher_reassignment_overrides (
+                override_id BIGSERIAL PRIMARY KEY,
+                class_id VARCHAR(20) NOT NULL REFERENCES classes(class_id) ON DELETE CASCADE,
+                original_teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+                replacement_teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+                reassignment_mode VARCHAR(20) NOT NULL DEFAULT 'TEMPORARY'
+                    CHECK (reassignment_mode IN ('TEMPORARY', 'PERMANENT')),
+                effective_date DATE NOT NULL,
+                expires_on DATE NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_by VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL,
+                UNIQUE (class_id, original_teacher_id, effective_date)
+            )
+        """)
+    )
+    db.execute(
+        text("""
+            CREATE INDEX IF NOT EXISTS idx_class_teacher_reassignment_overrides_active
+            ON class_teacher_reassignment_overrides(class_id, effective_date, expires_on)
+        """)
+    )
+
+
 def class_teacher_count(db: Session, class_id: str) -> int:
     ensure_class_teachers_table(db)
     return db.execute(

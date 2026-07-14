@@ -2,6 +2,30 @@ import { useEffect, useMemo, useState } from "react";
 
 import { formatValue } from "./monitorUtils.js";
 
+function buildRowKey(row, index) {
+  const keyParts = [
+    row?.id,
+    row?.record_id,
+    row?.request_id,
+    row?.class_id,
+    row?.teacher_id,
+    row?.user_code,
+    row?.display_name,
+    row?.checked_at,
+    row?.check_out_at,
+    row?.start_time,
+    row?.end_time,
+    row?.center_id,
+    row?.center_label,
+  ].filter((part) => part !== null && part !== undefined && part !== "");
+
+  if (keyParts.length > 0) {
+    return keyParts.join("::");
+  }
+
+  return `table-row-${index}`;
+}
+
 export default function DataTable({
   title,
   columns,
@@ -64,9 +88,9 @@ export default function DataTable({
             </thead>
             <tbody>
               {visibleRows.map((row, index) => (
-                <tr key={row.id || row.record_id || row.class_id || row.request_id || row.teacher_id || row.user_code || index}>
+                <tr key={buildRowKey(row, index)}>
                   {columns.map((column) => (
-                    <td key={column.key}>
+                    <td key={`${buildRowKey(row, index)}-${column.key}`}>
                       {column.render ? column.render(row) : formatValue(row[column.key])}
                     </td>
                   ))}

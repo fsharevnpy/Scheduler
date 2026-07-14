@@ -60,7 +60,6 @@ docker compose up -d --build minio
 **⚠️ Important: After rebuilding backend or frontend, always restart gateway:**
 
 ```bash
-docker compose restart gateway
 ```
 
 This ensures the gateway (nginx) properly routes requests to updated services.
@@ -111,20 +110,35 @@ docker compose logs -f gateway
 docker compose logs -f minio
 ```
 
-Create a tailscale funnel:
+## Public Access
+
+Public access is served through Cloudflare Tunnel:
+
+- public app: `https://app.fightersacademy.com.vn`
+- public monitor: `https://app.fightersacademy.com.vn/monitor`
+- local gateway target: `http://127.0.0.1:8080`
+
+Cloudflare Tunnel service:
 
 ```bash
-sudo tailscale funnel --bg 8080
+systemctl status cloudflared
+sudo systemctl restart cloudflared
+journalctl -u cloudflared -f
 ```
 
-If an issue with tailscale occured, reset funnel:
+Cloudflare Tunnel config lives in:
+
+- `/etc/cloudflared/config.yml`
+- `/etc/cloudflared/0b0ad1cb-cde5-48d4-a5f0-f6922472eae0.json`
+
+Check public access:
 
 ```bash
-sudo tailscale funnel off
-sudo tailscale serve reset
-sudo tailscale funnel --bg 8080
-tailscale funnel status
+curl -I https://app.fightersacademy.com.vn/monitor
+cloudflared tunnel list
 ```
+
+The old Tailscale Funnel URL can be kept as a backup, but the primary public URL should be the Cloudflare domain above.
 
 ## Default Accounts
 

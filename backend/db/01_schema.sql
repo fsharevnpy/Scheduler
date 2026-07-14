@@ -90,6 +90,23 @@ CREATE TABLE class_teachers (
     PRIMARY KEY (class_id, teacher_id)
 );
 
+CREATE TABLE class_teacher_reassignment_overrides (
+    override_id BIGSERIAL PRIMARY KEY,
+    class_id VARCHAR(20) NOT NULL REFERENCES classes(class_id) ON DELETE CASCADE,
+    original_teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+    replacement_teacher_id VARCHAR(20) NOT NULL REFERENCES teachers(teacher_id),
+    reassignment_mode VARCHAR(20) NOT NULL DEFAULT 'TEMPORARY'
+        CHECK (reassignment_mode IN ('TEMPORARY', 'PERMANENT')),
+    effective_date DATE NOT NULL,
+    expires_on DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by VARCHAR(7) REFERENCES users(user_code) ON DELETE SET NULL,
+    UNIQUE (class_id, original_teacher_id, effective_date)
+);
+
+CREATE INDEX idx_class_teacher_reassignment_overrides_active
+    ON class_teacher_reassignment_overrides(class_id, effective_date, expires_on);
+
 -- =========================
 -- 7. Leave Requests
 -- =========================

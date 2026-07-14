@@ -21,12 +21,49 @@ from core.permissions import (
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import AttendanceCheckInPayload, ManualAttendancePayload
+from services.class_assignments import ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table
 
 
 router = APIRouter()
 CHECK_IN_COOLDOWN_MINUTES = 5
 CHECK_OUT_COOLDOWN_MINUTES = 5
 LOCAL_TIMEZONE = "Asia/Ho_Chi_Minh"
+
+
+EFFECTIVE_ASSIGNMENTS_FOR_CHECKED_AT_CTE = """
+            active_teacher_overrides AS (
+                SELECT override.class_id, override.original_teacher_id, override.replacement_teacher_id
+                FROM class_teacher_reassignment_overrides override
+                CROSS JOIN checked
+                WHERE override.effective_date <= CAST(checked.local_checked_at AS DATE)
+                  AND override.expires_on >= CAST(checked.local_checked_at AS DATE)
+            ),
+            effective_assignment_rows AS (
+                SELECT
+                    ct.class_id,
+                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
+                FROM class_teachers ct
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = ct.class_id
+                   AND active_override.original_teacher_id = ct.teacher_id
+
+                UNION
+
+                SELECT
+                    c.class_id,
+                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
+                FROM classes c
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = c.teacher_id
+                WHERE c.teacher_id IS NOT NULL
+            ),
+            assigned_classes AS (
+                SELECT DISTINCT class_id
+                FROM effective_assignment_rows
+                WHERE teacher_id = :teacher_id
+            )
+"""
 
 
 def ensure_attendance_table(db: Session) -> None:
@@ -100,6 +137,11 @@ def ensure_attendance_table(db: Session) -> None:
     db.commit()
 
 
+def ensure_assignment_tables(db: Session) -> None:
+    ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
+
+
 def haversine_distance(lat1, lon1, lat2, lon2):
     r = 6371000.0
     dlat = radians(lat2 - lat1)
@@ -158,15 +200,7 @@ def find_matching_class_session(db: Session, teacher_id: str | None, center_id: 
                 SELECT
                     CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
             ),
-            assigned_classes AS (
-                SELECT ct.class_id
-                FROM class_teachers ct
-                WHERE ct.teacher_id = :teacher_id
-                UNION
-                SELECT c.class_id
-                FROM classes c
-                WHERE c.teacher_id = :teacher_id
-            )
+{EFFECTIVE_ASSIGNMENTS_FOR_CHECKED_AT_CTE}
             SELECT
                 c.class_id,
                 CASE
@@ -244,15 +278,7 @@ def find_matching_checkout_session(db: Session, teacher_id: str | None, center_i
             WITH checked AS (
                 SELECT CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
             ),
-            assigned_classes AS (
-                SELECT ct.class_id
-                FROM class_teachers ct
-                WHERE ct.teacher_id = :teacher_id
-                UNION
-                SELECT c.class_id
-                FROM classes c
-                WHERE c.teacher_id = :teacher_id
-            )
+{EFFECTIVE_ASSIGNMENTS_FOR_CHECKED_AT_CTE}
             SELECT c.class_id
             FROM classes c
             JOIN assigned_classes ac ON ac.class_id = c.class_id
@@ -292,6 +318,38 @@ def find_checkout_class_for_open_check_in(db: Session, teacher_id: str | None, c
             WITH RECURSIVE checked AS (
                 SELECT CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
             ),
+            active_teacher_overrides AS (
+                SELECT override.class_id, override.original_teacher_id, override.replacement_teacher_id
+                FROM class_teacher_reassignment_overrides override
+                CROSS JOIN checked
+                WHERE override.effective_date <= CAST(checked.local_checked_at AS DATE)
+                  AND override.expires_on >= CAST(checked.local_checked_at AS DATE)
+            ),
+            effective_assignment_rows AS (
+                SELECT
+                    ct.class_id,
+                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
+                FROM class_teachers ct
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = ct.class_id
+                   AND active_override.original_teacher_id = ct.teacher_id
+
+                UNION
+
+                SELECT
+                    c.class_id,
+                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
+                FROM classes c
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = c.teacher_id
+                WHERE c.teacher_id IS NOT NULL
+            ),
+            assigned_classes AS (
+                SELECT DISTINCT class_id
+                FROM effective_assignment_rows
+                WHERE teacher_id = :teacher_id
+            ),
             contiguous_classes AS (
                 SELECT c.class_id, c.center_id, c.day_of_week, c.start_time, c.end_time
                 FROM classes c
@@ -309,10 +367,7 @@ def find_checkout_class_for_open_check_in(db: Session, teacher_id: str | None, c
                   ON next_class.center_id = current_class.center_id
                  AND next_class.day_of_week = current_class.day_of_week
                  AND next_class.start_time = current_class.end_time
-                LEFT JOIN class_teachers ct
-                  ON ct.class_id = next_class.class_id
-                 AND ct.teacher_id = :teacher_id
-                WHERE (next_class.teacher_id = :teacher_id OR ct.teacher_id IS NOT NULL)
+                JOIN assigned_classes ac ON ac.class_id = next_class.class_id
             )
             SELECT cc.class_id
             FROM contiguous_classes cc
@@ -723,6 +778,7 @@ def export_teacher_attendance_report(
     db: Session = Depends(get_db),
 ):
     ensure_attendance_table(db)
+    ensure_assignment_tables(db)
 
     if end_date < start_date:
         raise HTTPException(status_code=400, detail="end_date must be after or equal to start_date")
@@ -751,25 +807,49 @@ def export_teacher_attendance_report(
                     END AS day_of_week
                 FROM generate_series(CAST(:start_date AS date), CAST(:end_date AS date), INTERVAL '1 day') AS day
             ),
-            scheduled_sessions AS (
+            teacher_classes AS (
                 SELECT
-                    teacher_classes.teacher_id,
-                    COUNT(*) AS scheduled_sessions
+                    rd.report_date,
+                    c.class_id,
+                    c.day_of_week,
+                    c.center_id,
+                    c.start_time,
+                    c.end_time,
+                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
                 FROM report_dates rd
-                JOIN (
-                    SELECT c.class_id, c.day_of_week, c.teacher_id
-                    FROM classes c
-                    WHERE c.teacher_id IS NOT NULL
-                      AND c.status <> 'CANCELLED'
+                JOIN classes c ON c.day_of_week = rd.day_of_week
+                JOIN class_teachers ct ON ct.class_id = c.class_id
+                LEFT JOIN class_teacher_reassignment_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = ct.teacher_id
+                   AND active_override.effective_date <= rd.report_date
+                   AND active_override.expires_on >= rd.report_date
+                WHERE c.status <> 'CANCELLED'
 
-                    UNION
+                UNION
 
-                    SELECT c.class_id, c.day_of_week, ct.teacher_id
-                    FROM classes c
-                    JOIN class_teachers ct ON ct.class_id = c.class_id
-                    WHERE c.status <> 'CANCELLED'
-                ) teacher_classes ON teacher_classes.day_of_week = rd.day_of_week
-                GROUP BY teacher_classes.teacher_id
+                SELECT
+                    rd.report_date,
+                    c.class_id,
+                    c.day_of_week,
+                    c.center_id,
+                    c.start_time,
+                    c.end_time,
+                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
+                FROM report_dates rd
+                JOIN classes c ON c.day_of_week = rd.day_of_week
+                LEFT JOIN class_teacher_reassignment_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = c.teacher_id
+                   AND active_override.effective_date <= rd.report_date
+                   AND active_override.expires_on >= rd.report_date
+                WHERE c.teacher_id IS NOT NULL
+                  AND c.status <> 'CANCELLED'
+            ),
+            scheduled_sessions AS (
+                SELECT teacher_id, COUNT(*) AS scheduled_sessions
+                FROM teacher_classes
+                GROUP BY teacher_id
             )
             SELECT
                 t.teacher_id,
@@ -861,17 +941,43 @@ def export_teacher_attendance_report(
                 FROM generate_series(CAST(:start_date AS date), CAST(:end_date AS date), INTERVAL '1 day') AS day
             ),
             teacher_classes AS (
-                SELECT c.class_id, c.day_of_week, c.center_id, c.start_time, c.end_time, c.teacher_id
-                FROM classes c
-                WHERE c.teacher_id IS NOT NULL
-                  AND c.status <> 'CANCELLED'
+                SELECT
+                    rd.teaching_date,
+                    c.class_id,
+                    c.day_of_week,
+                    c.center_id,
+                    c.start_time,
+                    c.end_time,
+                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
+                FROM report_dates rd
+                JOIN classes c ON c.day_of_week = rd.day_of_week
+                JOIN class_teachers ct ON ct.class_id = c.class_id
+                LEFT JOIN class_teacher_reassignment_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = ct.teacher_id
+                   AND active_override.effective_date <= rd.teaching_date
+                   AND active_override.expires_on >= rd.teaching_date
+                WHERE c.status <> 'CANCELLED'
 
                 UNION
 
-                SELECT c.class_id, c.day_of_week, c.center_id, c.start_time, c.end_time, ct.teacher_id
-                FROM classes c
-                JOIN class_teachers ct ON ct.class_id = c.class_id
-                WHERE c.status <> 'CANCELLED'
+                SELECT
+                    rd.teaching_date,
+                    c.class_id,
+                    c.day_of_week,
+                    c.center_id,
+                    c.start_time,
+                    c.end_time,
+                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
+                FROM report_dates rd
+                JOIN classes c ON c.day_of_week = rd.day_of_week
+                LEFT JOIN class_teacher_reassignment_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = c.teacher_id
+                   AND active_override.effective_date <= rd.teaching_date
+                   AND active_override.expires_on >= rd.teaching_date
+                WHERE c.teacher_id IS NOT NULL
+                  AND c.status <> 'CANCELLED'
             )
             SELECT
                 rd.teaching_date,
@@ -885,7 +991,7 @@ def export_teacher_attendance_report(
                 tc.center_id,
                 centers.name AS center_name
             FROM report_dates rd
-            JOIN teacher_classes tc ON tc.day_of_week = rd.day_of_week
+            JOIN teacher_classes tc ON tc.teaching_date = rd.teaching_date
             JOIN teachers t ON t.teacher_id = tc.teacher_id
             LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
             JOIN centers ON centers.center_id = tc.center_id
@@ -940,6 +1046,7 @@ def check_in_attendance(
     db: Session = Depends(get_db),
 ):
     ensure_attendance_table(db)
+    ensure_assignment_tables(db)
 
     recent_check_in = db.execute(
         text("""
@@ -1021,6 +1128,7 @@ def check_out_attendance(
     db: Session = Depends(get_db),
 ):
     ensure_attendance_table(db)
+    ensure_assignment_tables(db)
 
     recent_check_out = db.execute(
         text("""
@@ -1112,6 +1220,7 @@ def create_manual_attendance(
     db: Session = Depends(get_db),
 ):
     ensure_attendance_table(db)
+    ensure_assignment_tables(db)
 
     teacher = db.execute(
         text("""

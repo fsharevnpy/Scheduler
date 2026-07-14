@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -6,7 +9,11 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import AssignReplacementPayload
-from services.class_assignments import class_teacher_count, ensure_class_teachers_table
+from services.class_assignments import (
+    class_teacher_count,
+    ensure_class_teacher_reassignment_overrides_table,
+    ensure_class_teachers_table,
+)
 
 
 router = APIRouter()
@@ -25,6 +32,7 @@ def get_replacement_suggestions(
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
     target_class = db.execute(
         text(f"""
             SELECT
@@ -73,6 +81,32 @@ def get_replacement_suggestions(
 
     rows = db.execute(
         text("""
+            WITH active_teacher_overrides AS (
+                SELECT class_id, original_teacher_id, replacement_teacher_id
+                FROM class_teacher_reassignment_overrides
+                WHERE effective_date <= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+                  AND expires_on >= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+            ),
+            effective_assignment_rows AS (
+                SELECT
+                    ct.class_id,
+                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
+                FROM class_teachers ct
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = ct.class_id
+                   AND active_override.original_teacher_id = ct.teacher_id
+
+                UNION
+
+                SELECT
+                    c.class_id,
+                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
+                FROM classes c
+                LEFT JOIN active_teacher_overrides active_override
+                    ON active_override.class_id = c.class_id
+                   AND active_override.original_teacher_id = c.teacher_id
+                WHERE c.teacher_id IS NOT NULL
+            )
             SELECT
                 t.teacher_id,
                 t.name,
@@ -82,9 +116,9 @@ def get_replacement_suggestions(
                 t.active,
                 COALESCE((
                     SELECT COUNT(*)
-                    FROM class_teachers ct2
-                    JOIN classes c2 ON c2.class_id = ct2.class_id
-                    WHERE ct2.teacher_id = t.teacher_id
+                    FROM effective_assignment_rows ea2
+                    JOIN classes c2 ON c2.class_id = ea2.class_id
+                    WHERE ea2.teacher_id = t.teacher_id
                       AND c2.day_of_week = :day_of_week
                       AND c2.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
                 ), 0) AS assigned_slots_that_day,
@@ -116,6 +150,12 @@ def get_replacement_suggestions(
               )
               AND NOT EXISTS (
                   SELECT 1
+                  FROM effective_assignment_rows effective_assignment
+                  WHERE effective_assignment.class_id = :class_id
+                    AND effective_assignment.teacher_id = t.teacher_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1
                   FROM leave_requests lr
                   JOIN classes lc ON lc.class_id = lr.class_id
                   WHERE lr.teacher_id = t.teacher_id
@@ -124,9 +164,9 @@ def get_replacement_suggestions(
               )
               AND NOT EXISTS (
                   SELECT 1
-                  FROM class_teachers ct3
-                  JOIN classes c3 ON c3.class_id = ct3.class_id
-                  WHERE ct3.teacher_id = t.teacher_id
+                  FROM effective_assignment_rows ea3
+                  JOIN classes c3 ON c3.class_id = ea3.class_id
+                  WHERE ea3.teacher_id = t.teacher_id
                     AND c3.day_of_week = :day_of_week
                     AND c3.status IN ('ASSIGNED', 'NEED_REPLACEMENT')
                     AND c3.class_id <> :class_id
@@ -416,9 +456,10 @@ def reassign_class_teacher(
     teacher_id: str,
     payload: AssignReplacementPayload,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
 
     if teacher_id == payload.teacher_id:
         raise HTTPException(status_code=400, detail="replacement teacher must be different")
@@ -453,9 +494,9 @@ def reassign_class_teacher(
             SELECT 1
             FROM class_teachers
             WHERE class_id = :class_id
-              AND teacher_id = :teacher_id
+              AND teacher_id = :replacement_teacher_id
         """),
-        {"class_id": class_id, "teacher_id": payload.teacher_id},
+        {"class_id": class_id, "replacement_teacher_id": payload.teacher_id},
     ).first()
 
     if replacement_exists:
@@ -465,9 +506,9 @@ def reassign_class_teacher(
         text("""
             SELECT teacher_id, name, active, max_slots_per_day
             FROM teachers
-            WHERE teacher_id = :teacher_id
+            WHERE teacher_id = :replacement_teacher_id
         """),
-        {"teacher_id": payload.teacher_id},
+        {"replacement_teacher_id": payload.teacher_id},
     ).mappings().first()
 
     if not teacher_row:
@@ -530,6 +571,63 @@ def reassign_class_teacher(
     if assigned_count >= teacher_row["max_slots_per_day"]:
         raise HTTPException(status_code=400, detail="replacement teacher exceeds max slots per day")
 
+    mode = payload.mode.upper()
+    if mode == "TEMPORARY":
+        effective_date = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+        db.execute(
+            text("""
+                INSERT INTO class_teacher_reassignment_overrides (
+                    class_id,
+                    original_teacher_id,
+                    replacement_teacher_id,
+                    reassignment_mode,
+                    effective_date,
+                    expires_on,
+                    created_by
+                )
+                VALUES (
+                    :class_id,
+                    :teacher_id,
+                    :replacement_teacher_id,
+                    :reassignment_mode,
+                    :effective_date,
+                    :effective_date,
+                    :created_by
+                )
+                ON CONFLICT (class_id, original_teacher_id, effective_date)
+                DO UPDATE SET
+                    replacement_teacher_id = EXCLUDED.replacement_teacher_id,
+                    reassignment_mode = EXCLUDED.reassignment_mode,
+                    expires_on = EXCLUDED.expires_on,
+                    created_by = EXCLUDED.created_by
+            """),
+            {
+                "class_id": class_id,
+                "teacher_id": teacher_id,
+                "replacement_teacher_id": payload.teacher_id,
+                "reassignment_mode": mode,
+                "effective_date": effective_date,
+                "created_by": current_user.user_code,
+            },
+        )
+        db.commit()
+        update_class_assignment_state(db, class_id)
+        return {
+            "message": "teacher temporarily reassigned",
+            "class_id": class_id,
+            "old_teacher_id": teacher_id,
+            "teacher_id": payload.teacher_id,
+            "mode": mode,
+        }
+
+    db.execute(
+        text("""
+            DELETE FROM class_teacher_reassignment_overrides
+            WHERE class_id = :class_id
+              AND original_teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    )
     db.execute(
         text("""
             DELETE FROM class_teachers
@@ -553,4 +651,52 @@ def reassign_class_teacher(
         "class_id": class_id,
         "old_teacher_id": teacher_id,
         "teacher_id": payload.teacher_id,
+        "mode": mode,
+    }
+
+
+@router.delete("/classes/{class_id}/teachers/{teacher_id}/temporary-reassignment")
+def restore_permanent_class_teacher(
+    class_id: str,
+    teacher_id: str,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+):
+    ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
+
+    assignment_exists = db.execute(
+        text("""
+            SELECT 1
+            FROM class_teachers
+            WHERE class_id = :class_id
+              AND teacher_id = :teacher_id
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    ).first()
+
+    if not assignment_exists:
+        raise HTTPException(status_code=404, detail="permanent teacher is not assigned to this class")
+
+    deleted = db.execute(
+        text("""
+            DELETE FROM class_teacher_reassignment_overrides
+            WHERE class_id = :class_id
+              AND original_teacher_id = :teacher_id
+              AND effective_date <= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+              AND expires_on >= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+        """),
+        {"class_id": class_id, "teacher_id": teacher_id},
+    ).rowcount
+
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="active temporary reassignment not found")
+
+    update_class_assignment_state(db, class_id)
+    db.commit()
+
+    return {
+        "message": "temporary reassignment restored to permanent teacher",
+        "class_id": class_id,
+        "teacher_id": teacher_id,
     }

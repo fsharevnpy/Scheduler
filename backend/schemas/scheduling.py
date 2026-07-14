@@ -113,6 +113,15 @@ class LeaveRequestCreate(BaseModel):
 
 class AssignReplacementPayload(BaseModel):
     teacher_id: str
+    mode: str = "PERMANENT"
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"TEMPORARY", "PERMANENT"}:
+            raise ValueError("mode must be TEMPORARY or PERMANENT")
+        return normalized
 
 
 class AttendanceCheckInPayload(BaseModel):

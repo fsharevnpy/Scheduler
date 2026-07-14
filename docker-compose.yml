@@ -28,7 +28,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: scheduler
-      ACCESS_TOKEN_EXPIRE_MINUTES: 10080
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
       PROFILE_IMAGE_BASE_URL: /storage
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: chessfighter

@@ -1058,6 +1058,15 @@
   gap: 16px;
 }
 
+.assignment-type-label {
+  margin-top: 4px;
+}
+
+.assignment-type-label.temporary {
+  color: #9a5a00;
+  font-weight: 700;
+}
+
 .floating-panel-section {
   margin-top: 18px;
 }
@@ -1082,6 +1091,48 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.floating-panel-action-note {
+  margin: 0;
+  max-width: 240px;
+}
+
+.reassign-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.reassign-mode-option {
+  appearance: none;
+  border: 1px solid rgba(31, 27, 23, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 12px;
+  text-align: left;
+}
+
+.reassign-mode-option strong {
+  font-size: 0.92rem;
+}
+
+.reassign-mode-option span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.reassign-mode-option.selected {
+  border-color: rgba(180, 79, 33, 0.54);
+  box-shadow: 0 0 0 2px rgba(180, 79, 33, 0.12);
+  background: rgba(255, 249, 237, 0.94);
 }
 
 .floating-panel-status-row p {
@@ -1257,7 +1308,7 @@
 .class-teacher-button {
   appearance: none;
   border: 0;
-  padding: 0;
+  padding: 1px 4px;
   margin: 0;
   background: transparent;
   color: var(--accent-dark);
@@ -1265,6 +1316,19 @@
   font-weight: 700;
   text-align: left;
   cursor: pointer;
+}
+
+.class-teacher-name.temporary,
+.class-teacher-button.temporary {
+  width: fit-content;
+  border-radius: 6px;
+  background: #fff2bf;
+  color: #8a5300;
+  font-weight: 800;
+}
+
+.class-teacher-name.temporary {
+  padding: 1px 4px;
 }
 
 .class-teacher-button:hover,

@@ -116,12 +116,20 @@ function buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today
     .filter((classItem) => classItem.day_of_week === todayDayCode)
     .map((classItem) => {
       const { startClass, endClass } = getClassBlock(highlightedClasses, classItem);
-      const checkInRecord = latestCheckInByClass.get(startClass.class_id) || latestCheckInByClass.get(classItem.class_id);
-      const checkOutRecord = latestCheckOutByClass.get(startClass.class_id) || latestCheckOutByClass.get(endClass.class_id);
       const isBlockStart = classItem.class_id === startClass.class_id;
       const isBlockEnd = classItem.class_id === endClass.class_id;
+      const directCheckInRecord = latestCheckInByClass.get(classItem.class_id);
+      const directCheckOutRecord = latestCheckOutByClass.get(classItem.class_id);
+      const blockStartCheckInRecord = latestCheckInByClass.get(startClass.class_id);
+      const blockEndCheckOutRecord = latestCheckOutByClass.get(endClass.class_id);
+      const checkInRecord = directCheckInRecord || (!isBlockStart ? blockStartCheckInRecord : null);
+      const checkOutRecord = directCheckOutRecord || (!isBlockEnd ? blockEndCheckOutRecord : null);
+
       return {
-        record_id: checkInRecord?.record_id || checkOutRecord?.record_id || `today-${classItem.class_id}`,
+        record_id:
+          checkInRecord?.record_id ||
+          checkOutRecord?.record_id ||
+          `attendance-${todayKey}-${classItem.class_id}`,
         checked_at: checkInRecord?.checked_at || null,
         check_out_at: checkOutRecord?.checked_at || null,
         nearest_center_name: checkInRecord?.nearest_center_name || checkOutRecord?.nearest_center_name || classItem.center_label || classItem.center_id,

@@ -7,7 +7,7 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_cur
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import ClassCreate, ClassUpdate
-from services.class_assignments import ensure_class_teachers_table
+from services.class_assignments import ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table
 
 
 router = APIRouter()
@@ -54,25 +54,50 @@ def get_classes(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
     query = """
-        WITH assignment_rows AS (
-            SELECT ct.class_id, ct.teacher_id, ct.assigned_at
+        WITH active_teacher_overrides AS (
+            SELECT class_id, original_teacher_id, replacement_teacher_id
+            FROM class_teacher_reassignment_overrides
+            WHERE effective_date <= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+              AND expires_on >= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+        ),
+        assignment_rows AS (
+            SELECT
+                ct.class_id,
+                COALESCE(override.replacement_teacher_id, ct.teacher_id) AS teacher_id,
+                ct.teacher_id AS original_teacher_id,
+                CASE WHEN override.replacement_teacher_id IS NULL THEN 'PERMANENT' ELSE 'TEMPORARY' END AS assignment_mode,
+                ct.assigned_at
             FROM class_teachers ct
+            LEFT JOIN active_teacher_overrides override
+                ON override.class_id = ct.class_id
+               AND override.original_teacher_id = ct.teacher_id
             UNION
-            SELECT c.class_id, c.teacher_id, NOW()
+            SELECT
+                c.class_id,
+                COALESCE(override.replacement_teacher_id, c.teacher_id) AS teacher_id,
+                c.teacher_id AS original_teacher_id,
+                CASE WHEN override.replacement_teacher_id IS NULL THEN 'PERMANENT' ELSE 'TEMPORARY' END AS assignment_mode,
+                NOW()
             FROM classes c
+            LEFT JOIN active_teacher_overrides override
+                ON override.class_id = c.class_id
+               AND override.original_teacher_id = c.teacher_id
             WHERE c.teacher_id IS NOT NULL
         ),
         distinct_assignments AS (
-            SELECT DISTINCT ON (class_id, teacher_id) class_id, teacher_id, assigned_at
+            SELECT DISTINCT ON (class_id, teacher_id) class_id, teacher_id, original_teacher_id, assignment_mode, assigned_at
             FROM assignment_rows
-            ORDER BY class_id, teacher_id, assigned_at
+            ORDER BY class_id, teacher_id, CASE assignment_mode WHEN 'TEMPORARY' THEN 0 ELSE 1 END, assigned_at
         ),
         assignment_summary AS (
             SELECT
                 da.class_id,
                 ARRAY_AGG(da.teacher_id ORDER BY da.assigned_at, da.teacher_id) AS teacher_ids,
                 ARRAY_AGG(CONCAT(da.teacher_id, ' - ', t.name) ORDER BY da.assigned_at, da.teacher_id) AS teacher_labels,
+                ARRAY_AGG(da.assignment_mode ORDER BY da.assigned_at, da.teacher_id) AS teacher_assignment_modes,
+                ARRAY_AGG(da.original_teacher_id ORDER BY da.assigned_at, da.teacher_id) AS original_teacher_ids,
                 COUNT(*) AS teacher_count
             FROM distinct_assignments da
             JOIN teachers t ON t.teacher_id = da.teacher_id
@@ -82,6 +107,8 @@ def get_classes(
                COALESCE((assignment_summary.teacher_ids)[1], c.teacher_id) AS teacher_id,
                COALESCE(assignment_summary.teacher_ids, ARRAY[]::VARCHAR[]) AS teacher_ids,
                COALESCE(assignment_summary.teacher_labels, ARRAY[]::TEXT[]) AS teacher_labels,
+               COALESCE(assignment_summary.teacher_assignment_modes, ARRAY[]::TEXT[]) AS teacher_assignment_modes,
+               COALESCE(assignment_summary.original_teacher_ids, ARRAY[]::VARCHAR[]) AS original_teacher_ids,
                COALESCE(assignment_summary.teacher_count, 0) AS teacher_count,
                c.status
         FROM classes c
@@ -93,13 +120,7 @@ def get_classes(
         if not current_user.teacher_id:
             raise HTTPException(status_code=403, detail="teacher account is not linked")
         query += """
-            WHERE EXISTS (
-                SELECT 1
-                FROM class_teachers ct
-                WHERE ct.class_id = c.class_id
-                  AND ct.teacher_id = :teacher_id
-            )
-            OR c.teacher_id = :teacher_id
+            WHERE :teacher_id = ANY(COALESCE(assignment_summary.teacher_ids, ARRAY[]::VARCHAR[]))
         """
         params["teacher_id"] = current_user.teacher_id
 

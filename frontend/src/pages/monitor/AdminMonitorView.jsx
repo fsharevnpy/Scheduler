@@ -11,6 +11,18 @@ const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
 const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const WEEKDAY_BY_INDEX = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+const REASSIGNMENT_MODES = [
+  {
+    value: "TEMPORARY",
+    title: "Temporary",
+    description: "Today only. The class returns to the original teacher tomorrow.",
+  },
+  {
+    value: "PERMANENT",
+    title: "Permanent",
+    description: "Replace the fixed assignment for all future days.",
+  },
+];
 
 function getDatetimeLocalValue(date = new Date()) {
   const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -94,6 +106,24 @@ function getClassTeacherIds(classItem) {
   return classItem.teacher_ids || (classItem.teacher_id ? [classItem.teacher_id] : []);
 }
 
+function getClassTeacherModes(classItem) {
+  const teacherIds = getClassTeacherIds(classItem);
+  const modes = classItem.teacher_assignment_modes || [];
+
+  return teacherIds.map((_, index) => modes[index] || "PERMANENT");
+}
+
+function getCenterSortRank(centerValue = "") {
+  const normalized = String(centerValue || "").trim().toUpperCase();
+  const match = /^CS(\d+)$/i.exec(normalized);
+
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Number.parseInt(match[1], 10);
+}
+
 function findContiguousClassForTeacher(classes, classItem, teacherId, direction) {
   return classes.find((item) => {
     if (
@@ -130,10 +160,11 @@ function getClassBlockForTeacher(classes, classItem, teacherId) {
   return { startClass, endClass };
 }
 
-function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, attendanceDate, currentDate = new Date() }) {
+function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, attendanceDate, currentDate = new Date(), view = "current" }) {
   const attendanceDateKey = getLocalDateKey(attendanceDate);
   const attendanceDayCode = getDayCode(attendanceDate);
   const teachersById = new Map(teachers.map((teacher) => [teacher.teacher_id, teacher]));
+  const classesById = new Map(classes.map((classItem) => [classItem.class_id, classItem]));
   const latestCheckInByClassTeacher = new Map();
   const latestCheckOutByClassTeacher = new Map();
 
@@ -150,7 +181,7 @@ function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, atte
     }
   });
 
-  return classes
+  const scheduledRows = classes
     .filter((classItem) => classItem.day_of_week === attendanceDayCode)
     .flatMap((classItem) => {
       const teacherIds = getClassTeacherIds(classItem);
@@ -158,21 +189,25 @@ function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, atte
       return teacherIds.map((teacherId) => {
         const teacher = teachersById.get(teacherId) || {};
         const { startClass, endClass } = getClassBlockForTeacher(classes, classItem, teacherId);
-        const checkInRecord =
-          latestCheckInByClassTeacher.get(`${startClass.class_id}:${teacherId}`) ||
-          latestCheckInByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
-        const checkOutRecord =
-          latestCheckOutByClassTeacher.get(`${startClass.class_id}:${teacherId}`) ||
-          latestCheckOutByClassTeacher.get(`${endClass.class_id}:${teacherId}`);
         const isBlockStart = classItem.class_id === startClass.class_id;
         const isBlockEnd = classItem.class_id === endClass.class_id;
+        const directCheckInRecord = latestCheckInByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
+        const directCheckOutRecord = latestCheckOutByClassTeacher.get(`${classItem.class_id}:${teacherId}`);
+        const blockStartCheckInRecord = latestCheckInByClassTeacher.get(`${startClass.class_id}:${teacherId}`);
+        const blockEndCheckOutRecord = latestCheckOutByClassTeacher.get(`${endClass.class_id}:${teacherId}`);
+        const checkInRecord = directCheckInRecord || (!isBlockStart ? blockStartCheckInRecord : null);
+        const checkOutRecord = directCheckOutRecord || (!isBlockEnd ? blockEndCheckOutRecord : null);
 
         return {
-          record_id: checkInRecord?.record_id || checkOutRecord?.record_id || `today-${classItem.class_id}-${teacherId}`,
+          record_id:
+            checkInRecord?.record_id ||
+            checkOutRecord?.record_id ||
+            `attendance-${attendanceDateKey}-${classItem.class_id}-${teacherId}`,
           display_name: teacher.name || checkInRecord?.display_name || checkOutRecord?.display_name || teacherId,
           user_code: teacher.user_code || checkInRecord?.user_code || checkOutRecord?.user_code || "-",
           teacher_id: teacherId,
           class_id: classItem.class_id,
+          center_id: classItem.center_id || checkInRecord?.center_id || checkOutRecord?.center_id || "",
           checked_at: checkInRecord?.checked_at || null,
           check_out_at: checkOutRecord?.checked_at || null,
           nearest_center_name: checkInRecord?.nearest_center_name || checkOutRecord?.nearest_center_name || classItem.center_label || classItem.center_id,
@@ -187,23 +222,132 @@ function buildAttendanceRowsForDate({ attendanceRecords, classes, teachers, atte
           end_time: classItem.end_time,
         };
       });
-    })
-    .sort((left, right) => {
-      const timeCompare = String(left.start_time).localeCompare(String(right.start_time));
-      if (timeCompare !== 0) {
-        return timeCompare;
+    });
+
+  const groupedHistoricalRows = attendanceRecords
+    .filter((record) => record.teacher_id && record.class_id && getLocalDateKey(new Date(record.checked_at)) === attendanceDateKey)
+    .reduce((rows, record) => {
+      const key = `${record.class_id}:${record.teacher_id}`;
+      const existing = rows.get(key) || {
+        checkInRecord: null,
+        checkOutRecord: null,
+      };
+
+      if (record.event_type === "CHECK_IN") {
+        if (!existing.checkInRecord || new Date(record.checked_at) > new Date(existing.checkInRecord.checked_at)) {
+          existing.checkInRecord = record;
+        }
+      } else if (record.event_type === "CHECK_OUT") {
+        if (!existing.checkOutRecord || new Date(record.checked_at) > new Date(existing.checkOutRecord.checked_at)) {
+          existing.checkOutRecord = record;
+        }
       }
 
-      const centerCompare = String(left.nearest_center_name).localeCompare(String(right.nearest_center_name));
+      rows.set(key, existing);
+      return rows;
+    }, new Map());
+
+  const rawEventRows = Array.from(groupedHistoricalRows.entries()).map(([key, groupedRecord]) => {
+    const [classId, teacherId] = key.split(":");
+    const classItem = classesById.get(classId) || null;
+    const teacher = teachersById.get(teacherId) || {};
+    const checkInRecord = groupedRecord.checkInRecord;
+    const checkOutRecord = groupedRecord.checkOutRecord;
+
+    return {
+      record_id: checkInRecord?.record_id || checkOutRecord?.record_id || `attendance-${attendanceDateKey}-${classId}-${teacherId}`,
+      display_name: teacher.name || checkInRecord?.display_name || checkOutRecord?.display_name || teacherId,
+      user_code: teacher.user_code || checkInRecord?.user_code || checkOutRecord?.user_code || "-",
+      teacher_id: teacherId,
+      class_id: classId,
+      center_id: classItem?.center_id || checkInRecord?.center_id || checkOutRecord?.center_id || "",
+      checked_at: checkInRecord?.checked_at || null,
+      check_out_at: checkOutRecord?.checked_at || null,
+      nearest_center_name:
+        checkInRecord?.nearest_center_name ||
+        checkOutRecord?.nearest_center_name ||
+        classItem?.center_label ||
+        classItem?.center_id ||
+        "-",
+      status: checkInRecord?.status || checkOutRecord?.status || "-",
+      attendance_status: checkInRecord?.attendance_status || getFallbackAttendanceStatus(classItem || {}, attendanceDate, currentDate),
+      checkout_status: checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
+      start_time: classItem?.start_time || null,
+      end_time: classItem?.end_time || null,
+    };
+  });
+
+  const scheduledRowKeys = new Set(scheduledRows.map((row) => `${row.class_id}:${row.teacher_id}`));
+  const historicalRows = attendanceRecords
+    .filter((record) => record.teacher_id && record.class_id && getLocalDateKey(new Date(record.checked_at)) === attendanceDateKey)
+    .reduce((rows, record) => {
+      const key = `${record.class_id}:${record.teacher_id}`;
+      if (scheduledRowKeys.has(key)) {
+        return rows;
+      }
+
+      const classItem = classesById.get(record.class_id) || null;
+      const teacher = teachersById.get(record.teacher_id) || {};
+      const checkInRecord = latestCheckInByClassTeacher.get(key);
+      const checkOutRecord = latestCheckOutByClassTeacher.get(key);
+
+      rows.push({
+        record_id: checkInRecord?.record_id || checkOutRecord?.record_id || record.record_id || `attendance-${attendanceDateKey}-${record.class_id}-${record.teacher_id}`,
+        display_name: teacher.name || checkInRecord?.display_name || checkOutRecord?.display_name || record.teacher_id,
+        user_code: teacher.user_code || checkInRecord?.user_code || checkOutRecord?.user_code || record.user_code || "-",
+        teacher_id: record.teacher_id,
+        class_id: record.class_id,
+        center_id: classItem?.center_id || checkInRecord?.center_id || checkOutRecord?.center_id || "",
+        checked_at: checkInRecord?.checked_at || null,
+        check_out_at: checkOutRecord?.checked_at || null,
+        nearest_center_name:
+          checkInRecord?.nearest_center_name ||
+          checkOutRecord?.nearest_center_name ||
+          classItem?.center_label ||
+          classItem?.center_id ||
+          "-",
+        status: checkInRecord?.status || "-",
+        attendance_status: checkInRecord?.attendance_status || getFallbackAttendanceStatus(classItem || {}, attendanceDate, currentDate),
+        checkout_status: checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
+        start_time: classItem?.start_time || null,
+        end_time: classItem?.end_time || null,
+      });
+
+      return rows;
+    }, []);
+
+  if (view !== "current") {
+    return [...scheduledRows, ...historicalRows].sort((left, right) => {
+      const centerCompare = getCenterSortRank(left.center_id || left.nearest_center_name) - getCenterSortRank(right.center_id || right.nearest_center_name);
       if (centerCompare !== 0) {
         return centerCompare;
       }
 
+      const timeCompare = String(left.start_time || "").localeCompare(String(right.start_time || ""));
+      if (timeCompare !== 0) {
+        return timeCompare;
+      }
+
       return String(left.display_name).localeCompare(String(right.display_name));
     });
+  }
+
+  return [...scheduledRows, ...historicalRows].sort((left, right) => {
+    const centerCompare = getCenterSortRank(left.center_id || left.nearest_center_name) - getCenterSortRank(right.center_id || right.nearest_center_name);
+    if (centerCompare !== 0) {
+      return centerCompare;
+    }
+
+    const timeCompare = String(left.start_time || "").localeCompare(String(right.start_time || ""));
+    if (timeCompare !== 0) {
+      return timeCompare;
+    }
+
+    return String(left.display_name).localeCompare(String(right.display_name));
+  });
 }
 
-function renderTeacherNames(label, teacherIds = [], onSelect = null) {
+function renderTeacherNames(label, teacherIds = [], teacherModes = [], originalTeacherIds = [], onSelect = null) {
   if (!label || label === "-") {
     return <span>-</span>;
   }
@@ -217,16 +361,27 @@ function renderTeacherNames(label, teacherIds = [], onSelect = null) {
     <span className="class-teacher-list">
       {teacherNames.map((item, index) => {
         const teacherId = teacherIds[index] || "";
+        const teacherMode = teacherModes[index] || "PERMANENT";
+        const originalTeacherId = originalTeacherIds[index] || teacherId;
+        const isTemporary = teacherMode === "TEMPORARY";
+        const className = `class-teacher-button${isTemporary ? " temporary" : ""}`;
+        const plainClassName = `class-teacher-name${isTemporary ? " temporary" : ""}`;
+
         if (!onSelect || !teacherId) {
-          return <span key={`${teacherId}-${item}`}>{item}</span>;
+          return (
+            <span className={plainClassName} key={`${teacherId}-${item}`}>
+              {item}
+            </span>
+          );
         }
 
         return (
           <button
             type="button"
-            className="class-teacher-button"
+            className={className}
             key={`${teacherId}-${item}`}
-            onClick={() => onSelect(teacherId, item)}
+            onClick={() => onSelect(teacherId, item, teacherMode, originalTeacherId)}
+            title={isTemporary ? "Temporary assignment for today" : "Permanent assignment"}
           >
             {item}
           </button>
@@ -262,6 +417,7 @@ export default function AdminMonitorView({
   onAssignReplacement,
   onRemoveClassTeacher,
   onReassignClassTeacher,
+  onRestorePermanentClassTeacher,
   onRejectLeaveRequest,
   onLoadReplacementSuggestions,
   onResetPasswordRequest,
@@ -280,6 +436,7 @@ export default function AdminMonitorView({
   const [classTeacherAction, setClassTeacherAction] = useState("manage");
   const [classTeacherSuggestions, setClassTeacherSuggestions] = useState([]);
   const [selectedReassignTeacherId, setSelectedReassignTeacherId] = useState("");
+  const [selectedReassignMode, setSelectedReassignMode] = useState("TEMPORARY");
   const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
   const [selectedTeacherDetail, setSelectedTeacherDetail] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
@@ -374,6 +531,7 @@ export default function AdminMonitorView({
     teachers,
     attendanceDate: currentDate,
     currentDate,
+    view: "current",
   });
   const attendanceDateKeys = getAttendanceDateKeys(attendanceRecords, attendanceView, currentDate);
   const attendanceDatePageCount = Math.max(1, attendanceDateKeys.length);
@@ -387,6 +545,7 @@ export default function AdminMonitorView({
     teachers,
     attendanceDate: selectedAttendanceDate,
     currentDate,
+    view: attendanceView,
   });
   const visibleAttendanceRecords =
     attendanceView === "current"
@@ -725,11 +884,12 @@ export default function AdminMonitorView({
     }
   }
 
-  async function openClassTeacherPanel(classItem, teacherId, teacherName) {
-    setSelectedClassTeacher({ classItem, teacherId, teacherName });
+  async function openClassTeacherPanel(classItem, teacherId, teacherName, assignmentMode = "PERMANENT", originalTeacherId = teacherId) {
+    setSelectedClassTeacher({ classItem, teacherId, teacherName, assignmentMode, originalTeacherId });
     setClassTeacherAction("manage");
     setClassTeacherSuggestions([]);
     setSelectedReassignTeacherId("");
+    setSelectedReassignMode("TEMPORARY");
   }
 
   async function openReassignClassTeacher() {
@@ -738,9 +898,10 @@ export default function AdminMonitorView({
     }
 
     setClassTeacherAction("reassign");
+    setSelectedReassignMode("TEMPORARY");
     const suggestions = await onLoadReplacementSuggestions(
       selectedClassTeacher.classItem.class_id,
-      selectedClassTeacher.teacherId,
+      selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId,
     );
     setClassTeacherSuggestions(suggestions);
     setSelectedReassignTeacherId(suggestions[0]?.teacher_id || "");
@@ -757,6 +918,29 @@ export default function AdminMonitorView({
     }
   }
 
+  async function handleRestorePermanentClassTeacher() {
+    if (!selectedClassTeacher) {
+      return;
+    }
+
+    const confirmed = window.confirm("Restore this class to its permanent teacher now?");
+    if (!confirmed) {
+      return;
+    }
+
+    const success = await onRestorePermanentClassTeacher(
+      selectedClassTeacher.classItem.class_id,
+      selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId,
+    );
+
+    if (success) {
+      setSelectedClassTeacher(null);
+      setClassTeacherSuggestions([]);
+      setSelectedReassignTeacherId("");
+      setSelectedReassignMode("TEMPORARY");
+    }
+  }
+
   async function handleReassignClassTeacher() {
     if (!selectedClassTeacher || !selectedReassignTeacherId) {
       return;
@@ -764,13 +948,15 @@ export default function AdminMonitorView({
 
     const success = await onReassignClassTeacher(
       selectedClassTeacher.classItem.class_id,
-      selectedClassTeacher.teacherId,
+      selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId,
       selectedReassignTeacherId,
+      selectedReassignMode,
     );
     if (success) {
       setSelectedClassTeacher(null);
       setClassTeacherSuggestions([]);
       setSelectedReassignTeacherId("");
+      setSelectedReassignMode("TEMPORARY");
     }
   }
 
@@ -1397,8 +1583,8 @@ export default function AdminMonitorView({
                               >
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                               </button>
-                              {renderTeacherNames(item.teacher_label, item.teacher_ids, (teacherId, teacherName) =>
-                                openClassTeacherPanel(item, teacherId, teacherName),
+                              {renderTeacherNames(item.teacher_label, item.teacher_ids, getClassTeacherModes(item), item.original_teacher_ids, (teacherId, teacherName, assignmentMode, originalTeacherId) =>
+                                openClassTeacherPanel(item, teacherId, teacherName, assignmentMode, originalTeacherId),
                               )}
                               {canAssignMoreTeachers ? (
                                 <button
@@ -1592,6 +1778,7 @@ export default function AdminMonitorView({
             setClassTeacherAction("manage");
             setClassTeacherSuggestions([]);
             setSelectedReassignTeacherId("");
+            setSelectedReassignMode("TEMPORARY");
           }}
         >
           <div className="floating-panel-grid">
@@ -1612,11 +1799,30 @@ export default function AdminMonitorView({
             <div>
               <p className="subtle">Teacher</p>
               <strong>{selectedClassTeacher.teacherName}</strong>
+              <p className={`subtle assignment-type-label ${selectedClassTeacher.assignmentMode === "TEMPORARY" ? "temporary" : ""}`}>
+                Current assignment: {selectedClassTeacher.assignmentMode === "TEMPORARY" ? "Temporary" : "Permanent"}
+              </p>
             </div>
           </div>
 
           {classTeacherAction === "reassign" ? (
             <div className="floating-panel-section">
+              <div className="field">
+                <span>Reassign mode</span>
+                <div className="reassign-mode-grid" role="group" aria-label="Reassign mode">
+                  {REASSIGNMENT_MODES.map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      className={`reassign-mode-option${selectedReassignMode === mode.value ? " selected" : ""}`}
+                      onClick={() => setSelectedReassignMode(mode.value)}
+                    >
+                      <strong>{mode.title}</strong>
+                      <span>{mode.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="field">
                 <span>Reassign to</span>
                 <select
@@ -1639,14 +1845,32 @@ export default function AdminMonitorView({
           <div className="floating-panel-actions">
             {classTeacherAction === "manage" ? (
               <>
-                <button
-                  type="button"
-                  className="table-action-button table-action-button-muted"
-                  disabled={pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`}
-                  onClick={handleRemoveClassTeacher}
-                >
-                  {pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}` ? "Removing..." : "Remove"}
-                </button>
+                {selectedClassTeacher.assignmentMode === "TEMPORARY" ? (
+                  <>
+                    <p className="subtle floating-panel-action-note">Temporary assignments return to the original teacher tomorrow.</p>
+                    <button
+                      type="button"
+                      className="table-action-button table-action-button-muted"
+                      disabled={
+                        pendingAction === `class-teacher-restore-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
+                      }
+                      onClick={handleRestorePermanentClassTeacher}
+                    >
+                      {pendingAction === `class-teacher-restore-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
+                        ? "Restoring..."
+                        : "Restore permanent"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="table-action-button table-action-button-muted"
+                    disabled={pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`}
+                    onClick={handleRemoveClassTeacher}
+                  >
+                    {pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}` ? "Removing..." : "Remove"}
+                  </button>
+                )}
                 <button type="button" className="table-action-button" onClick={openReassignClassTeacher}>
                   Reassign
                 </button>
@@ -1658,11 +1882,11 @@ export default function AdminMonitorView({
                   className="table-action-button"
                   disabled={
                     !selectedReassignTeacherId ||
-                    pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`
+                    pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
                   }
                   onClick={handleReassignClassTeacher}
                 >
-                  {pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`
+                  {pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
                     ? "Reassigning..."
                     : "Save reassign"}
                 </button>

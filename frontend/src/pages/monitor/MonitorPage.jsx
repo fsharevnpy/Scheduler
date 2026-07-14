@@ -288,7 +288,7 @@ export default function MonitorPage({ auth }) {
     try {
       const result = await action();
       if (onSuccess) {
-        onSuccess(result);
+        await onSuccess(result);
       }
       if (successMessage) {
         setActionStatus({ kind: "success", message: successMessage });
@@ -592,11 +592,17 @@ export default function MonitorPage({ auth }) {
             const teacherName = teachersById.get(teacherId) || "-";
             const teacherLabel = teacherName;
             const nextTeacherLabels = teacherLabels.includes(teacherLabel) ? teacherLabels : [...teacherLabels, teacherLabel];
+            const teacherModes = item.teacher_assignment_modes || teacherIds.map(() => "PERMANENT");
+            const nextTeacherModes = teacherIds.includes(teacherId) ? teacherModes : [...teacherModes, "PERMANENT"];
+            const originalTeacherIds = item.original_teacher_ids || teacherIds;
+            const nextOriginalTeacherIds = teacherIds.includes(teacherId) ? originalTeacherIds : [...originalTeacherIds, teacherId];
             return {
               ...item,
               teacher_id: item.teacher_id || teacherId,
               teacher_ids: nextTeacherIds,
               teacher_labels: nextTeacherLabels,
+              teacher_assignment_modes: nextTeacherModes,
+              original_teacher_ids: nextOriginalTeacherIds,
               teacher_label: nextTeacherLabels.join(", "),
               teacher_count: nextTeacherIds.length,
               status: "ASSIGNED",
@@ -619,11 +625,25 @@ export default function MonitorPage({ auth }) {
 
   function updateClassTeacherList(item, nextTeacherIds) {
     const nextTeacherLabels = nextTeacherIds.map((teacherId) => teachersById.get(teacherId) || teacherId);
+    const previousTeacherIds = item.teacher_ids || (item.teacher_id ? [item.teacher_id] : []);
+    const previousTeacherModes = item.teacher_assignment_modes || previousTeacherIds.map(() => "PERMANENT");
+    const previousOriginalTeacherIds = item.original_teacher_ids || previousTeacherIds;
+    const nextTeacherModes = nextTeacherIds.map((teacherId) => {
+      const previousIndex = previousTeacherIds.indexOf(teacherId);
+      return previousIndex >= 0 ? previousTeacherModes[previousIndex] || "PERMANENT" : "PERMANENT";
+    });
+    const nextOriginalTeacherIds = nextTeacherIds.map((teacherId) => {
+      const previousIndex = previousTeacherIds.indexOf(teacherId);
+      return previousIndex >= 0 ? previousOriginalTeacherIds[previousIndex] || teacherId : teacherId;
+    });
+
     return {
       ...item,
       teacher_id: nextTeacherIds[0] || null,
       teacher_ids: nextTeacherIds,
       teacher_labels: nextTeacherLabels,
+      teacher_assignment_modes: nextTeacherModes,
+      original_teacher_ids: nextOriginalTeacherIds,
       teacher_label: nextTeacherLabels.length > 0 ? nextTeacherLabels.join(", ") : "-",
       teacher_count: nextTeacherIds.length,
       status: nextTeacherIds.length > 0 ? item.status === "NEED_REPLACEMENT" ? "NEED_REPLACEMENT" : "ASSIGNED" : "OPEN",
@@ -658,30 +678,43 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function reassignClassTeacher(classId, oldTeacherId, nextTeacherId) {
+  async function reassignClassTeacher(classId, oldTeacherId, nextTeacherId, mode = "PERMANENT") {
+    const normalizedMode = String(mode || "PERMANENT").toUpperCase();
     return runAction(
       `class-teacher-reassign-${classId}-${oldTeacherId}`,
       () =>
         requestJson(`${auth.apiBase}/classes/${classId}/teachers/${oldTeacherId}/reassign`, {
           method: "PUT",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ teacher_id: nextTeacherId }),
+          body: JSON.stringify({ teacher_id: nextTeacherId, mode: normalizedMode }),
         }),
-      `Reassigned class ${classId} to ${nextTeacherId}.`,
-      () => {
+      normalizedMode === "TEMPORARY"
+        ? `Temporarily reassigned class ${classId} to ${nextTeacherId}.`
+        : `Reassigned class ${classId} to ${nextTeacherId}.`,
+      async () => {
+        const classes = await requestJson(`${auth.apiBase}/classes`, { headers });
         setState((current) => ({
           ...current,
-          classes: current.classes.map((item) => {
-            if (item.class_id !== classId) {
-              return item;
-            }
+          classes,
+        }));
+      },
+    );
+  }
 
-            const teacherIds = item.teacher_ids || (item.teacher_id ? [item.teacher_id] : []);
-            return updateClassTeacherList(
-              item,
-              teacherIds.map((itemTeacherId) => (itemTeacherId === oldTeacherId ? nextTeacherId : itemTeacherId)),
-            );
-          }),
+  async function restorePermanentClassTeacher(classId, originalTeacherId) {
+    return runAction(
+      `class-teacher-restore-${classId}-${originalTeacherId}`,
+      () =>
+        requestJson(`${auth.apiBase}/classes/${classId}/teachers/${originalTeacherId}/temporary-reassignment`, {
+          method: "DELETE",
+          headers,
+        }),
+      `Restored permanent teacher for class ${classId}.`,
+      async () => {
+        const classes = await requestJson(`${auth.apiBase}/classes`, { headers });
+        setState((current) => ({
+          ...current,
+          classes,
         }));
       },
     );
@@ -990,6 +1023,7 @@ export default function MonitorPage({ auth }) {
             onAssignReplacement={assignReplacement}
             onRemoveClassTeacher={removeClassTeacher}
             onReassignClassTeacher={reassignClassTeacher}
+            onRestorePermanentClassTeacher={restorePermanentClassTeacher}
             onRejectLeaveRequest={rejectLeaveRequest}
             onLoadReplacementSuggestions={loadReplacementSuggestions}
             onResetPasswordRequest={resetPasswordRequest}
