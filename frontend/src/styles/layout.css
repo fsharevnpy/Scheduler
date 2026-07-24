@@ -211,6 +211,44 @@
   gap: 10px;
 }
 
+.web-push-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.compact-button {
+  min-height: 38px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.app-update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(calc(100vw - 28px), 420px);
+  padding: 12px 14px;
+  border: 1px solid rgba(31, 27, 23, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 251, 243, 0.98);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.app-update-banner span {
+  flex: 1;
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .notification-panel-head span,
 .notification-item > span,
 .notification-empty {

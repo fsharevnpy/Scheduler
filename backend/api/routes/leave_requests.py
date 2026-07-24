@@ -17,6 +17,7 @@ from db import SessionLocal
 from schemas.auth import CurrentUser
 from schemas.scheduling import LeaveRequestCreate
 from services.class_assignments import ensure_class_teachers_table
+from services.push_notifications import send_push_to_user_codes
 from services.user_event_broker import user_event_broker
 
 
@@ -296,6 +297,12 @@ def create_leave_request(
             "teacher_name": class_row["teacher_name"],
             "class_day_of_week": class_row["day_of_week"],
         },
+    )
+    send_push_to_user_codes(
+        db,
+        [payload.assigned_manager_code],
+        title="Leave request assigned",
+        body=f"{class_row['teacher_name']} requested leave for {payload.class_id}.",
     )
     return {"message": "leave request created", "request_id": payload.request_id}
 

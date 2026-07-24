@@ -10,8 +10,9 @@ from core.security import decode_access_token
 from db import get_db
 from db import SessionLocal
 from schemas.auth import CurrentUser
-from services.teacher_event_broker import teacher_event_broker
 from schemas.scheduling import TeacherScoreEventCreate
+from services.push_notifications import send_push_to_teacher
+from services.teacher_event_broker import teacher_event_broker
 from services.teacher_events import ensure_teacher_events_table
 
 
@@ -204,6 +205,12 @@ def create_teacher_score_event(
     db.commit()
     event_dict = dict(event)
     teacher_event_broker.publish(teacher_id, event_dict)
+    send_push_to_teacher(
+        db,
+        teacher_id,
+        title="Score updated",
+        body=f"{payload.delta:+d} points: {payload.reason}",
+    )
     return event_dict
 
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import NotificationBell from "../../components/NotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
+import WebPushControl from "../../components/WebPushControl.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
@@ -953,6 +954,7 @@ export default function MonitorPage({ auth }) {
                     : undefined
               }
             />
+            <WebPushControl auth={auth} />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}

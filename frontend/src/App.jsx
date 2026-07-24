@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import AppUpdateBanner from "./components/AppUpdateBanner.jsx";
 import LoginPage from "./pages/login/LoginPage.jsx";
 import ProfileSettingsPage from "./pages/profile-settings/ProfileSettingsPage.jsx";
 import MonitorPage from "./pages/monitor/MonitorPage.jsx";
@@ -102,43 +103,46 @@ export default function App() {
   );
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          auth.isAuthenticated ? <Navigate to="/monitor" replace /> : <LoginPage auth={auth} />
-        }
-      />
-      <Route
-        path="/profile-settings"
-        element={
-          <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
-            <ProfileSettingsPage auth={auth} />
-          </RouteGuard>
-        }
-      />
-      <Route
-        path="/monitor"
-        element={
-          <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
-            <MonitorPage auth={auth} />
-          </RouteGuard>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <RouteGuard
-            isAuthenticated={auth.isAuthenticated}
-            isRestoring={isRestoring}
-            user={auth.user}
-            allowedRoles={["developer", "manager"]}
-          >
-            <RegisterPage auth={auth} />
-          </RouteGuard>
-        }
-      />
-      <Route path="*" element={<Navigate to={auth.isAuthenticated ? "/monitor" : "/login"} replace />} />
-    </Routes>
+    <>
+      <AppUpdateBanner />
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            auth.isAuthenticated ? <Navigate to="/monitor" replace /> : <LoginPage auth={auth} />
+          }
+        />
+        <Route
+          path="/profile-settings"
+          element={
+            <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
+              <ProfileSettingsPage auth={auth} />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/monitor"
+          element={
+            <RouteGuard isAuthenticated={auth.isAuthenticated} isRestoring={isRestoring}>
+              <MonitorPage auth={auth} />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <RouteGuard
+              isAuthenticated={auth.isAuthenticated}
+              isRestoring={isRestoring}
+              user={auth.user}
+              allowedRoles={["developer", "manager"]}
+            >
+              <RegisterPage auth={auth} />
+            </RouteGuard>
+          }
+        />
+        <Route path="*" element={<Navigate to={auth.isAuthenticated ? "/monitor" : "/login"} replace />} />
+      </Routes>
+    </>
   );
 }

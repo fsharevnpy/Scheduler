@@ -8,6 +8,7 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, require
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import TeacherUpdate
+from services.push_notifications import send_push_to_teacher
 from services.teacher_events import create_teacher_profile_event, ensure_teacher_events_table
 
 
@@ -150,6 +151,13 @@ def update_teacher(
         )
 
     db.commit()
+    if changed_profile_fields:
+        send_push_to_teacher(
+            db,
+            teacher_id,
+            title="Teacher profile updated",
+            body="Your profile information was updated.",
+        )
     return {"message": "teacher updated", "teacher_id": teacher_id}
 
 

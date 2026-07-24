@@ -1,0 +1,25 @@
+{
+  "name": "Fighters Academy",
+  "short_name": "Fighters Academy",
+  "description": "Teacher scheduling and attendance for Fighters Academy.",
+  "id": "/",
+  "start_url": "/monitor",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#073B7A",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

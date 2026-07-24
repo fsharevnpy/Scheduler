@@ -29,6 +29,9 @@ services:
       DB_PORT: 5432
       DB_NAME: scheduler
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_CONTACT_EMAIL: ${WEB_PUSH_CONTACT_EMAIL:-mailto:admin@fightersacademy.com.vn}
       PROFILE_IMAGE_BASE_URL: /storage
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: chessfighter
