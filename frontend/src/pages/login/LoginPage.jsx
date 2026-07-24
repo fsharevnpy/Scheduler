@@ -1,11 +1,14 @@
 import { useState } from "react";
 
 import logo from "../../../chesslogo.png";
+import LanguageToggle from "../../components/LanguageToggle.jsx";
 import PasswordField from "../../components/PasswordField.jsx";
 import { requestJson } from "../../lib/http.js";
+import { useLanguage } from "../../lib/i18n.jsx";
 import ForgotPasswordPanel from "./ForgotPasswordPanel.jsx";
 
 export default function LoginPage({ auth }) {
+  const { t } = useLanguage();
   const [userCode, setUserCode] = useState("");
   const [password, setPassword] = useState("");
   const [forgotUserCode, setForgotUserCode] = useState("");
@@ -18,7 +21,7 @@ export default function LoginPage({ auth }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setIsSubmitting(true);
-    setStatus({ kind: "", message: "Signing in..." });
+    setStatus({ kind: "", message: t("signingIn") });
 
     try {
       await auth.login(auth.apiBase, {
@@ -50,7 +53,7 @@ export default function LoginPage({ auth }) {
       });
       setForgotStatus({
         kind: "success",
-        message: "Reset request sent. Please contact a manager or developer.",
+        message: t("resetRequestSent"),
       });
       setForgotUserCode("");
     } catch (error) {
@@ -63,27 +66,30 @@ export default function LoginPage({ auth }) {
   return (
     <main className="login-shell">
       <section className="login-card">
+        <div className="login-language-row">
+          <LanguageToggle />
+        </div>
         <div className="login-brand">
-          <img src={logo} alt="Chess Fighter logo" className="brand-mark large" />
-          <h1 className="login-title">Sign in</h1>
-          <p className="login-copy">Welcome to the Chess Fighters homepage. Sign in to access the internal scheduling workspace.</p>
+          <img src={logo} alt="Fighters Academy" className="brand-mark large" />
+          <h1 className="login-title">{t("signIn")}</h1>
+          <p className="login-copy">{t("loginCopy")}</p>
         </div>
 
         <form className="auth-form compact" onSubmit={handleSubmit}>
           <label className="field">
-            <span>User Code</span>
+            <span>{t("userCode")}</span>
             <input value={userCode} onChange={(event) => setUserCode(event.target.value)} type="text" autoComplete="off" required />
           </label>
           <PasswordField
             id="login-password"
-            label="Password"
+            label={t("password")}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
             required
           />
           <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in..." : "Login"}
+            {isSubmitting ? t("signingIn") : t("login")}
           </button>
         </form>
 
@@ -101,7 +107,7 @@ export default function LoginPage({ auth }) {
               setForgotUserCode(userCode.trim());
             }}
           >
-            {showForgotPassword ? "Close forgot password" : "Forgot password?"}
+            {showForgotPassword ? t("closeForgotPassword") : t("forgotPassword")}
           </button>
         </div>
 
@@ -110,6 +116,7 @@ export default function LoginPage({ auth }) {
             forgotUserCode={forgotUserCode}
             forgotStatus={forgotStatus}
             isRequestingReset={isRequestingReset}
+            t={t}
             onForgotUserCodeChange={(event) => setForgotUserCode(event.target.value)}
             onSubmit={handleForgotPassword}
           />

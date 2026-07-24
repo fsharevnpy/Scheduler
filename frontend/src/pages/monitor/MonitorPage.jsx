@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
+import LanguageToggle from "../../components/LanguageToggle.jsx";
 import NotificationBell from "../../components/NotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import WebPushControl from "../../components/WebPushControl.jsx";
+import { useLanguage } from "../../lib/i18n.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
@@ -26,6 +28,7 @@ function generateLeaveRequestId(leaveRequests) {
 
 export default function MonitorPage({ auth }) {
   const user = auth.user;
+  const { t } = useLanguage();
   const [state, setState] = useState({
     isLoading: true,
     error: "",
@@ -902,22 +905,30 @@ export default function MonitorPage({ auth }) {
       max_score: 110,
       event_count: 0,
     };
-  const notifications =
-    user.role === "manager"
-      ? state.unreadManagerEvents.map((item) => ({
-          id: item.request_id,
-          title: "Leave request assigned",
-          message: `${item.teacher_name || item.teacher_id} requested leave for ${item.class_id}. ${item.reason}`,
-          createdAt: formatDateTimeValue(item.created_at),
-          unread: !item.manager_read_at,
-        }))
-      : state.unreadScoreEvents.map((item) => ({
-          id: item.event_id,
-          title: item.event_type === "PROFILE" ? "Teacher profile updated" : "Score updated",
-          message:
-            item.event_type === "PROFILE"
-              ? `${item.reason}. ${item.evidence_text || ""}`
-              : `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
+	  const notifications =
+	    user.role === "manager"
+	      ? state.unreadManagerEvents.map((item) => ({
+	          id: item.request_id,
+	          title: t("leaveRequestAssigned"),
+	          message: t("leaveRequestAssignedMessage", {
+	            teacher: item.teacher_name || item.teacher_id,
+	            classId: item.class_id,
+	            reason: item.reason,
+	          }),
+	          createdAt: formatDateTimeValue(item.created_at),
+	          unread: !item.manager_read_at,
+	        }))
+	      : state.unreadScoreEvents.map((item) => ({
+	          id: item.event_id,
+	          title: item.event_type === "PROFILE" ? t("teacherProfileUpdated") : t("scoreUpdated"),
+	          message:
+	            item.event_type === "PROFILE"
+	              ? `${item.reason}. ${item.evidence_text || ""}`
+	              : t("scoreUpdatedMessage", {
+	                  delta: `${item.delta > 0 ? "+" : ""}${item.delta}`,
+	                  reason: item.reason,
+	                  evidence: item.evidence_text || "",
+	                }),
           evidenceUrl: item.evidence_url,
           createdAt: formatDateTimeValue(item.created_at),
           unread: !item.teacher_read_at,
@@ -928,12 +939,12 @@ export default function MonitorPage({ auth }) {
       <section className="dashboard-card dashboard-card-wide">
         <div className="dashboard-head">
           <div>
-            <p className="eyebrow">Monitor</p>
-            <h1 className="dashboard-title">Welcome back, {user.display_name || user.user_code}.</h1>
+            <p className="eyebrow">{t("monitor")}</p>
+            <h1 className="dashboard-title">{t("welcomeBack", { name: user.display_name || user.user_code })}</h1>
             <p className="subtle">
               {user.role === "teacher"
-                ? "Review your current teaching load and leave requests."
-                : "Review operational data for teachers, classes, and leave requests."}
+                ? t("dashboardTeacherCopy")
+                : t("dashboardAdminCopy")}
             </p>
           </div>
           <div className="dashboard-actions">
@@ -954,6 +965,7 @@ export default function MonitorPage({ auth }) {
                     : undefined
               }
             />
+            <LanguageToggle />
             <WebPushControl auth={auth} />
             <div className="account-chip">
               <UserAvatar
@@ -964,21 +976,21 @@ export default function MonitorPage({ auth }) {
                 size="medium"
               />
               <div className="account-chip-copy">
-                <strong>{getRoleTitle(user.role)}</strong>
+                <strong>{getRoleTitle(user.role, t)}</strong>
                 <span>{user.user_code}</span>
                 {user.role === "teacher" ? <span>{user.teacher_id || "-"}</span> : null}
               </div>
             </div>
             <div className="dashboard-action-stack">
               <button type="button" className="secondary-button" onClick={auth.logout}>
-                Log out
+                {t("logout")}
               </button>
               <Link className="inline-link" to="/profile-settings">
-                Profile Settings
+                {t("profileSettings")}
               </Link>
               {(user.role === "developer" || user.role === "manager") && (
                 <Link className="inline-link" to="/register">
-                  Open register screen
+                  {t("openRegisterScreen")}
                 </Link>
               )}
             </div>
@@ -988,7 +1000,7 @@ export default function MonitorPage({ auth }) {
         {state.error ? <div className="status error">{state.error}</div> : null}
 
         {state.isLoading ? (
-          <div className="page-status compact">Loading monitor data...</div>
+          <div className="page-status compact">{t("loadingMonitorData")}</div>
         ) : user.role === "teacher" ? (
           <TeacherMonitorView
             highlightedClasses={highlightedClasses}

@@ -2,17 +2,16 @@ export default function ForgotPasswordPanel({
   forgotUserCode,
   forgotStatus,
   isRequestingReset,
+  t,
   onForgotUserCodeChange,
   onSubmit,
 }) {
   return (
     <section className="support-panel compact">
-      <p className="support-copy">
-        Password reset is handled internally by a manager or developer.
-      </p>
+      <p className="support-copy">{t("passwordResetCopy")}</p>
       <form className="auth-form support-form" onSubmit={onSubmit}>
         <label className="field">
-          <span>User Code</span>
+          <span>{t("userCode")}</span>
           <input
             value={forgotUserCode}
             onChange={onForgotUserCodeChange}
@@ -22,7 +21,7 @@ export default function ForgotPasswordPanel({
           />
         </label>
         <button className="secondary-button" type="submit" disabled={isRequestingReset}>
-          {isRequestingReset ? "Sending..." : "Send reset request"}
+          {isRequestingReset ? t("sending") : t("sendResetRequest")}
         </button>
         <div className={`status ${forgotStatus.kind}`.trim()} aria-live="polite">
           {forgotStatus.message}

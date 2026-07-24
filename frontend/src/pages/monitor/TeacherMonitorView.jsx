@@ -4,6 +4,7 @@ import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
+import { useLanguage } from "../../lib/i18n.jsx";
 import { formatClockTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -178,6 +179,7 @@ export default function TeacherMonitorView({
   onCreateLeaveRequest,
   onCancelLeaveRequest,
 }) {
+  const { t } = useLanguage();
   const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
   const [isAttendancePanelOpen, setIsAttendancePanelOpen] = useState(false);
   const [attendancePanelAction, setAttendancePanelAction] = useState("check-in");
@@ -251,7 +253,7 @@ export default function TeacherMonitorView({
   const scoreBand = getScoreBand(scoreValue);
   const isCheckoutPanel = attendancePanelAction === "checkout";
   const attendancePendingKey = isCheckoutPanel ? "attendance-check-out" : "attendance-check-in";
-  const attendanceActionLabel = isCheckoutPanel ? "checkout" : "check-in";
+  const attendanceActionLabel = isCheckoutPanel ? t("checkOut") : t("checkIn");
 
   async function handleCreateLeaveRequest(event) {
     event.preventDefault();
@@ -281,7 +283,7 @@ export default function TeacherMonitorView({
 
   function handleConfirmAttendance() {
     if (!navigator.geolocation) {
-      setAttendanceError("This browser does not support location access.");
+      setAttendanceError(t("locationNotSupported"));
       return;
     }
 
@@ -300,7 +302,7 @@ export default function TeacherMonitorView({
         }
       },
       (error) => {
-        setAttendanceError(error.message || "Unable to read current location.");
+        setAttendanceError(error.message || t("locationReadFailed"));
       },
       {
         enableHighAccuracy: true,
@@ -312,22 +314,22 @@ export default function TeacherMonitorView({
 
   function handleResetLocationAccess() {
     if (!navigator.geolocation) {
-      setAttendanceError("This browser does not support location access.");
+      setAttendanceError(t("locationNotSupported"));
       return;
     }
 
     setAttendanceError("");
     navigator.geolocation.getCurrentPosition(
       () => {
-        setAttendanceError(`Location access is ready. You can confirm ${attendanceActionLabel} now.`);
+        setAttendanceError(t("locationReady", { action: attendanceActionLabel }));
       },
       (error) => {
         if (error.code === 1) {
-          setAttendanceError("Location permission is blocked. On iOS, allow Location for Safari and this website in Settings, then try again.");
+          setAttendanceError(t("locationPermissionBlocked"));
           return;
         }
 
-        setAttendanceError(error.message || "Unable to refresh location access.");
+        setAttendanceError(error.message || t("locationRefreshFailed"));
       },
       {
         enableHighAccuracy: true,
@@ -342,19 +344,19 @@ export default function TeacherMonitorView({
       <section className="monitor-grid monitor-grid-summary">
         <article className="info-card teacher-summary-card">
           <div className={`teacher-summary-metric teacher-score-metric teacher-score-${scoreBand}`}>
-            <p className="eyebrow">Monthly Score</p>
+            <p className="eyebrow">{t("monthlyScore")}</p>
             <h2>{scoreValue}/{scoreMax}</h2>
           </div>
           <div className="teacher-summary-metric">
-            <p className="eyebrow">Unassigned</p>
+            <p className="eyebrow">{t("unassigned")}</p>
             <h2>{unassignedCount}</h2>
           </div>
           <div className="teacher-summary-metric">
-            <p className="eyebrow">Leave Requests</p>
+            <p className="eyebrow">{t("leaveRequests")}</p>
             <h2>{activeLeaveRequestCount}</h2>
           </div>
           <div className="teacher-summary-metric">
-            <p className="eyebrow">Attendance</p>
+            <p className="eyebrow">{t("attendance")}</p>
             <h2>{attendanceRecords.length}</h2>
           </div>
         </article>
@@ -363,15 +365,15 @@ export default function TeacherMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Attendance</p>
-            <h2>Check-in/Checkout Records</h2>
+            <p className="eyebrow">{t("attendance")}</p>
+            <h2>{t("attendanceRecords")}</h2>
             <p className="subtle">
-              Today: {todayLabel} | {getDayCode(currentDate)} | Classes scheduled: {todayAttendanceRows.length}
+              {t("todaySummary", { date: todayLabel, day: getDayCode(currentDate), count: todayAttendanceRows.length })}
             </p>
           </div>
         </div>
 
-        <div className="attendance-action-strip" aria-label="Attendance actions">
+        <div className="attendance-action-strip" aria-label={t("attendanceActions")}>
           <button
             type="button"
             className="attendance-action-card attendance-action-card-primary"
@@ -382,8 +384,8 @@ export default function TeacherMonitorView({
               setIsAttendancePanelOpen(true);
             }}
           >
-            <span>{pendingAction === "attendance-check-in" ? "Recording..." : "Check-in"}</span>
-            <strong>Start teaching session</strong>
+            <span>{pendingAction === "attendance-check-in" ? t("recording") : t("checkIn")}</span>
+            <strong>{t("startTeachingSession")}</strong>
           </button>
           <button
             type="button"
@@ -395,45 +397,44 @@ export default function TeacherMonitorView({
               setIsAttendancePanelOpen(true);
             }}
           >
-            <span>{pendingAction === "attendance-check-out" ? "Recording..." : "Checkout"}</span>
-            <strong>Finish teaching session</strong>
+            <span>{pendingAction === "attendance-check-out" ? t("recording") : t("checkOut")}</span>
+            <strong>{t("finishTeachingSession")}</strong>
           </button>
         </div>
 
         <div className="attendance-records-head">
           <div>
-            <p className="eyebrow">Records</p>
-            <h3>Attendance records</h3>
+            <p className="eyebrow">{t("records")}</p>
+            <h3>{t("attendanceRecords")}</h3>
           </div>
-          <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
+          <div className="section-toggle-group" role="tablist" aria-label={t("attendance")}>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("current")}
             >
-              Current
+              {t("current")}
             </button>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("history")}
             >
-              History
+              {t("history")}
             </button>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("all")}
             >
-              All
+              {t("all")}
             </button>
           </div>
         </div>
 
         {!window.isSecureContext ? (
           <p className="status error">
-            Location access may be blocked on mobile over HTTP. Use HTTPS, localhost, or allow location manually if
-            your browser supports it.
+            {t("insecureLocationWarning")}
           </p>
         ) : null}
 
@@ -443,44 +444,44 @@ export default function TeacherMonitorView({
         {attendanceError ? <div className="status error">{attendanceError}</div> : null}
 
         <DataTable
-          title="Attendance Records"
+          title={t("attendanceRecords")}
           columns={[
             {
               key: "expected_shift",
-              label: "Expected Shift",
+              label: t("expectedShift"),
               render: (row) =>
                 row.start_time && row.end_time
                   ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
                   : "-",
             },
-            { key: "checked_at", label: "Check-in", render: (row) => formatClockTimeValue(row.checked_at) },
-            { key: "check_out_at", label: "Checkout", render: (row) => formatClockTimeValue(row.check_out_at) },
+            { key: "checked_at", label: t("checkIn"), render: (row) => formatClockTimeValue(row.checked_at) },
+            { key: "check_out_at", label: t("checkOut"), render: (row) => formatClockTimeValue(row.check_out_at) },
             {
               key: "nearest_center_name",
-              label: "Location",
+              label: t("location"),
               render: (row) =>
                 !row.checked_at || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
-                  ? row.nearest_center_name || "Nearest center"
-                  : "Outside valid area",
+                  ? row.nearest_center_name || t("nearestCenter")
+                  : t("outsideValidArea"),
             },
             {
               key: "status",
-              label: "Location Status",
+              label: t("locationStatus"),
               render: (row) => <StatusPill value={!row.checked_at || row.status === "-" ? "PENDING" : row.status || "PENDING"} />,
             },
             {
               key: "attendance_status",
-              label: "Check-in Status",
+              label: t("attendanceStatus"),
               render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
             },
             {
               key: "checkout_status",
-              label: "Checkout Status",
+              label: t("checkOut"),
               render: (row) => <StatusPill value={row.checkout_status || "-"} />,
             },
           ]}
           rows={visibleAttendanceRecords}
-          emptyMessage="No attendance records found."
+          emptyMessage={t("noAttendanceRecords")}
           embedded
           pageSize={10}
         />
@@ -489,12 +490,12 @@ export default function TeacherMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Your Classes</p>
-            <h2>Current teaching classes</h2>
+            <p className="eyebrow">{t("class")}</p>
+            <h2>{t("currentTeachingClasses")}</h2>
           </div>
         </div>
         {highlightedClasses.length === 0 ? (
-          <p className="subtle">No classes are currently assigned to this teacher account.</p>
+          <p className="subtle">{t("noClassesAssigned")}</p>
         ) : (
           <div className="class-highlight-grid">
             {highlightedClasses.map((item) => (
@@ -507,31 +508,31 @@ export default function TeacherMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">My Leave Requests</p>
-            <h2>Personal leave records</h2>
+            <p className="eyebrow">{t("myLeaveRequests")}</p>
+            <h2>{t("personalLeaveRecords")}</h2>
           </div>
           <div className="section-head-actions">
-            <div className="section-toggle-group" role="tablist" aria-label="Leave request filter">
+	            <div className="section-toggle-group" role="tablist" aria-label={t("myLeaveRequests")}>
               <button
                 type="button"
                 className={`section-toggle-button ${leaveRequestView === "active" ? "active" : ""}`.trim()}
                 onClick={() => setLeaveRequestView("active")}
               >
-                Active
+	                {t("active")}
               </button>
               <button
                 type="button"
                 className={`section-toggle-button ${leaveRequestView === "history" ? "active" : ""}`.trim()}
                 onClick={() => setLeaveRequestView("history")}
               >
-                History
+	                {t("history")}
               </button>
               <button
                 type="button"
                 className={`section-toggle-button ${leaveRequestView === "all" ? "active" : ""}`.trim()}
                 onClick={() => setLeaveRequestView("all")}
               >
-                All
+	                {t("all")}
               </button>
             </div>
             <button
@@ -545,38 +546,38 @@ export default function TeacherMonitorView({
                 setIsCreatePanelOpen(true);
               }}
             >
-              Create leave request
+	              {t("createLeaveRequest")}
             </button>
           </div>
         </div>
 
         {creatableClasses.length === 0 ? (
           <p className="subtle">
-            No eligible assigned classes are available for a new leave request right now.
+	            {t("noEligibleLeaveClasses")}
           </p>
         ) : null}
         {leaveRequestManagers.length === 0 ? (
-          <p className="subtle">No active manager is available to review leave requests right now.</p>
+	          <p className="subtle">{t("noActiveManagerForLeave")}</p>
         ) : null}
 
         <DataTable
-          title="My Leave Requests"
+	          title={t("myLeaveRequests")}
           columns={[
-            { key: "request_id", label: "Request ID" },
-            { key: "class_id", label: "Class ID" },
-            { key: "center_id", label: "Center" },
-            { key: "assigned_manager_name", label: "Review Manager" },
-            { key: "class_day_of_week", label: "Class Day" },
-            { key: "request_date", label: "Request Date" },
-            { key: "reason", label: "Reason" },
+	            { key: "request_id", label: "Request ID" },
+	            { key: "class_id", label: t("classId") },
+	            { key: "center_id", label: t("center") },
+	            { key: "assigned_manager_name", label: t("reviewManager") },
+	            { key: "class_day_of_week", label: t("classDay") },
+	            { key: "request_date", label: t("requestDate") },
+	            { key: "reason", label: t("reason") },
             {
               key: "status",
-              label: "Status",
+	              label: t("status"),
               render: (row) => <StatusPill value={row.status} />,
             },
             {
               key: "actions",
-              label: "Actions",
+	              label: t("actions"),
               render: (row) =>
                 row.status === "REQUESTED" ? (
                   <button
@@ -585,29 +586,29 @@ export default function TeacherMonitorView({
                     disabled={pendingAction === `cancel-${row.request_id}`}
                     onClick={() => onCancelLeaveRequest(row.request_id)}
                   >
-                    {pendingAction === `cancel-${row.request_id}` ? "Cancelling..." : "Cancel"}
+	                    {pendingAction === `cancel-${row.request_id}` ? t("cancelling") : t("cancel")}
                   </button>
                 ) : (
-                  <span className="subtle">Processed</span>
+	                  <span className="subtle">{t("processed")}</span>
                 ),
             },
           ]}
           rows={visibleLeaveRequests}
-          emptyMessage="No leave requests found for this teacher."
+	          emptyMessage={t("noLeaveRequests")}
           embedded
         />
       </section>
 
       {isAttendancePanelOpen ? (
         <FloatingPanel
-          eyebrow="Attendance"
-          title={`Confirm ${attendanceActionLabel}`}
+	          eyebrow={t("attendance")}
+	          title={t("confirmAttendance", { action: attendanceActionLabel })}
           titleId="attendance-confirm-title"
           onClose={() => setIsAttendancePanelOpen(false)}
         >
           <div className="floating-panel-reason-box">
             <p>
-              This will record the current server time and your phone's location for this account.
+	              {t("attendanceConfirmCopy")}
             </p>
           </div>
           {attendanceError ? <div className="status error">{attendanceError}</div> : null}
@@ -619,7 +620,7 @@ export default function TeacherMonitorView({
               disabled={pendingAction === attendancePendingKey}
               onClick={handleConfirmAttendance}
             >
-              {pendingAction === attendancePendingKey ? "Recording..." : `Confirm ${attendanceActionLabel}`}
+	              {pendingAction === attendancePendingKey ? t("recording") : t("confirmAttendance", { action: attendanceActionLabel })}
             </button>
             <button
               type="button"
@@ -627,7 +628,7 @@ export default function TeacherMonitorView({
               disabled={pendingAction === attendancePendingKey}
               onClick={handleResetLocationAccess}
             >
-              Reset location
+	              {t("resetLocation")}
             </button>
             <button
               type="button"
@@ -635,7 +636,7 @@ export default function TeacherMonitorView({
               disabled={pendingAction === attendancePendingKey}
               onClick={() => setIsAttendancePanelOpen(false)}
             >
-              Cancel
+	              {t("cancel")}
             </button>
           </div>
         </FloatingPanel>
@@ -643,14 +644,14 @@ export default function TeacherMonitorView({
 
       {isCreatePanelOpen ? (
         <FloatingPanel
-          eyebrow="Leave Request"
-          title="Create a new leave request"
+	          eyebrow={t("myLeaveRequests")}
+	          title={t("createLeaveRequestTitle")}
           titleId="teacher-leave-request-title"
           onClose={() => setIsCreatePanelOpen(false)}
         >
                 <form className="floating-panel-form" onSubmit={handleCreateLeaveRequest}>
                   <label className="field">
-                    <span>Class</span>
+	                    <span>{t("class")}</span>
                     <select
                       value={selectedClass?.class_id || ""}
                       onChange={(event) => setSelectedClassId(event.target.value)}
@@ -665,7 +666,7 @@ export default function TeacherMonitorView({
                   </label>
 
                   <label className="field">
-                    <span>Review Manager</span>
+	                    <span>{t("reviewManager")}</span>
                     <select
                       value={selectedManagerCode}
                       onChange={(event) => setSelectedManagerCode(event.target.value)}
@@ -682,29 +683,29 @@ export default function TeacherMonitorView({
                   {selectedClass ? (
                     <div className="floating-panel-summary">
                       <div className="floating-panel-summary-row">
-                        <span>Day</span>
+	                        <span>{t("classDay")}</span>
                         <strong>{formatValue(selectedClass.day_of_week)}</strong>
                       </div>
                       <div className="floating-panel-summary-row">
-                        <span>Time</span>
+	                        <span>{t("expectedShift")}</span>
                         <strong>
                           {formatTimeValue(selectedClass.start_time)} - {formatTimeValue(selectedClass.end_time)}
                         </strong>
                       </div>
                       <div className="floating-panel-summary-row">
-                        <span>Center</span>
+	                        <span>{t("center")}</span>
                         <strong>{formatValue(selectedClass.center_label)}</strong>
                       </div>
                     </div>
                   ) : null}
 
                   <label className="field">
-                    <span>Reason</span>
+	                    <span>{t("reason")}</span>
                     <textarea
                       rows="4"
                       value={reason}
                       onChange={(event) => setReason(event.target.value)}
-                      placeholder="Enter the reason for this leave request."
+	                      placeholder={t("reason")}
                       required
                     />
                   </label>
@@ -720,7 +721,7 @@ export default function TeacherMonitorView({
                         pendingAction === "create-leave-request"
                       }
                     >
-                      {pendingAction === "create-leave-request" ? "Creating..." : "Create request"}
+	                      {pendingAction === "create-leave-request" ? t("creating") : t("createRequest")}
                     </button>
                     <button
                       type="button"
@@ -728,7 +729,7 @@ export default function TeacherMonitorView({
                       disabled={pendingAction === "create-leave-request"}
                       onClick={() => setIsCreatePanelOpen(false)}
                     >
-                      Close
+	                      {t("close")}
                     </button>
                   </div>
                 </form>

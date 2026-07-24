@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useLanguage } from "../lib/i18n.jsx";
+
 function resolveImageUrl(imageUrl, apiBase) {
   if (!imageUrl) {
     return "";
@@ -43,6 +45,7 @@ export default function UserAvatar({
   className = "",
 }) {
   const [hasError, setHasError] = useState(false);
+  const { t } = useLanguage();
   const src = useMemo(() => resolveImageUrl(imageUrl, apiBase), [apiBase, imageUrl]);
   const initials = useMemo(() => buildInitials(name, fallbackCode), [fallbackCode, name]);
   const mergedClassName = `user-avatar user-avatar-${size} ${className}`.trim();
@@ -62,7 +65,7 @@ export default function UserAvatar({
   return (
     <img
       src={src}
-      alt={`${name || fallbackCode || "User"} avatar`}
+      alt={t("userAvatarAlt", { name: name || fallbackCode || "User" })}
       className={mergedClassName}
       onError={() => setHasError(true)}
     />

@@ -26,6 +26,45 @@ export async function getPushSubscription() {
   return registration.pushManager.getSubscription();
 }
 
+export async function savePushSubscription(apiBase, token, subscription) {
+  return requestJson(`${apiBase}/push/subscriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(subscription),
+  });
+}
+
+export async function ensurePushSubscription(apiBase, token) {
+  if (!isPushSupported() || Notification.permission !== "granted") {
+    return null;
+  }
+
+  let subscription = await getPushSubscription();
+  if (!subscription) {
+    const keyData = await requestJson(`${apiBase}/push/vapid-public-key`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!keyData.enabled || !keyData.public_key) {
+      throw new Error("Web push is not configured.");
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyData.public_key),
+    });
+  }
+
+  await savePushSubscription(apiBase, token, subscription);
+  return subscription;
+}
+
 export async function subscribeToPush(apiBase, token) {
   if (!isPushSupported()) {
     throw new Error("Push notifications are not supported on this browser.");
@@ -52,40 +91,7 @@ export async function subscribeToPush(apiBase, token) {
     applicationServerKey: urlBase64ToUint8Array(keyData.public_key),
   });
 
-  await requestJson(`${apiBase}/push/subscriptions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(subscription),
-  });
+  await savePushSubscription(apiBase, token, subscription);
 
   return subscription;
-}
-
-export async function unsubscribeFromPush(apiBase, token) {
-  const subscription = await getPushSubscription();
-  if (!subscription) {
-    return;
-  }
-
-  await requestJson(`${apiBase}/push/subscriptions`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ endpoint: subscription.endpoint }),
-  });
-  await subscription.unsubscribe();
-}
-
-export async function sendTestPush(apiBase, token) {
-  return requestJson(`${apiBase}/push/test`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
 }

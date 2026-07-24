@@ -8,12 +8,14 @@ import MonitorPage from "./pages/monitor/MonitorPage.jsx";
 import RegisterPage from "./pages/register/RegisterPage.jsx";
 import { clearStoredSession, getStoredApiBase, getStoredToken, getStoredUser, persistSession } from "./lib/auth.js";
 import { requestJson } from "./lib/http.js";
+import { useLanguage } from "./lib/i18n.jsx";
 
 function RouteGuard({ isAuthenticated, isRestoring, user, allowedRoles, children }) {
   const location = useLocation();
+  const { t } = useLanguage();
 
   if (isRestoring) {
-    return <div className="page-status">Restoring session...</div>;
+    return <div className="page-status">{t("restoringSession")}</div>;
   }
 
   if (!isAuthenticated) {

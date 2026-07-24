@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { useLanguage } from "../lib/i18n.jsx";
+
 function EyeIcon({ visible }) {
   return (
     <svg className="password-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -42,6 +44,7 @@ export default function PasswordField({
   helpText,
 }) {
   const [visible, setVisible] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <label className="field">
@@ -50,7 +53,7 @@ export default function PasswordField({
         <button
           type="button"
           className="password-toggle"
-          aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+          aria-label={visible ? t("hidePassword", { label }) : t("showPassword", { label })}
           onClick={() => setVisible((current) => !current)}
         >
           <EyeIcon visible={visible} />

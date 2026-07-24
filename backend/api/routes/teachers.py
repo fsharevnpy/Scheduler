@@ -14,6 +14,12 @@ from services.teacher_events import create_teacher_profile_event, ensure_teacher
 
 router = APIRouter()
 
+PROFILE_NOTIFICATION_LABELS = {
+    "elo": "ELO",
+    "education_score": "Education",
+    "max_slots_per_day": "Max Slots",
+}
+
 
 def is_managed_profile_image_path(path: str | None) -> bool:
     return bool(path) and not path.startswith("http://") and not path.startswith("https://")
@@ -87,7 +93,7 @@ def update_teacher(
 ):
     existing = db.execute(
         text("""
-            SELECT teacher_id, elo, education_score, max_slots_per_day
+            SELECT teacher_id, name, elo, education_score, max_slots_per_day
             FROM teachers
             WHERE teacher_id = :teacher_id
         """),
@@ -152,11 +158,15 @@ def update_teacher(
 
     db.commit()
     if changed_profile_fields:
+        changes = [
+            f"{PROFILE_NOTIFICATION_LABELS[field]}: {existing[field] if existing[field] is not None else '-'} -> {data[field] if data[field] is not None else '-'}"
+            for field in changed_profile_fields
+        ]
         send_push_to_teacher(
             db,
             teacher_id,
-            title="Teacher profile updated",
-            body="Your profile information was updated.",
+            title=f"{existing['name']} profile updated",
+            body="; ".join(changes),
         )
     return {"message": "teacher updated", "teacher_id": teacher_id}
 

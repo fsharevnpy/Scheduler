@@ -1,6 +1,5 @@
 import PasswordField from "../../components/PasswordField.jsx";
-
-const PASSWORD_HELP = "Minimum 8 characters, with uppercase, lowercase, number, and special character.";
+import { useLanguage } from "../../lib/i18n.jsx";
 
 export default function PasswordSettingsPanel({
   form,
@@ -9,19 +8,21 @@ export default function PasswordSettingsPanel({
   onFieldChange,
   onSubmit,
 }) {
+  const { t } = useLanguage();
+
   return (
     <section className="dashboard-section">
       <div className="section-head">
         <div>
-          <p className="eyebrow">Security</p>
-          <h2>Password</h2>
+          <p className="eyebrow">{t("security")}</p>
+          <h2>{t("password")}</h2>
         </div>
       </div>
 
       <form className="auth-form register-form" onSubmit={onSubmit}>
         <PasswordField
           id="current-password"
-          label="Current Password"
+          label={t("currentPassword")}
           value={form.current_password}
           onChange={(event) => onFieldChange("current_password", event.target.value)}
           autoComplete="current-password"
@@ -30,17 +31,17 @@ export default function PasswordSettingsPanel({
 
         <PasswordField
           id="new-password"
-          label="New Password"
+          label={t("newPassword")}
           value={form.new_password}
           onChange={(event) => onFieldChange("new_password", event.target.value)}
           autoComplete="new-password"
           required
-          helpText={PASSWORD_HELP}
+          helpText={t("passwordHelp")}
         />
 
         <PasswordField
           id="confirm-new-password"
-          label="Confirm New Password"
+          label={t("confirmNewPassword")}
           value={form.confirm_new_password}
           onChange={(event) => onFieldChange("confirm_new_password", event.target.value)}
           autoComplete="new-password"
@@ -48,7 +49,7 @@ export default function PasswordSettingsPanel({
         />
 
         <button className="primary-button form-button-fit" type="submit" disabled={pendingAction === "change-password"}>
-          {pendingAction === "change-password" ? "Updating..." : "Update password"}
+          {pendingAction === "change-password" ? t("updating") : t("updatePassword")}
         </button>
       </form>
 

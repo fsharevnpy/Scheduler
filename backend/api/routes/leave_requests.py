@@ -213,8 +213,16 @@ def create_leave_request(
 
     class_row = db.execute(
         text("""
-            SELECT c.class_id, c.status, c.day_of_week, t.name AS teacher_name
+            SELECT
+                c.class_id,
+                c.status,
+                c.day_of_week,
+                to_char(c.start_time, 'HH24:MI') AS start_time,
+                to_char(c.end_time, 'HH24:MI') AS end_time,
+                centers.name AS center_name,
+                t.name AS teacher_name
             FROM classes c
+            JOIN centers ON centers.center_id = c.center_id
             JOIN class_teachers ct ON ct.class_id = c.class_id
             JOIN teachers t ON t.teacher_id = ct.teacher_id
             WHERE c.class_id = :class_id
@@ -302,7 +310,11 @@ def create_leave_request(
         db,
         [payload.assigned_manager_code],
         title="Leave request assigned",
-        body=f"{class_row['teacher_name']} requested leave for {payload.class_id}.",
+        body=(
+            f"{class_row['teacher_name']} requested leave on {payload.request_date} "
+            f"({class_row['day_of_week']} {class_row['start_time']}-{class_row['end_time']}, "
+            f"{class_row['center_name']}). Reason: {payload.reason}"
+        ),
     )
     return {"message": "leave request created", "request_id": payload.request_id}
 

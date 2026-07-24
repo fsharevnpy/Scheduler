@@ -1,30 +1,36 @@
 import { useEffect, useState } from "react";
 
 import {
+  ensurePushSubscription,
   getPushSubscription,
   isPushSupported,
-  sendTestPush,
   subscribeToPush,
-  unsubscribeFromPush,
 } from "../lib/pushNotifications.js";
+import { useLanguage } from "../lib/i18n.jsx";
 
 export default function WebPushControl({ auth }) {
   const [status, setStatus] = useState("checking");
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     let cancelled = false;
 
     async function checkStatus() {
-      if (!isPushSupported()) {
+      if (!auth.token || !isPushSupported()) {
         setStatus("unsupported");
         return;
       }
 
-      const subscription = await getPushSubscription();
+      const subscription =
+        Notification.permission === "granted"
+          ? await ensurePushSubscription(auth.apiBase, auth.token)
+          : await getPushSubscription();
       if (!cancelled) {
         setStatus(subscription ? "enabled" : "disabled");
+        setShowPermissionPrompt(!subscription && Notification.permission === "default");
       }
     }
 
@@ -37,7 +43,7 @@ export default function WebPushControl({ auth }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [auth.apiBase, auth.token]);
 
   async function handleEnable() {
     setIsBusy(true);
@@ -45,34 +51,8 @@ export default function WebPushControl({ auth }) {
     try {
       await subscribeToPush(auth.apiBase, auth.token);
       setStatus("enabled");
-      setMessage("Enabled");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleDisable() {
-    setIsBusy(true);
-    setMessage("");
-    try {
-      await unsubscribeFromPush(auth.apiBase, auth.token);
-      setStatus("disabled");
-      setMessage("Disabled");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleTest() {
-    setIsBusy(true);
-    setMessage("");
-    try {
-      await sendTestPush(auth.apiBase, auth.token);
-      setMessage("Sent");
+      setShowPermissionPrompt(false);
+      setMessage(t("pushEnabled"));
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -85,22 +65,32 @@ export default function WebPushControl({ auth }) {
   }
 
   return (
-    <div className="web-push-control" aria-live="polite">
-      {status === "enabled" ? (
-        <>
-          <button type="button" className="secondary-button compact-button" onClick={handleTest} disabled={isBusy}>
-            Test push
+    <>
+      {status !== "enabled" ? (
+        <div className="web-push-control" aria-live="polite">
+          <button type="button" className="secondary-button compact-button" onClick={handleEnable} disabled={isBusy}>
+            {t("pushOn")}
           </button>
-          <button type="button" className="inline-text-action" onClick={handleDisable} disabled={isBusy}>
-            Off
-          </button>
-        </>
-      ) : (
-        <button type="button" className="secondary-button compact-button" onClick={handleEnable} disabled={isBusy}>
-          Push on
-        </button>
-      )}
-      {message ? <span>{message}</span> : null}
-    </div>
+          {message ? <span>{message}</span> : null}
+        </div>
+      ) : null}
+
+      {showPermissionPrompt ? (
+        <div className="notification-permission-panel" role="dialog" aria-label={t("enableNotifications")}>
+          <div>
+            <strong>{t("enableNotifications")}</strong>
+            <p>{t("enableNotificationsCopy")}</p>
+          </div>
+          <div className="notification-permission-actions">
+            <button type="button" className="primary-button compact-button" onClick={handleEnable} disabled={isBusy}>
+              {t("enable")}
+            </button>
+            <button type="button" className="inline-text-action" onClick={() => setShowPermissionPrompt(false)}>
+              {t("later")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

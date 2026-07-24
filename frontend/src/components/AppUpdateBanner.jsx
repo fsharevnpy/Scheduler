@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 
+import { useLanguage } from "../lib/i18n.jsx";
+
 export default function AppUpdateBanner() {
   const [waitingWorker, setWaitingWorker] = useState(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     function handleUpdateAvailable(event) {
@@ -22,9 +25,9 @@ export default function AppUpdateBanner() {
 
   return (
     <div className="app-update-banner" role="status" aria-live="polite">
-      <span>New version available.</span>
+      <span>{t("newVersionAvailable")}</span>
       <button type="button" className="primary-button compact-button" onClick={refreshApp}>
-        Refresh
+        {t("refresh")}
       </button>
     </div>
   );

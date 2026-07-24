@@ -1,15 +1,15 @@
-export function getRoleTitle(role) {
+export function getRoleTitle(role, t = null) {
   if (role === "developer") {
-    return "System Developer";
+    return t ? t("systemDeveloper") : "System Developer";
   }
 
   if (role === "manager") {
-    return "Operations Manager";
+    return t ? t("operationsManager") : "Operations Manager";
   }
 
   if (role === "teacher") {
-    return "Teacher";
+    return t ? t("teacher") : "Teacher";
   }
 
-  return "Account";
+  return t ? t("account") : "Account";
 }

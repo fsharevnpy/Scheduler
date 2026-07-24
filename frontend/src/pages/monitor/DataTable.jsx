@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useLanguage } from "../../lib/i18n.jsx";
 import { formatValue } from "./monitorUtils.js";
 
 function buildRowKey(row, index) {
@@ -37,6 +38,7 @@ export default function DataTable({
   pageSize = null,
 }) {
   const [page, setPage] = useState(1);
+  const { t } = useLanguage();
   const shouldPaginate = Number.isInteger(pageSize) && pageSize > 0 && rows.length > pageSize;
   const pageCount = shouldPaginate ? Math.ceil(rows.length / pageSize) : 1;
   const visibleRows = useMemo(() => {
@@ -101,7 +103,7 @@ export default function DataTable({
           {shouldPaginate ? (
             <div className="table-pagination">
               <span>
-                Page {page} of {pageCount}
+                {t("pageOf", { page, pageCount })}
               </span>
               <div className="table-pagination-actions">
                 <button
@@ -110,7 +112,7 @@ export default function DataTable({
                   disabled={page === 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
-                  Previous
+                  {t("previous")}
                 </button>
                 <button
                   type="button"
@@ -118,7 +120,7 @@ export default function DataTable({
                   disabled={page === pageCount}
                   onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
                 >
-                  Next
+                  {t("next")}
                 </button>
               </div>
             </div>

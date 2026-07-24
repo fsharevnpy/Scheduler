@@ -1,29 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { requestJson } from "../lib/http.js";
+import { useLanguage } from "../lib/i18n.jsx";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../lib/teacherEvents.js";
 import { formatDateTimeValue } from "../pages/monitor/monitorUtils.js";
 import NotificationBell from "./NotificationBell.jsx";
 
-function mapTeacherEvent(item) {
+function mapTeacherEvent(item, t) {
   return {
     id: item.event_id,
-    title: item.event_type === "PROFILE" ? "Teacher profile updated" : "Score updated",
+    title: item.event_type === "PROFILE" ? t("teacherProfileUpdated") : t("scoreUpdated"),
     message:
       item.event_type === "PROFILE"
         ? `${item.reason}. ${item.evidence_text || ""}`
-        : `${item.delta > 0 ? "+" : ""}${item.delta} points: ${item.reason}. ${item.evidence_text}`,
+        : t("scoreUpdatedMessage", {
+            delta: `${item.delta > 0 ? "+" : ""}${item.delta}`,
+            reason: item.reason,
+            evidence: item.evidence_text,
+          }),
     evidenceUrl: item.evidence_url,
     createdAt: formatDateTimeValue(item.created_at),
     unread: !item.teacher_read_at,
   };
 }
 
-function mapManagerEvent(item) {
+function mapManagerEvent(item, t) {
   return {
     id: item.request_id,
-    title: "Leave request assigned",
-    message: `${item.teacher_name || item.teacher_id} requested leave for ${item.class_id}. ${item.reason}`,
+    title: t("leaveRequestAssigned"),
+    message: t("leaveRequestAssignedMessage", {
+      teacher: item.teacher_name || item.teacher_id,
+      classId: item.class_id,
+      reason: item.reason,
+    }),
     createdAt: formatDateTimeValue(item.created_at),
     unread: !item.manager_read_at,
   };
@@ -33,6 +42,7 @@ export default function AppNotificationBell({ auth }) {
   const [teacherEvents, setTeacherEvents] = useState([]);
   const [managerEvents, setManagerEvents] = useState([]);
   const role = auth.user?.role;
+  const { t } = useLanguage();
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${auth.token}` }), [auth.token]);
 
@@ -196,7 +206,7 @@ export default function AppNotificationBell({ auth }) {
   if (role === "teacher") {
     return (
       <NotificationBell
-        notifications={teacherEvents.map(mapTeacherEvent)}
+        notifications={teacherEvents.map((event) => mapTeacherEvent(event, t))}
         onMarkAllRead={markAllTeacherEventsRead}
         onMarkRead={markTeacherEventRead}
       />
@@ -206,7 +216,7 @@ export default function AppNotificationBell({ auth }) {
   if (role === "manager") {
     return (
       <NotificationBell
-        notifications={managerEvents.map(mapManagerEvent)}
+        notifications={managerEvents.map((event) => mapManagerEvent(event, t))}
         onMarkAllRead={markAllManagerEventsRead}
         onMarkRead={markManagerEventRead}
       />

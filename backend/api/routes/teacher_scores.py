@@ -174,7 +174,7 @@ def create_teacher_score_event(
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     ensure_teacher_events_table(db)
-    get_teacher_or_404(teacher_id, db)
+    teacher = get_teacher_or_404(teacher_id, db)
     event_id = str(uuid4())
     score_month = normalize_score_month(payload.score_month)
 
@@ -208,8 +208,8 @@ def create_teacher_score_event(
     send_push_to_teacher(
         db,
         teacher_id,
-        title="Score updated",
-        body=f"{payload.delta:+d} points: {payload.reason}",
+        title=f"{teacher['name']} monthly score updated",
+        body=f"{score_month:%m/%Y}: {payload.delta:+d} points. Reason: {payload.reason}. Evidence: {payload.evidence_text or '-'}",
     )
     return event_dict
 

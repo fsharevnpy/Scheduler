@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import AppNotificationBell from "../../components/AppNotificationBell.jsx";
+import LanguageToggle from "../../components/LanguageToggle.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
+import { useLanguage } from "../../lib/i18n.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import FloatingPanel from "../monitor/FloatingPanel.jsx";
 import PasswordSettingsPanel from "../monitor/PasswordSettingsPanel.jsx";
@@ -26,6 +28,7 @@ function parseProfileEventValue(field, value) {
 }
 
 export default function ProfileSettingsPage({ auth }) {
+  const { t } = useLanguage();
   const [status, setStatus] = useState({ kind: "", message: "" });
   const [imageStatus, setImageStatus] = useState({ kind: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,7 +79,7 @@ export default function ProfileSettingsPage({ auth }) {
     return () => {
       cancelled = true;
     };
-  }, [auth.apiBase, auth.token, auth.user?.role]);
+  }, [auth.apiBase, auth.token, auth.user?.role, t]);
 
   useEffect(() => {
     if (auth.user?.role !== "teacher" || !auth.token) {
@@ -111,7 +114,7 @@ export default function ProfileSettingsPage({ auth }) {
             [field]: parseProfileEventValue(field, newValue),
           };
         });
-        setTeacherRealtimeStatus({ kind: "success", message: reason || "Teacher profile updated." });
+        setTeacherRealtimeStatus({ kind: "success", message: reason || t("teacherProfileUpdated") });
       };
 
       socket.onclose = () => {
@@ -148,7 +151,7 @@ export default function ProfileSettingsPage({ auth }) {
         },
         body: JSON.stringify(form),
       });
-      setStatus({ kind: "success", message: "Password changed successfully." });
+      setStatus({ kind: "success", message: t("passwordChanged") });
       setForm({
         current_password: "",
         new_password: "",
@@ -170,7 +173,7 @@ export default function ProfileSettingsPage({ auth }) {
     }
 
     setIsUploadingImage(true);
-    setImageStatus({ kind: "", message: "Uploading profile image..." });
+    setImageStatus({ kind: "", message: t("uploadingProfileImage") });
 
     try {
       const formData = new FormData();
@@ -192,7 +195,7 @@ export default function ProfileSettingsPage({ auth }) {
       };
 
       auth.updateUser(cacheBustedUser);
-      setImageStatus({ kind: "success", message: "Profile image updated." });
+      setImageStatus({ kind: "success", message: t("profileImageUpdated") });
     } catch (error) {
       setImageStatus({ kind: "error", message: error.message });
     } finally {
@@ -227,7 +230,7 @@ export default function ProfileSettingsPage({ auth }) {
         [updatedProfile.field]: updatedProfile.value,
       }));
       closeContactEditPanel();
-      setContactStatus({ kind: "success", message: "Contact details updated." });
+      setContactStatus({ kind: "success", message: t("contactDetailsUpdated") });
     } catch (error) {
       setContactStatus({ kind: "error", message: error.message });
     } finally {
@@ -246,7 +249,7 @@ export default function ProfileSettingsPage({ auth }) {
     setContactDraft("");
   }
 
-  const contactEditLabel = contactEditField === "email" ? "Personal Email" : "Phone";
+  const contactEditLabel = contactEditField === "email" ? t("personalEmail") : t("phone");
   const contactEditCurrentValue =
     contactEditField === "email" ? teacherProfile?.email || "" : teacherProfile?.contact || "";
   const hasContactChanges = Boolean(contactEditField) && contactDraft.trim() !== contactEditCurrentValue;
@@ -256,12 +259,13 @@ export default function ProfileSettingsPage({ auth }) {
       <section className="dashboard-card dashboard-card-wide">
         <div className="dashboard-head">
           <div>
-            <p className="eyebrow">Account</p>
-            <h1 className="dashboard-title">Profile Settings</h1>
-            <p className="subtle">Manage your profile image, password, and account details in one place.</p>
+            <p className="eyebrow">{t("account")}</p>
+            <h1 className="dashboard-title">{t("profileSettings")}</h1>
+            <p className="subtle">{t("profileSettingsCopy")}</p>
           </div>
           <div className="dashboard-actions">
             <AppNotificationBell auth={auth} />
+            <LanguageToggle />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}
@@ -271,20 +275,20 @@ export default function ProfileSettingsPage({ auth }) {
                 size="medium"
               />
               <div className="account-chip-copy">
-                <strong>{getRoleTitle(auth.user?.role)}</strong>
+                <strong>{getRoleTitle(auth.user?.role, t)}</strong>
                 <span>{auth.user?.user_code}</span>
               </div>
             </div>
             <div className="dashboard-action-stack">
               <button type="button" className="secondary-button" onClick={auth.logout}>
-                Log out
+                {t("logout")}
               </button>
               <Link className="inline-link" to="/monitor">
-                Back to monitor
+                {t("monitor")}
               </Link>
               {(auth.user?.role === "developer" || auth.user?.role === "manager") && (
                 <Link className="inline-link" to="/register">
-                  Open register screen
+                  {t("openRegisterScreen")}
                 </Link>
               )}
             </div>
@@ -295,8 +299,8 @@ export default function ProfileSettingsPage({ auth }) {
           <section className="dashboard-section">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Teacher Profile</p>
-                <h2>Basic information</h2>
+                <p className="eyebrow">{t("teacherProfile")}</p>
+                <h2>{t("basicInformation")}</h2>
               </div>
             </div>
 
@@ -321,7 +325,7 @@ export default function ProfileSettingsPage({ auth }) {
                       className="teacher-profile-avatar"
                     />
                     <span className="teacher-profile-avatar-overlay">
-                      {isUploadingImage ? "Uploading..." : "Update photo"}
+                      {isUploadingImage ? t("uploading") : t("updatePhoto")}
                     </span>
                   </label>
                   <div className="teacher-profile-identity-copy">
@@ -335,11 +339,11 @@ export default function ProfileSettingsPage({ auth }) {
 
                 <div className="teacher-profile-details">
                   <div className="teacher-profile-row">
-                    <span>Teacher ID</span>
+                    <span>{t("teacherId")}</span>
                     <strong>{teacherProfile.teacher_id || auth.user?.teacher_id || "-"}</strong>
                   </div>
                   <div className="teacher-profile-row">
-                    <span>Phone</span>
+                    <span>{t("phone")}</span>
                     <button
                       type="button"
                       className="teacher-profile-edit-value"
@@ -349,7 +353,7 @@ export default function ProfileSettingsPage({ auth }) {
                     </button>
                   </div>
                   <div className="teacher-profile-row">
-                    <span>Personal Email</span>
+                    <span>{t("personalEmail")}</span>
                     <button
                       type="button"
                       className="teacher-profile-edit-value"
@@ -363,17 +367,17 @@ export default function ProfileSettingsPage({ auth }) {
                     <strong>{teacherProfile.elo ?? "-"}</strong>
                   </div>
                   <div className="teacher-profile-row">
-                    <span>Education Score</span>
+                    <span>{t("educationScore")}</span>
                     <strong>
                       {teacherProfile.education_score == null
-                        ? "Pending / 10"
+                        ? t("pendingOutOfTen")
                         : `${teacherProfile.education_score}/10`}
                     </strong>
                   </div>
                 </div>
               </article>
             ) : (
-              <p className="subtle">Teacher profile information is not available.</p>
+              <p className="subtle">{t("teacherProfileUnavailable")}</p>
             )}
 
             {!contactEditField ? (
@@ -389,8 +393,8 @@ export default function ProfileSettingsPage({ auth }) {
           <section className="dashboard-section">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Account Profile</p>
-                <h2>Basic information</h2>
+                <p className="eyebrow">{t("accountProfile")}</p>
+                <h2>{t("basicInformation")}</h2>
               </div>
             </div>
 
@@ -412,7 +416,7 @@ export default function ProfileSettingsPage({ auth }) {
                     className="teacher-profile-avatar"
                   />
                   <span className="teacher-profile-avatar-overlay">
-                    {isUploadingImage ? "Uploading..." : "Update photo"}
+                    {isUploadingImage ? t("uploading") : t("updatePhoto")}
                   </span>
                 </label>
                 <div className="teacher-profile-identity-copy">
@@ -426,15 +430,15 @@ export default function ProfileSettingsPage({ auth }) {
 
               <div className="teacher-profile-details">
                 <div className="teacher-profile-row">
-                  <span>Role</span>
-                  <strong>{getRoleTitle(auth.user?.role)}</strong>
+                  <span>{t("role")}</span>
+                  <strong>{getRoleTitle(auth.user?.role, t)}</strong>
                 </div>
                 <div className="teacher-profile-row">
-                  <span>User Code</span>
+                  <span>{t("userCode")}</span>
                   <strong>{auth.user?.user_code || "-"}</strong>
                 </div>
                 <div className="teacher-profile-row">
-                  <span>Display Name</span>
+                  <span>{t("displayName")}</span>
                   <strong>{auth.user?.display_name || "-"}</strong>
                 </div>
               </div>
@@ -444,14 +448,14 @@ export default function ProfileSettingsPage({ auth }) {
 
         {contactEditField ? (
           <FloatingPanel
-            eyebrow="Contact Change"
-            title={`Edit ${contactEditLabel}`}
+            eyebrow={t("contactChange")}
+            title={t("editField", { label: contactEditLabel })}
             titleId="contact-change-title"
             onClose={closeContactEditPanel}
           >
             <form className="floating-panel-form" onSubmit={handleSaveContactChange}>
               <label className="field">
-                <span>New {contactEditLabel}</span>
+                <span>{t("newField", { label: contactEditLabel })}</span>
                 <input
                   value={contactDraft}
                   onChange={(event) => {
@@ -474,7 +478,7 @@ export default function ProfileSettingsPage({ auth }) {
                   className="table-action-button"
                   disabled={!hasContactChanges || isSavingContactChange}
                 >
-                  {isSavingContactChange ? "Saving..." : "Save change"}
+                  {isSavingContactChange ? t("saving") : t("saveChange")}
                 </button>
                 <button
                   type="button"
@@ -482,7 +486,7 @@ export default function ProfileSettingsPage({ auth }) {
                   disabled={isSavingContactChange}
                   onClick={closeContactEditPanel}
                 >
-                  Cancel
+                  {t("cancel")}
                 </button>
               </div>
             </form>

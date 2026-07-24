@@ -128,6 +128,38 @@
   color: var(--muted);
 }
 
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(31, 27, 23, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 251, 243, 0.72);
+}
+
+.language-toggle button {
+  min-width: 38px;
+  height: 32px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-toggle button.active {
+  background: var(--accent-dark);
+  color: #fff;
+}
+
+.login-language-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
 .notification-shell {
   position: relative;
 }
@@ -247,6 +279,40 @@
   flex: 1;
   color: var(--ink);
   font-weight: 700;
+}
+
+.notification-permission-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: min(calc(100vw - 28px), 460px);
+  padding: 14px;
+  border: 1px solid rgba(31, 27, 23, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 251, 243, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.notification-permission-panel strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.notification-permission-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.notification-permission-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .notification-panel-head span,

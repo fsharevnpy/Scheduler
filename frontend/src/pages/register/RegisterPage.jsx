@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
 import AppNotificationBell from "../../components/AppNotificationBell.jsx";
+import LanguageToggle from "../../components/LanguageToggle.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
+import { useLanguage } from "../../lib/i18n.jsx";
 import { requestJson } from "../../lib/http.js";
 import { getRoleTitle } from "../../lib/roles.js";
 import FloatingPanel from "../monitor/FloatingPanel.jsx";
@@ -43,6 +45,7 @@ function renderTeacherNames(label) {
 }
 
 export default function RegisterPage({ auth }) {
+  const { t } = useLanguage();
   const roleOptions = useMemo(
     () => (auth.user.role === "developer" ? ["developer", "manager", "teacher"] : ["manager", "teacher"]),
     [auth.user.role],
@@ -388,12 +391,13 @@ export default function RegisterPage({ auth }) {
       <section className="dashboard-card dashboard-card-wide">
         <div className="dashboard-head">
           <div>
-            <p className="eyebrow">Register</p>
-            <h1 className="dashboard-title">Internal user onboarding</h1>
-            <p className="subtle">Create new accounts based on the permissions of your current role.</p>
+            <p className="eyebrow">{t("register")}</p>
+            <h1 className="dashboard-title">{t("registerTitle")}</h1>
+            <p className="subtle">{t("registerCopy")}</p>
           </div>
           <div className="dashboard-actions">
             <AppNotificationBell auth={auth} />
+            <LanguageToggle />
             <div className="account-chip">
               <UserAvatar
                 apiBase={auth.apiBase}
@@ -403,19 +407,19 @@ export default function RegisterPage({ auth }) {
                 size="medium"
               />
               <div className="account-chip-copy">
-                <strong>{getRoleTitle(auth.user?.role)}</strong>
+                <strong>{getRoleTitle(auth.user?.role, t)}</strong>
                 <span>{auth.user?.user_code}</span>
               </div>
             </div>
             <div className="dashboard-action-stack">
               <button type="button" className="secondary-button" onClick={auth.logout}>
-                Log out
+                {t("logout")}
               </button>
               <Link className="inline-link" to="/profile-settings">
-                Profile Settings
+                {t("profileSettings")}
               </Link>
               <Link className="inline-link" to="/monitor">
-                Back to monitor
+                {t("monitor")}
               </Link>
             </div>
           </div>
