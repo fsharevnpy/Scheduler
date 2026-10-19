@@ -22,7 +22,7 @@ services:
       - db
       - minio
     environment:
-      DATABASE_URL: postgresql://chessfighter:123456@db:5432/scheduler
+      DATABASE_URL: postgresql+psycopg2://chessfighter:123456@db:5432/scheduler
       POSTGRES_USER: chessfighter
       POSTGRES_PASSWORD: 123456
       DB_HOST: db

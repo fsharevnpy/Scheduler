@@ -9,6 +9,8 @@ import "./styles/layout.css";
 import "./styles/forms.css";
 import "./styles/login.css";
 import "./styles/dashboard.css";
+import "./styles/theme.css";
+import "./styles/chessfighters.css";
 import "./styles/responsive.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

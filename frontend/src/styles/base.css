@@ -1,15 +1,16 @@
 :root {
-  --bg: #f2ecdf;
-  --panel: rgba(255, 251, 243, 0.84);
-  --panel-strong: #fff8eb;
-  --ink: #1f1b17;
-  --muted: #675d52;
-  --line: rgba(31, 27, 23, 0.12);
-  --accent: #b44f21;
-  --accent-dark: #8f3811;
-  --success: #2a7b56;
-  --error: #a4372d;
-  --shadow: 0 28px 60px rgba(90, 54, 28, 0.18);
+  --bg: #faf6ec;
+  --panel: rgba(255, 253, 247, 0.96);
+  --panel-strong: #fffdf7;
+  --ink: #33231e;
+  --muted: #75665d;
+  --line: rgba(69, 45, 34, 0.13);
+  --accent: #ad3d28;
+  --accent-dark: #842b20;
+  --gold: #e4ad26;
+  --success: #28734d;
+  --error: #aa3828;
+  --shadow: 0 24px 64px rgba(79, 48, 30, 0.13);
 }
 
 * {
@@ -28,9 +29,9 @@ body {
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(180, 79, 33, 0.18), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(49, 109, 89, 0.14), transparent 28%),
-    linear-gradient(135deg, #f6f0e4 0%, #efe1c2 100%);
+    radial-gradient(circle at 8% 0%, rgba(228, 173, 38, 0.16), transparent 32%),
+    radial-gradient(circle at 100% 75%, rgba(173, 61, 40, 0.07), transparent 28%),
+    linear-gradient(135deg, #fffdf7 0%, #f4ecdc 100%);
 }
 
 button,
