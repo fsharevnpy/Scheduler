@@ -110,7 +110,16 @@ def get_classes(
                COALESCE(assignment_summary.teacher_assignment_modes, ARRAY[]::TEXT[]) AS teacher_assignment_modes,
                COALESCE(assignment_summary.original_teacher_ids, ARRAY[]::VARCHAR[]) AS original_teacher_ids,
                COALESCE(assignment_summary.teacher_count, 0) AS teacher_count,
-               c.status
+               c.status,
+               COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                   'teacher_id', o.replacement_teacher_id, 'teacher_name', t.name,
+                   'original_teacher_id', o.original_teacher_id, 'effective_date', o.effective_date
+               ) ORDER BY o.effective_date, t.name)
+               FROM class_teacher_reassignment_overrides o
+               JOIN teachers t ON t.teacher_id = o.replacement_teacher_id
+               WHERE o.class_id = c.class_id
+                 AND o.effective_date >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+               ), '[]'::jsonb) AS temporary_assignments
         FROM classes c
         LEFT JOIN assignment_summary ON assignment_summary.class_id = c.class_id
     """

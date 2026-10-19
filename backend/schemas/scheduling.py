@@ -114,6 +114,7 @@ class LeaveRequestCreate(BaseModel):
 class AssignReplacementPayload(BaseModel):
     teacher_id: str
     mode: str = "PERMANENT"
+    effective_date: Optional[date] = None
 
     @field_validator("mode")
     @classmethod
@@ -172,7 +173,7 @@ class TeacherScoreEventCreate(BaseModel):
     score_month: date
     delta: int
     reason: str
-    evidence_text: str
+    evidence_text: Optional[str] = None
     evidence_url: Optional[str] = None
 
     @field_validator("delta")
@@ -192,11 +193,8 @@ class TeacherScoreEventCreate(BaseModel):
 
     @field_validator("evidence_text")
     @classmethod
-    def validate_evidence_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("evidence_text is required")
-        return value
+    def validate_evidence_text(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() or None if value is not None else None
 
     @field_validator("evidence_url")
     @classmethod

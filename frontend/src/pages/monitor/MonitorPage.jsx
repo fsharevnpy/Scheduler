@@ -14,6 +14,10 @@ import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
 import { formatDateTimeValue } from "./monitorUtils.js";
 
+function message(key, values) {
+  return { key, values };
+}
+
 function generateLeaveRequestId(leaveRequests) {
   const maxSequence = leaveRequests.reduce((currentMax, item) => {
     const match = /^LR(\d+)$/.exec(item.request_id || "");
@@ -45,7 +49,12 @@ export default function MonitorPage({ auth }) {
     unreadManagerEvents: [],
     leaveRequestManagers: [],
   });
-  const [actionStatus, setActionStatus] = useState({ kind: "", message: "" });
+  const [storedActionStatus, setActionStatus] = useState({ kind: "", message: "" });
+  const actionStatus = {
+    ...storedActionStatus,
+    message: typeof storedActionStatus.message === "string" ? t(storedActionStatus.message)
+      : t(storedActionStatus.message.key, storedActionStatus.message.values),
+  };
   const [pendingAction, setPendingAction] = useState("");
   const [replacementSuggestions, setReplacementSuggestions] = useState({});
 
@@ -313,7 +322,7 @@ export default function MonitorPage({ auth }) {
     await runAction(
       `approve-${requestId}`,
       () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/approve`, { method: "PUT", headers }),
-      `Approved leave request ${requestId}.`,
+      message("Approved leave request {p0}.", { p0: requestId }),
       () => {
         setState((current) => ({
           ...current,
@@ -354,13 +363,13 @@ export default function MonitorPage({ auth }) {
     };
   }
 
-  async function transitionLeaveRequest(requestId, endpointAction, nextStatus, actionLabel) {
+  async function transitionLeaveRequest(requestId, endpointAction, nextStatus) {
     const leaveRequest = state.leaveRequests.find((item) => item.request_id === requestId);
 
     await runAction(
       `${endpointAction}-${requestId}`,
       () => requestJson(`${auth.apiBase}/leave-requests/${requestId}/${endpointAction}`, { method: "PUT", headers }),
-      `${actionLabel} leave request ${requestId}.`,
+      message(nextStatus === "REJECTED" ? "Rejected leave request {p0}." : "Cancelled leave request {p0}.", { p0: requestId }),
       () => {
         setState((current) => applyInactiveLeaveRequestStatus(current, requestId, nextStatus, leaveRequest));
       },
@@ -368,11 +377,11 @@ export default function MonitorPage({ auth }) {
   }
 
   async function rejectLeaveRequest(requestId) {
-    await transitionLeaveRequest(requestId, "reject", "REJECTED", "Rejected");
+    await transitionLeaveRequest(requestId, "reject", "REJECTED");
   }
 
   async function cancelLeaveRequest(requestId) {
-    await transitionLeaveRequest(requestId, "cancel", "CANCELLED", "Cancelled");
+    await transitionLeaveRequest(requestId, "cancel", "CANCELLED");
   }
 
   async function createLeaveRequest({ classId, reason, assignedManagerCode }) {
@@ -395,7 +404,7 @@ export default function MonitorPage({ auth }) {
             status: "REQUESTED",
           }),
         }),
-      `Created leave request ${requestId}.`,
+      message("Created leave request {p0}.", { p0: requestId }),
       () => {
         setState((current) => ({
           ...current,
@@ -444,7 +453,7 @@ export default function MonitorPage({ auth }) {
             accuracy_meters: accuracy ?? null,
           }),
         }),
-      "Attendance recorded.",
+      message("Attendance recorded."),
       (record) => {
         setState((current) => ({
           ...current,
@@ -467,7 +476,7 @@ export default function MonitorPage({ auth }) {
             accuracy_meters: accuracy ?? null,
           }),
         }),
-      "Checkout recorded.",
+      message("Checkout recorded."),
       (record) => {
         setState((current) => ({
           ...current,
@@ -491,7 +500,7 @@ export default function MonitorPage({ auth }) {
             event_type: eventType,
           }),
         }),
-      "Manual attendance recorded.",
+      message("Manual attendance recorded."),
       (record) => {
         setState((current) => ({
           ...current,
@@ -510,7 +519,7 @@ export default function MonitorPage({ auth }) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }),
-      `Updated class time for ${classId}.`,
+      message("Updated class time for {p0}.", { p0: classId }),
       () => {
         setState((current) => ({
           ...current,
@@ -538,7 +547,7 @@ export default function MonitorPage({ auth }) {
 
         setActionStatus({
           kind: "success",
-          message: `Reset password for request ${requestId}. Default password: ${response.default_password}.`,
+          message: message("Reset password for request {p0}. Default password: {p1}.", { p0: requestId, p1: response.default_password }),
         });
 
         return response;
@@ -565,7 +574,7 @@ export default function MonitorPage({ auth }) {
       if (!replaceTeacherId) {
         setReplacementSuggestions((current) => ({ ...current, [classId]: suggestions }));
       }
-      setActionStatus({ kind: "success", message: `Loaded replacement suggestions for ${classId}.` });
+      setActionStatus({ kind: "success", message: message("Loaded replacement suggestions for {p0}.", { p0: classId }) });
       return suggestions;
     } catch (error) {
       setActionStatus({ kind: "error", message: error.message });
@@ -584,7 +593,7 @@ export default function MonitorPage({ auth }) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify({ teacher_id: teacherId }),
         }),
-      `Assigned replacement ${teacherId} to class ${classId}.`,
+      message("Assigned replacement {p0} to class {p1}.", { p0: teacherId, p1: classId }),
       () => {
         setState((current) => ({
           ...current,
@@ -665,7 +674,7 @@ export default function MonitorPage({ auth }) {
           method: "DELETE",
           headers,
         }),
-      `Removed ${teacherId} from class ${classId}.`,
+      message("Removed {p0} from class {p1}.", { p0: teacherId, p1: classId }),
       () => {
         setState((current) => ({
           ...current,
@@ -685,7 +694,7 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function reassignClassTeacher(classId, oldTeacherId, nextTeacherId, mode = "PERMANENT") {
+  async function reassignClassTeacher(classId, oldTeacherId, nextTeacherId, mode = "PERMANENT", effectiveDate = null) {
     const normalizedMode = String(mode || "PERMANENT").toUpperCase();
     return runAction(
       `class-teacher-reassign-${classId}-${oldTeacherId}`,
@@ -693,11 +702,11 @@ export default function MonitorPage({ auth }) {
         requestJson(`${auth.apiBase}/classes/${classId}/teachers/${oldTeacherId}/reassign`, {
           method: "PUT",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ teacher_id: nextTeacherId, mode: normalizedMode }),
+          body: JSON.stringify({ teacher_id: nextTeacherId, mode: normalizedMode, effective_date: normalizedMode === "TEMPORARY" ? effectiveDate : null }),
         }),
       normalizedMode === "TEMPORARY"
-        ? `Temporarily reassigned class ${classId} to ${nextTeacherId}.`
-        : `Reassigned class ${classId} to ${nextTeacherId}.`,
+        ? message("Temporarily reassigned class {p0} to {p1}.", { p0: classId, p1: nextTeacherId })
+        : message("Reassigned class {p0} to {p1}.", { p0: classId, p1: nextTeacherId }),
       async () => {
         const classes = await requestJson(`${auth.apiBase}/classes`, { headers });
         setState((current) => ({
@@ -708,15 +717,15 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function restorePermanentClassTeacher(classId, originalTeacherId) {
+  async function restorePermanentClassTeacher(classId, originalTeacherId, effectiveDate = null) {
     return runAction(
       `class-teacher-restore-${classId}-${originalTeacherId}`,
       () =>
-        requestJson(`${auth.apiBase}/classes/${classId}/teachers/${originalTeacherId}/temporary-reassignment`, {
+        requestJson(`${auth.apiBase}/classes/${classId}/teachers/${originalTeacherId}/temporary-reassignment${effectiveDate ? `?effective_date=${effectiveDate}` : ""}`, {
           method: "DELETE",
           headers,
         }),
-      `Restored permanent teacher for class ${classId}.`,
+      message("Restored permanent teacher for class {p0}.", { p0: classId }),
       async () => {
         const classes = await requestJson(`${auth.apiBase}/classes`, { headers });
         setState((current) => ({
@@ -736,7 +745,7 @@ export default function MonitorPage({ auth }) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify({ active }),
         }),
-      `Updated active status for ${teacherId}.`,
+      message("Updated active status for {p0}.", { p0: teacherId }),
       () => {
         setState((current) => ({
           ...current,
@@ -762,7 +771,7 @@ export default function MonitorPage({ auth }) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }),
-      `Updated teacher profile for ${teacherId}.`,
+      message("Updated teacher profile for {p0}.", { p0: teacherId }),
       () => {
         setState((current) => ({
           ...current,
@@ -787,7 +796,7 @@ export default function MonitorPage({ auth }) {
           method: "DELETE",
           headers,
         }),
-      `Deleted profile image for ${teacherId}.`,
+      message("Deleted profile image for {p0}.", { p0: teacherId }),
       () => {
         setState((current) => ({
           ...current,
@@ -818,7 +827,7 @@ export default function MonitorPage({ auth }) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }),
-      `Updated score for ${teacherId}.`,
+      message("Updated score for {p0}.", { p0: teacherId }),
       () => {
         reloadTeacherScores();
       },

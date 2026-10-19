@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./BackupManagement.css";
+import { useLanguage } from "../../lib/i18n.jsx";
 
 async function getErrorMessage(response, fallback) {
   const data = await response.json().catch(() => ({}));
@@ -7,6 +8,7 @@ async function getErrorMessage(response, fallback) {
 }
 
 export default function BackupManagement({ apiBase, token }) {
+  const { t, language } = useLanguage();
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +32,7 @@ export default function BackupManagement({ apiBase, token }) {
       const response = await fetch(`${apiBase}/admin/backups`, {
         headers: authHeaders,
       });
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Failed to load backups"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Failed to load backups")));
       const data = await response.json();
       setBackups(data.backups || []);
     } catch (err) {
@@ -51,7 +53,7 @@ export default function BackupManagement({ apiBase, token }) {
   };
 
   const handleBackupNow = async () => {
-    if (!confirm("Create backup now?")) return;
+    if (!confirm(t("Create backup now?"))) return;
     setIsListVisible(true);
     try {
       setIsBackingUp(true);
@@ -60,7 +62,7 @@ export default function BackupManagement({ apiBase, token }) {
         method: "POST",
         headers: authHeaders,
       });
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Backup failed"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Backup failed")));
       await response.json();
       await loadBackups();
     } catch (err) {
@@ -75,7 +77,7 @@ export default function BackupManagement({ apiBase, token }) {
       const response = await fetch(`${apiBase}/admin/backups/${filename}/download`, {
         headers: authHeaders,
       });
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Download failed"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Download failed")));
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -91,7 +93,7 @@ export default function BackupManagement({ apiBase, token }) {
   const handleRestoreFull = async (filename) => {
     if (
       !confirm(
-        "⚠️ Restore full database? All data after this backup will be lost."
+        t("⚠️ Restore full database? All data after this backup will be lost.")
       )
     )
       return;
@@ -101,7 +103,7 @@ export default function BackupManagement({ apiBase, token }) {
         method: "POST",
         headers: authHeaders,
       });
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Restore failed"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Restore failed")));
       setError(null);
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
@@ -114,7 +116,7 @@ export default function BackupManagement({ apiBase, token }) {
   const handleRestoreMaster = async (filename) => {
     if (
       !confirm(
-        "Restore master data (centers, teachers)? This will not affect classes and leave requests."
+        t("Restore master data (centers, teachers)? This will not affect classes and leave requests.")
       )
     )
       return;
@@ -127,7 +129,7 @@ export default function BackupManagement({ apiBase, token }) {
           headers: authHeaders,
         }
       );
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Restore failed"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Restore failed")));
       setError(null);
       setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
@@ -138,13 +140,13 @@ export default function BackupManagement({ apiBase, token }) {
   };
 
   const handleDelete = async (filename) => {
-    if (!confirm(`Delete backup ${filename}?`)) return;
+    if (!confirm(t("Delete backup {p0}?", { p0: filename }))) return;
     try {
       const response = await fetch(`${apiBase}/admin/backups/${filename}`, {
         method: "DELETE",
         headers: authHeaders,
       });
-      if (!response.ok) throw new Error(await getErrorMessage(response, "Delete failed"));
+      if (!response.ok) throw new Error(await getErrorMessage(response, t("Delete failed")));
       setError(null);
       loadBackups();
     } catch (err) {
@@ -154,7 +156,7 @@ export default function BackupManagement({ apiBase, token }) {
 
   return (
     <div className="backup-management">
-      <h3>Backup Management</h3>
+      <h3>{t("Backup Management")}</h3>
 
       <div className="backup-control">
         <button
@@ -162,26 +164,26 @@ export default function BackupManagement({ apiBase, token }) {
           disabled={isBackingUp || loading}
           className="btn-backup"
         >
-          {isBackingUp ? "Creating Backup..." : "BackUp Data"}
+          {isBackingUp ? t("Creating Backup...") : t("BackUp Data")}
         </button>
         <button
           onClick={handleViewBackups}
           disabled={isBackingUp || loading}
           className="btn-view"
         >
-          {loading ? "Loading..." : isListVisible ? "Hide Backups" : "View Backups"}
+          {loading ? t("Loading...") : isListVisible ? t("Hide Backups") : t("View Backups")}
         </button>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && <div className="error-message">{t(error)}</div>}
 
       {isListVisible ? (
         <div className="backup-files">
-          <h4>Backup Files (Last 31 Days)</h4>
+          <h4>{t("Backup Files (Last 31 Days)")}</h4>
           {loading ? (
-            <p className="loading">Loading backups...</p>
+            <p className="loading">{t("Loading backups...")}</p>
           ) : backups.length === 0 ? (
-            <p className="empty">No backups found</p>
+            <p className="empty">{t("No backups found")}</p>
           ) : (
             <div className="backup-list">
               {backups.map((backup) => (
@@ -189,40 +191,36 @@ export default function BackupManagement({ apiBase, token }) {
                   <div className="backup-info">
                     <div className="backup-name">📦 {backup.file}</div>
                     <div className="backup-meta">
-                      {backup.size_mb} MB · {new Date(backup.created).toLocaleString()}
+                      {backup.size_mb} MB · {new Date(backup.created).toLocaleString(language === "vi" ? "vi-VN" : "en-GB")}
                     </div>
                   </div>
                   <div className="backup-actions">
                     <button
                       onClick={() => handleDownload(backup.file)}
                       className="btn-small btn-download"
-                      title="Download"
-                    >
-                      ⬇ Download
-                    </button>
+                      title={t("Download")}
+                    >{t("⬇ Download")}{" "}</button>
                     <button
                       onClick={() => handleRestoreFull(backup.file)}
                       disabled={restoreLoading === backup.file}
                       className="btn-small btn-restore"
-                      title="Restore Full Database"
+                      title={t("Restore Full Database")}
                     >
-                      {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Full"}
+                      {restoreLoading === backup.file ? t("Restoring...") : t("⟳ Restore Full")}
                     </button>
                     <button
                       onClick={() => handleRestoreMaster(backup.file)}
                       disabled={restoreLoading === backup.file}
                       className="btn-small btn-restore-master"
-                      title="Restore Master Data Only"
+                      title={t("Restore Master Data Only")}
                     >
-                      {restoreLoading === backup.file ? "Restoring..." : "⟳ Restore Master"}
+                      {restoreLoading === backup.file ? t("Restoring...") : t("⟳ Restore Master")}
                     </button>
                     <button
                       onClick={() => handleDelete(backup.file)}
                       className="btn-small btn-delete"
-                      title="Delete"
-                    >
-                      🗑 Delete
-                    </button>
+                      title={t("Delete")}
+                    >{t("🗑 Delete")}{" "}</button>
                   </div>
                 </div>
               ))}

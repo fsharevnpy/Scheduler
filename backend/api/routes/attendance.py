@@ -1,12 +1,12 @@
 from datetime import date, datetime, timedelta, timezone
-from io import BytesIO
+import json
+import re
+from urllib.parse import quote
+from typing import Literal
 from math import atan2, cos, radians, sin, sqrt
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -22,6 +22,7 @@ from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import AttendanceCheckInPayload, ManualAttendancePayload
 from services.class_assignments import ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table
+from services.attendance_reports import build_attendance_report, build_report_workbook, local_datetime
 
 
 router = APIRouter()
@@ -124,6 +125,11 @@ def ensure_attendance_table(db: Session) -> None:
             ADD COLUMN IF NOT EXISTS session_end_time TIME
         """)
     )
+    db.execute(text("""
+        ALTER TABLE attendance_records
+        ADD COLUMN IF NOT EXISTS session_block JSONB,
+        ADD COLUMN IF NOT EXISTS check_in_record_id UUID
+    """))
     db.execute(
         text("""
             UPDATE attendance_records
@@ -164,7 +170,34 @@ def snapshot_attendance_session(db: Session, record):
         """),
         {"record_id": record["record_id"]},
     ).mappings().one()
-    return {**dict(record), **dict(snapshot)}
+    result = {**dict(record), **dict(snapshot)}
+    if record.get("event_type") == "CHECK_IN":
+        block = db.execute(text(f"""
+            WITH RECURSIVE checked AS (
+                SELECT CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
+            ),
+{EFFECTIVE_ASSIGNMENTS_FOR_CHECKED_AT_CTE},
+            block AS (
+                SELECT c.class_id, c.center_id, c.day_of_week, c.start_time, c.end_time
+                FROM classes c WHERE c.class_id = :class_id
+                UNION
+                SELECT c.class_id, c.center_id, c.day_of_week, c.start_time, c.end_time
+                FROM classes c
+                JOIN block b ON c.center_id = b.center_id AND c.day_of_week = b.day_of_week
+                            AND c.start_time = b.end_time AND c.end_time > c.start_time
+                JOIN assigned_classes ac ON ac.class_id = c.class_id
+            )
+            SELECT b.*, centers.name AS center_name FROM block b
+            JOIN centers ON centers.center_id = b.center_id ORDER BY b.start_time, b.class_id
+        """), {
+            "checked_at": record["checked_at"], "teacher_id": record["teacher_id"],
+            "class_id": record["class_id"],
+        }).mappings().all()
+        saved_block = json.loads(json.dumps([dict(item) for item in block], default=str))
+        db.execute(text("UPDATE attendance_records SET session_block = CAST(:block AS JSONB) WHERE record_id = :id"),
+                   {"block": json.dumps(saved_block), "id": record["record_id"]})
+        result["session_block"] = saved_block
+    return result
 
 
 def ensure_assignment_tables(db: Session) -> None:
@@ -424,343 +457,71 @@ def find_checkout_class_for_open_check_in(db: Session, teacher_id: str | None, c
     return row["class_id"] if row else check_in_class_id
 
 
-def find_open_check_in(db: Session, user_code: str):
-    row = db.execute(
-        text(f"""
-            WITH checked AS (
-                SELECT NOW() AT TIME ZONE '{LOCAL_TIMEZONE}' AS local_checked_at
-            )
-            SELECT ar.class_id
-            FROM attendance_records ar
-            JOIN classes c ON c.class_id = ar.class_id
-            CROSS JOIN checked
-            WHERE ar.user_code = :user_code
-              AND ar.event_type = 'CHECK_IN'
-              AND ar.class_id IS NOT NULL
-              AND (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date = checked.local_checked_at::date
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM attendance_records checkout
-                  WHERE checkout.user_code = ar.user_code
-                    AND checkout.event_type = 'CHECK_OUT'
-                    AND checkout.checked_at > ar.checked_at
-                    AND (checkout.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date = checked.local_checked_at::date
-              )
-            ORDER BY ar.checked_at DESC
-            LIMIT 1
-        """),
-        {"user_code": user_code},
-    ).mappings().first()
-
-    return row["class_id"] if row else None
+def find_open_check_in(db: Session, user_code: str, checked_at: datetime):
+    return db.execute(text(f"""
+        SELECT ar.* FROM attendance_records ar
+        WHERE ar.user_code = :user_code AND ar.event_type = 'CHECK_IN'
+          AND ar.checked_at <= :checked_at
+          AND (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date =
+              (CAST(:checked_at AS TIMESTAMPTZ) AT TIME ZONE '{LOCAL_TIMEZONE}')::date
+          AND NOT EXISTS (
+              SELECT 1 FROM attendance_records checkout
+              WHERE checkout.user_code = ar.user_code AND checkout.event_type = 'CHECK_OUT'
+                AND (checkout.check_in_record_id = ar.record_id OR (
+                    checkout.check_in_record_id IS NULL
+                    AND checkout.checked_at > ar.checked_at AND checkout.checked_at <= :checked_at
+                    AND (checkout.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date =
+                        (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date
+                ))
+          )
+        ORDER BY ar.checked_at DESC, ar.record_id DESC LIMIT 1
+    """), {"user_code": user_code, "checked_at": checked_at}).mappings().first()
 
 
-def format_report_date(value: date) -> str:
-    return value.strftime("%d/%m/%Y")
+def link_checkout(db: Session, record, check_in):
+    result = dict(record)
+    if not check_in:
+        return result
+    db.execute(text("""
+        UPDATE attendance_records SET check_in_record_id = :check_in_id WHERE record_id = :id
+    """), {"check_in_id": check_in["record_id"], "id": record["record_id"]})
+    result["check_in_record_id"] = check_in["record_id"]
+    return result
 
 
-def format_report_time(value) -> str:
-    if not value:
-        return ""
-
-    return value.strftime("%H:%M") if hasattr(value, "strftime") else str(value)[:5]
-
-
-def get_week_ranges(start_date: date, end_date: date):
-    ranges = []
-    current_start = start_date
-
-    while current_start <= end_date:
-        week_end = min(end_date, current_start + timedelta(days=6 - current_start.weekday()))
-        ranges.append((current_start, week_end))
-        current_start = week_end + timedelta(days=1)
-
-    return ranges
+def resolve_checkout_session(db, check_in, teacher_id, center_id, checked_at):
+    block = check_in.get("session_block") if check_in else None
+    if block:
+        clock = local_datetime(checked_at)
+        started = [shift for shift in block if str(shift["start_time"]) <= clock.strftime("%H:%M:%S")]
+        shift = (started or block)[-1 if started else 0]
+        end = datetime.combine(clock.date(), datetime.strptime(str(shift["end_time"])[:8], "%H:%M:%S").time(), clock.tzinfo)
+        status = "LEFT_EARLY" if clock < end else "COMPLETED" if clock <= end + timedelta(minutes=30) else "OVERTIME"
+        class_id = db.execute(text("SELECT class_id FROM classes WHERE class_id = :id"), {"id": shift["class_id"]}).scalar()
+        return {"class_id": class_id, "attendance_status": status, "snapshot": shift}
+    if check_in and check_in["class_id"]:
+        class_id = find_checkout_class_for_open_check_in(db, teacher_id, check_in["class_id"], checked_at)
+        return {"class_id": class_id, "attendance_status": get_checkout_status(db, class_id, checked_at)}
+    return find_matching_checkout_session(db, teacher_id, center_id, checked_at)
 
 
-def is_valid_check_in(record) -> bool:
-    return bool(record) and record["status"] in ("VALID", "MANUAL") and record["attendance_status"] in ("ON_TIME", "EARLY", "MANUAL")
-
-
-def is_valid_check_out(record) -> bool:
-    return bool(record) and record["status"] in ("VALID", "MANUAL") and record["attendance_status"] in ("COMPLETED", "MANUAL")
-
-
-def get_attendance_marker(valid_record, any_record) -> str:
-    if valid_record:
-        return "OK"
-
-    return "ISSUE" if any_record else "MISSING"
-
-
-def get_overall_attendance_marker(check_in_marker: str, check_out_marker: str) -> str:
-    if check_in_marker == "OK" and check_out_marker == "OK":
-        return "OK"
-
-    if check_in_marker == "MISSING" or check_out_marker == "MISSING":
-        return "MISSING"
-
-    return "ISSUE"
-
-
-def enrich_weekly_schedule_rows(weekly_schedule_rows, attendance_rows):
-    enriched_rows = [dict(row) for row in weekly_schedule_rows]
-    attendance_by_teacher_date_class = {}
-
-    for record in attendance_rows:
-        key = (record["teacher_id"], record["attendance_date"], record["class_id"])
-        if key not in attendance_by_teacher_date_class:
-            attendance_by_teacher_date_class[key] = {
-                "check_ins": [],
-                "check_outs": [],
-            }
-
-        target = attendance_by_teacher_date_class[key]["check_outs" if record["event_type"] == "CHECK_OUT" else "check_ins"]
-        target.append(record)
-
-    schedule_groups = {}
-    for row in enriched_rows:
-        key = (row["teacher_id"], row["teaching_date"], row["center_id"])
-        schedule_groups.setdefault(key, []).append(row)
-
-    for group_key, group_rows in schedule_groups.items():
-        group_rows.sort(key=lambda item: (item["start_time"], item["end_time"], item["class_id"]))
-        current_block = []
-        blocks = []
-
-        for row in group_rows:
-            if current_block and format_report_time(current_block[-1]["end_time"]) != format_report_time(row["start_time"]):
-                blocks.append(current_block)
-                current_block = []
-            current_block.append(row)
-
-        if current_block:
-            blocks.append(current_block)
-
-        teacher_id, teaching_date, _center_id = group_key
-        for block in blocks:
-            class_ids = [row["class_id"] for row in block]
-            block_check_ins = []
-            block_check_outs = []
-
-            for class_id in class_ids:
-                records = attendance_by_teacher_date_class.get((teacher_id, teaching_date, class_id), {})
-                block_check_ins.extend(records.get("check_ins", []))
-                block_check_outs.extend(records.get("check_outs", []))
-
-            valid_check_in = next((record for record in block_check_ins if is_valid_check_in(record)), None)
-            valid_check_out = next((record for record in block_check_outs if is_valid_check_out(record)), None)
-            check_in_record = valid_check_in or (block_check_ins[0] if block_check_ins else None)
-            check_out_record = valid_check_out or (block_check_outs[0] if block_check_outs else None)
-            check_in_marker = get_attendance_marker(valid_check_in, check_in_record)
-            check_out_marker = get_attendance_marker(valid_check_out, check_out_record)
-            overall_marker = get_overall_attendance_marker(check_in_marker, check_out_marker)
-
-            for row in block:
-                row["check_in_marker"] = check_in_marker
-                row["check_in_detail"] = (
-                    f"{check_in_marker} - {format_report_time(check_in_record['checked_time'])} ({check_in_record['attendance_status']})"
-                    if check_in_record
-                    else "MISSING"
-                )
-                row["check_out_marker"] = check_out_marker
-                row["check_out_detail"] = (
-                    f"{check_out_marker} - {format_report_time(check_out_record['checked_time'])} ({check_out_record['attendance_status']})"
-                    if check_out_record
-                    else "MISSING"
-                )
-                row["overall_marker"] = overall_marker
-
-    return enriched_rows
-
-
-def build_teacher_attendance_workbook(rows, weekly_schedule_rows, attendance_rows, start_date: date, end_date: date) -> BytesIO:
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Teacher Attendance"
-
-    headers = [
-        "Mã giáo viên",
-        "Tên giáo viên",
-        "Số ca dạy",
-        "Check-in đúng giờ",
-        "Check-in sớm",
-        "Check-in trễ",
-        "Check-in hợp lệ",
-        "Check-in không hợp lệ",
-        "Tổng check-in",
-        "Checkout hoàn thành",
-        "Về sớm",
-        "Overtime",
-        "Check-out hợp lệ",
-        "Check-out không hợp lệ",
-        "Tổng checkout",
-        "Manual",
-        "Tổng sự kiện",
-    ]
-
-    sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-    sheet.cell(row=1, column=1).value = f"Khoảng thời gian: {format_report_date(start_date)} - {format_report_date(end_date)}"
-    sheet.cell(row=1, column=1).font = Font(bold=True, size=13)
-    sheet.cell(row=1, column=1).alignment = Alignment(horizontal="center")
-
-    sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
-    sheet.cell(row=2, column=1).value = "Báo cáo điểm danh giáo viên - cơ sở tính lương"
-    sheet.cell(row=2, column=1).font = Font(bold=True)
-    sheet.cell(row=2, column=1).alignment = Alignment(horizontal="center")
-
-    header_fill = PatternFill("solid", fgColor="D9EAD3")
-    valid_count_fill = PatternFill("solid", fgColor="B6D7A8")
-    valid_count_columns = {7, 13}
-    for column_index, header in enumerate(headers, start=1):
-        cell = sheet.cell(row=4, column=column_index)
-        cell.value = header
-        cell.font = Font(bold=True)
-        cell.fill = valid_count_fill if column_index in valid_count_columns else header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    for row_index, row in enumerate(rows, start=5):
-        values = [
-            row["user_code"] or row["teacher_id"],
-            row["teacher_name"],
-            row["scheduled_sessions"],
-            row["on_time_check_in"],
-            row["early_check_in"],
-            row["late_check_in"],
-            row["valid_check_in"],
-            row["invalid_check_in"],
-            row["total_check_in"],
-            row["completed_check_out"],
-            row["left_early_check_out"],
-            row["overtime_check_out"],
-            row["valid_check_out"],
-            row["invalid_check_out"],
-            row["total_check_out"],
-            row["manual_events"],
-            row["total_events"],
-        ]
-
-        for column_index, value in enumerate(values, start=1):
-            cell = sheet.cell(row=row_index, column=column_index)
-            cell.value = value
-            cell.alignment = Alignment(horizontal="left" if column_index <= 2 else "center")
-            if column_index in valid_count_columns:
-                cell.fill = valid_count_fill
-                cell.font = Font(bold=True)
-
-    sheet.freeze_panes = "A5"
-    sheet.auto_filter.ref = f"A4:{get_column_letter(len(headers))}{max(4, len(rows) + 4)}"
-
-    widths = [14, 28, 12, 16, 14, 14, 16, 18, 14, 19, 12, 12, 17, 19, 14, 12, 14]
-    for column_index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[get_column_letter(column_index)].width = width
-
-    weekly_schedule_rows = enrich_weekly_schedule_rows(weekly_schedule_rows, attendance_rows)
-    schedule_by_week = {}
-    for week_index, (week_start, week_end) in enumerate(get_week_ranges(start_date, end_date), start=1):
-        schedule_by_week[week_index] = {
-            "start": week_start,
-            "end": week_end,
-            "rows": [],
+def snapshot_checkout(db, record, session_match, check_in):
+    snapshot = session_match.get("snapshot")
+    if snapshot:
+        values = {
+            "session_class_id": snapshot["class_id"], "session_center_id": snapshot["center_id"],
+            "session_start_time": snapshot["start_time"], "session_end_time": snapshot["end_time"],
         }
-
-    for schedule_row in weekly_schedule_rows:
-        teaching_date = schedule_row["teaching_date"]
-        for week_index, week in schedule_by_week.items():
-            if week["start"] <= teaching_date <= week["end"]:
-                week["rows"].append(schedule_row)
-                break
-
-    weekly_headers = [
-        "Ngày",
-        "Thứ",
-        "Mã giáo viên",
-        "Tên giáo viên",
-        "Cơ sở",
-        "Bắt đầu",
-        "Kết thúc",
-        "Lớp/Ca",
-        "Check-in",
-        "Checkout",
-        "Kết quả",
-    ]
-    weekly_widths = [14, 10, 14, 28, 18, 12, 12, 22, 28, 28, 14]
-    marker_fills = {
-        "OK": PatternFill("solid", fgColor="D9EAD3"),
-        "MISSING": PatternFill("solid", fgColor="FFF2CC"),
-        "ISSUE": PatternFill("solid", fgColor="F4CCCC"),
-    }
-
-    for week_index, week in schedule_by_week.items():
-        week_sheet = workbook.create_sheet(
-            title=f"Week {week_index} {week['start'].strftime('%d-%m')}"
-        )
-        week_sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(weekly_headers))
-        week_sheet.cell(row=1, column=1).value = (
-            f"Tuần {week_index}: {format_report_date(week['start'])} - {format_report_date(week['end'])}"
-        )
-        week_sheet.cell(row=1, column=1).font = Font(bold=True, size=13)
-        week_sheet.cell(row=1, column=1).alignment = Alignment(horizontal="center")
-
-        legend_items = [
-            ("OK", "Có check-in và checkout hợp lệ"),
-            ("MISSING", "Thiếu check-in hoặc checkout"),
-            ("ISSUE", "Có dữ liệu nhưng bị trễ/về sớm/overtime/invalid"),
-        ]
-        for legend_index, (marker, description) in enumerate(legend_items, start=1):
-            marker_cell = week_sheet.cell(row=2, column=(legend_index - 1) * 3 + 1)
-            marker_cell.value = marker
-            marker_cell.font = Font(bold=True)
-            marker_cell.fill = marker_fills[marker]
-            marker_cell.alignment = Alignment(horizontal="center")
-
-            description_cell = week_sheet.cell(row=2, column=(legend_index - 1) * 3 + 2)
-            description_cell.value = description
-            description_cell.alignment = Alignment(horizontal="left")
-
-        for column_index, header in enumerate(weekly_headers, start=1):
-            cell = week_sheet.cell(row=3, column=column_index)
-            cell.value = header
-            cell.font = Font(bold=True)
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        if week["rows"]:
-            for row_index, schedule_row in enumerate(week["rows"], start=4):
-                values = [
-                    format_report_date(schedule_row["teaching_date"]),
-                    schedule_row["day_of_week"],
-                    schedule_row["user_code"] or schedule_row["teacher_id"],
-                    schedule_row["teacher_name"],
-                    schedule_row["center_name"],
-                    format_report_time(schedule_row["start_time"]),
-                    format_report_time(schedule_row["end_time"]),
-                    schedule_row["class_id"],
-                    schedule_row["check_in_detail"],
-                    schedule_row["check_out_detail"],
-                    schedule_row["overall_marker"],
-                ]
-                for column_index, value in enumerate(values, start=1):
-                    cell = week_sheet.cell(row=row_index, column=column_index)
-                    cell.value = value
-                    cell.alignment = Alignment(horizontal="left" if column_index in (3, 4, 5, 8, 9, 10) else "center")
-                    if column_index == 11:
-                        cell.fill = marker_fills.get(schedule_row["overall_marker"], PatternFill())
-                        cell.font = Font(bold=True)
-        else:
-            week_sheet.cell(row=4, column=1).value = "Không có ca dạy trong tuần này"
-            week_sheet.cell(row=4, column=1).alignment = Alignment(horizontal="center")
-            week_sheet.merge_cells(start_row=4, start_column=1, end_row=4, end_column=len(weekly_headers))
-
-        week_sheet.freeze_panes = "A4"
-        week_sheet.auto_filter.ref = f"A3:{get_column_letter(len(weekly_headers))}{max(3, len(week['rows']) + 3)}"
-        for column_index, width in enumerate(weekly_widths, start=1):
-            week_sheet.column_dimensions[get_column_letter(column_index)].width = width
-
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
-    return output
+        db.execute(text("""
+            UPDATE attendance_records
+            SET session_class_id = :session_class_id, session_center_id = :session_center_id,
+                session_start_time = CAST(:session_start_time AS TIME), session_end_time = CAST(:session_end_time AS TIME)
+            WHERE record_id = :record_id
+        """), {**values, "record_id": record["record_id"]})
+        record = {**dict(record), **values}
+    else:
+        record = snapshot_attendance_session(db, record)
+    return link_checkout(db, record, check_in)
 
 
 @router.get("/attendance-records")
@@ -796,7 +557,9 @@ def get_attendance_records(
             ar.session_class_id,
             ar.session_center_id,
             ar.session_start_time,
-            ar.session_end_time
+            ar.session_end_time,
+            ar.session_block,
+            ar.check_in_record_id
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
@@ -818,272 +581,58 @@ def get_attendance_records(
     return [dict(item) for item in records]
 
 
-@router.get("/attendance-records/export")
-def export_teacher_attendance_report(
-    start_date: date = Query(...),
-    end_date: date = Query(...),
+def load_attendance_report(db, start_date, end_date, teacher_id, language):
+    if end_date < start_date or (end_date - start_date).days >= 366:
+        raise HTTPException(status_code=400, detail=(
+            "Chọn khoảng ngày hợp lệ, tối đa 366 ngày." if language == "vi"
+            else "Select a valid date range of at most 366 days."
+        ))
+    ensure_attendance_table(db)
+    teachers = db.execute(text("""
+        SELECT t.teacher_id, t.name AS teacher_name
+        FROM teachers t
+        WHERE (:teacher_id IS NULL OR t.teacher_id = :teacher_id)
+        ORDER BY t.teacher_id
+    """), {"teacher_id": teacher_id}).mappings().all()
+    if teacher_id and not teachers:
+        raise HTTPException(status_code=404, detail="Không tìm thấy giáo viên." if language == "vi" else "Teacher not found.")
+    records = db.execute(text(f"""
+        SELECT ar.* FROM attendance_records ar
+        WHERE ar.teacher_id IS NOT NULL
+          AND (:teacher_id IS NULL OR ar.teacher_id = :teacher_id)
+          AND ar.checked_at >= (CAST(:start_date AS DATE)::timestamp AT TIME ZONE '{LOCAL_TIMEZONE}')
+          AND ar.checked_at < ((CAST(:end_date AS DATE) + 1)::timestamp AT TIME ZONE '{LOCAL_TIMEZONE}')
+        ORDER BY ar.checked_at, ar.record_id
+    """), {"teacher_id": teacher_id, "start_date": start_date, "end_date": end_date}).mappings().all()
+    return build_attendance_report(teachers, records, start_date, end_date)
+
+
+@router.get("/attendance-records/report")
+def get_teacher_attendance_report(
+    start_date: date = Query(...), end_date: date = Query(...),
+    teacher_id: str | None = Query(None), language: Literal["vi", "en"] = Query("vi"),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
     db: Session = Depends(get_db),
 ):
-    ensure_attendance_table(db)
-    ensure_assignment_tables(db)
+    return load_attendance_report(db, start_date, end_date, teacher_id, language)
 
-    if end_date < start_date:
-        raise HTTPException(status_code=400, detail="end_date must be after or equal to start_date")
 
-    if (end_date - start_date).days > 366:
-        raise HTTPException(status_code=400, detail="date range cannot be longer than 366 days")
-
-    rows = db.execute(
-        text(f"""
-            WITH report_records AS (
-                SELECT *
-                FROM attendance_records ar
-                WHERE (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date BETWEEN :start_date AND :end_date
-            ),
-            report_dates AS (
-                SELECT
-                    day::date AS report_date,
-                    CASE EXTRACT(ISODOW FROM day)
-                        WHEN 1 THEN 'T2'
-                        WHEN 2 THEN 'T3'
-                        WHEN 3 THEN 'T4'
-                        WHEN 4 THEN 'T5'
-                        WHEN 5 THEN 'T6'
-                        WHEN 6 THEN 'T7'
-                        ELSE 'CN'
-                    END AS day_of_week
-                FROM generate_series(CAST(:start_date AS date), CAST(:end_date AS date), INTERVAL '1 day') AS day
-            ),
-            teacher_classes AS (
-                SELECT
-                    rd.report_date,
-                    c.class_id,
-                    c.day_of_week,
-                    c.center_id,
-                    c.start_time,
-                    c.end_time,
-                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
-                FROM report_dates rd
-                JOIN classes c ON c.day_of_week = rd.day_of_week
-                JOIN class_teachers ct ON ct.class_id = c.class_id
-                LEFT JOIN class_teacher_reassignment_overrides active_override
-                    ON active_override.class_id = c.class_id
-                   AND active_override.original_teacher_id = ct.teacher_id
-                   AND active_override.effective_date <= rd.report_date
-                   AND active_override.expires_on >= rd.report_date
-                WHERE c.status <> 'CANCELLED'
-
-                UNION
-
-                SELECT
-                    rd.report_date,
-                    c.class_id,
-                    c.day_of_week,
-                    c.center_id,
-                    c.start_time,
-                    c.end_time,
-                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
-                FROM report_dates rd
-                JOIN classes c ON c.day_of_week = rd.day_of_week
-                LEFT JOIN class_teacher_reassignment_overrides active_override
-                    ON active_override.class_id = c.class_id
-                   AND active_override.original_teacher_id = c.teacher_id
-                   AND active_override.effective_date <= rd.report_date
-                   AND active_override.expires_on >= rd.report_date
-                WHERE c.teacher_id IS NOT NULL
-                  AND c.status <> 'CANCELLED'
-            ),
-            scheduled_sessions AS (
-                SELECT teacher_id, COUNT(*) AS scheduled_sessions
-                FROM teacher_classes
-                GROUP BY teacher_id
-            )
-            SELECT
-                t.teacher_id,
-                t.name AS teacher_name,
-                u.user_code,
-                COALESCE(MAX(ss.scheduled_sessions), 0) AS scheduled_sessions,
-                COUNT(rr.record_id) AS total_events,
-                COUNT(rr.record_id) FILTER (WHERE rr.event_type = 'CHECK_IN') AS total_check_in,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_IN'
-                      AND rr.status IN ('VALID', 'MANUAL')
-                      AND rr.attendance_status IN ('ON_TIME', 'EARLY', 'MANUAL')
-                ) AS valid_check_in,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_IN'
-                      AND (
-                        rr.status = 'INVALID'
-                        OR rr.attendance_status IN ('UNMATCHED', 'MISSED')
-                      )
-                ) AS invalid_check_in,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_IN'
-                      AND rr.attendance_status = 'ON_TIME'
-                ) AS on_time_check_in,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_IN'
-                      AND rr.attendance_status = 'EARLY'
-                ) AS early_check_in,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_IN'
-                      AND rr.attendance_status = 'LATE'
-                ) AS late_check_in,
-                COUNT(rr.record_id) FILTER (WHERE rr.event_type = 'CHECK_OUT') AS total_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_OUT'
-                      AND rr.attendance_status = 'COMPLETED'
-                ) AS completed_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_OUT'
-                      AND rr.status IN ('VALID', 'MANUAL')
-                      AND rr.attendance_status IN ('COMPLETED', 'MANUAL')
-                ) AS valid_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_OUT'
-                      AND (
-                        rr.status = 'INVALID'
-                        OR rr.attendance_status = 'UNMATCHED'
-                      )
-                ) AS invalid_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_OUT'
-                      AND rr.attendance_status = 'LEFT_EARLY'
-                ) AS left_early_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.event_type = 'CHECK_OUT'
-                      AND rr.attendance_status = 'OVERTIME'
-                ) AS overtime_check_out,
-                COUNT(rr.record_id) FILTER (
-                    WHERE rr.status = 'MANUAL'
-                       OR rr.attendance_status = 'MANUAL'
-                ) AS manual_events
-            FROM teachers t
-            LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
-            LEFT JOIN report_records rr ON rr.teacher_id = t.teacher_id
-            LEFT JOIN scheduled_sessions ss ON ss.teacher_id = t.teacher_id
-            GROUP BY t.teacher_id, t.name, u.user_code
-            ORDER BY COALESCE(u.user_code, t.teacher_id), t.name
-        """),
-        {
-            "start_date": start_date,
-            "end_date": end_date,
-        },
-    ).mappings().all()
-
-    weekly_schedule_rows = db.execute(
-        text("""
-            WITH report_dates AS (
-                SELECT
-                    day::date AS teaching_date,
-                    CASE EXTRACT(ISODOW FROM day)
-                        WHEN 1 THEN 'T2'
-                        WHEN 2 THEN 'T3'
-                        WHEN 3 THEN 'T4'
-                        WHEN 4 THEN 'T5'
-                        WHEN 5 THEN 'T6'
-                        WHEN 6 THEN 'T7'
-                        ELSE 'CN'
-                    END AS day_of_week
-                FROM generate_series(CAST(:start_date AS date), CAST(:end_date AS date), INTERVAL '1 day') AS day
-            ),
-            teacher_classes AS (
-                SELECT
-                    rd.teaching_date,
-                    c.class_id,
-                    c.day_of_week,
-                    c.center_id,
-                    c.start_time,
-                    c.end_time,
-                    COALESCE(active_override.replacement_teacher_id, ct.teacher_id) AS teacher_id
-                FROM report_dates rd
-                JOIN classes c ON c.day_of_week = rd.day_of_week
-                JOIN class_teachers ct ON ct.class_id = c.class_id
-                LEFT JOIN class_teacher_reassignment_overrides active_override
-                    ON active_override.class_id = c.class_id
-                   AND active_override.original_teacher_id = ct.teacher_id
-                   AND active_override.effective_date <= rd.teaching_date
-                   AND active_override.expires_on >= rd.teaching_date
-                WHERE c.status <> 'CANCELLED'
-
-                UNION
-
-                SELECT
-                    rd.teaching_date,
-                    c.class_id,
-                    c.day_of_week,
-                    c.center_id,
-                    c.start_time,
-                    c.end_time,
-                    COALESCE(active_override.replacement_teacher_id, c.teacher_id) AS teacher_id
-                FROM report_dates rd
-                JOIN classes c ON c.day_of_week = rd.day_of_week
-                LEFT JOIN class_teacher_reassignment_overrides active_override
-                    ON active_override.class_id = c.class_id
-                   AND active_override.original_teacher_id = c.teacher_id
-                   AND active_override.effective_date <= rd.teaching_date
-                   AND active_override.expires_on >= rd.teaching_date
-                WHERE c.teacher_id IS NOT NULL
-                  AND c.status <> 'CANCELLED'
-            )
-            SELECT
-                rd.teaching_date,
-                rd.day_of_week,
-                tc.class_id,
-                tc.start_time,
-                tc.end_time,
-                tc.teacher_id,
-                t.name AS teacher_name,
-                u.user_code,
-                tc.center_id,
-                centers.name AS center_name
-            FROM report_dates rd
-            JOIN teacher_classes tc ON tc.teaching_date = rd.teaching_date
-            JOIN teachers t ON t.teacher_id = tc.teacher_id
-            LEFT JOIN users u ON u.teacher_id = t.teacher_id AND u.role = 'teacher'
-            JOIN centers ON centers.center_id = tc.center_id
-            ORDER BY
-                rd.teaching_date,
-                tc.start_time,
-                centers.center_id,
-                COALESCE(u.user_code, tc.teacher_id),
-                t.name
-        """),
-        {
-            "start_date": start_date,
-            "end_date": end_date,
-        },
-    ).mappings().all()
-
-    attendance_rows = db.execute(
-        text(f"""
-            SELECT
-                ar.teacher_id,
-                (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date AS attendance_date,
-                CAST(ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}' AS TIME) AS checked_time,
-                ar.class_id,
-                ar.event_type,
-                ar.status,
-                ar.attendance_status
-            FROM attendance_records ar
-            WHERE ar.teacher_id IS NOT NULL
-              AND ar.class_id IS NOT NULL
-              AND (ar.checked_at AT TIME ZONE '{LOCAL_TIMEZONE}')::date BETWEEN :start_date AND :end_date
-            ORDER BY ar.checked_at
-        """),
-        {
-            "start_date": start_date,
-            "end_date": end_date,
-        },
-    ).mappings().all()
-
-    report_file = build_teacher_attendance_workbook(rows, weekly_schedule_rows, attendance_rows, start_date, end_date)
-    filename = f"teacher_attendance_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx"
+@router.get("/attendance-records/export")
+def export_teacher_attendance_report(
+    start_date: date = Query(...), end_date: date = Query(...),
+    teacher_id: str | None = Query(None), language: Literal["vi", "en"] = Query("vi"),
+    _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
+    db: Session = Depends(get_db),
+):
+    report = load_attendance_report(db, start_date, end_date, teacher_id, language)
+    report_file = build_report_workbook(report, language)
+    name = report["summary"][0]["teacher_name"] if len(report["summary"]) == 1 else ("Tất cả giáo viên" if language == "vi" else "All teachers")
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', name)
+    filename = f"{name}_{start_date.isoformat()}_{end_date.isoformat()}.xlsx"
     return StreamingResponse(
         report_file,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=attendance.xlsx; filename*=UTF-8''{quote(filename, safe='')}"},
     )
 
 
@@ -1122,6 +671,8 @@ def check_in_attendance(
     record_checked_at = datetime.now(timezone.utc)
     closest_center = get_closest_center(db, payload.latitude, payload.longitude)
     session_match = find_matching_class_session(db, current_user.teacher_id, closest_center["center_id"], record_checked_at)
+    if not session_match["class_id"]:
+        raise HTTPException(status_code=400, detail="no assigned teaching session available for attendance")
 
     record = db.execute(
         text("""
@@ -1201,20 +752,18 @@ def check_out_attendance(
             detail=f"please wait {CHECK_OUT_COOLDOWN_MINUTES} minutes between check-outs",
         )
 
-    check_in_class_id = find_open_check_in(db, current_user.user_code)
-    if not check_in_class_id:
+    record_checked_at = datetime.now(timezone.utc)
+    check_in = find_open_check_in(db, current_user.user_code, record_checked_at)
+    if not check_in:
         raise HTTPException(status_code=400, detail="no open check-in found for today")
 
     record_id = str(uuid4())
-    record_checked_at = datetime.now(timezone.utc)
     closest_center = get_closest_center(db, payload.latitude, payload.longitude)
-    class_id = find_checkout_class_for_open_check_in(
-        db,
-        current_user.teacher_id,
-        check_in_class_id,
-        record_checked_at,
-    )
-    checkout_status = get_checkout_status(db, class_id, record_checked_at)
+    session_match = resolve_checkout_session(db, check_in, current_user.teacher_id, closest_center["center_id"], record_checked_at)
+    class_id = session_match["class_id"]
+    checkout_status = session_match["attendance_status"]
+    if not class_id and not session_match.get("snapshot"):
+        raise HTTPException(status_code=400, detail="no assigned teaching session available for attendance")
 
     record = db.execute(
         text("""
@@ -1254,7 +803,7 @@ def check_out_attendance(
             "attendance_status": checkout_status,
         },
     ).mappings().first()
-    record = snapshot_attendance_session(db, record)
+    record = snapshot_checkout(db, record, session_match, check_in)
     db.commit()
 
     return {
@@ -1302,8 +851,9 @@ def create_manual_attendance(
         raise HTTPException(status_code=404, detail="center not found")
 
     record_id = str(uuid4())
+    check_in = find_open_check_in(db, teacher["user_code"], payload.checked_at) if payload.event_type == "CHECK_OUT" else None
     session_match = (
-        find_matching_checkout_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
+        resolve_checkout_session(db, check_in, teacher["teacher_id"], center["center_id"], payload.checked_at)
         if payload.event_type == "CHECK_OUT"
         else find_matching_class_session(db, teacher["teacher_id"], center["center_id"], payload.checked_at)
     )
@@ -1365,7 +915,7 @@ def create_manual_attendance(
             "event_type": payload.event_type,
         },
     ).mappings().first()
-    record = snapshot_attendance_session(db, record)
+    record = snapshot_checkout(db, record, session_match, check_in) if payload.event_type == "CHECK_OUT" else snapshot_attendance_session(db, record)
     db.commit()
 
     return {

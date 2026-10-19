@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
+import { useLanguage } from "../../lib/i18n.jsx";
 
 export default function FloatingPanel({ eyebrow, title, titleId, onClose, children }) {
+  const { t } = useLanguage();
   return createPortal(
     <div className="floating-panel-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -20,7 +22,7 @@ export default function FloatingPanel({ eyebrow, title, titleId, onClose, childr
             className="table-action-button table-action-button-muted"
             onClick={onClose}
           >
-            Close
+            {t("close")}
           </button>
         </div>
 

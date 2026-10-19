@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -450,6 +450,15 @@ def remove_class_teacher(
     return {"message": "teacher removed from class", "class_id": class_id, "teacher_id": teacher_id}
 
 
+def temporary_teaching_date(day_of_week, requested=None, today=None):
+    today = today or datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+    weekday = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"].index(day_of_week)
+    target = requested or today + timedelta(days=(weekday - today.weekday()) % 7)
+    if target < today or target.weekday() != weekday:
+        raise HTTPException(status_code=400, detail="Please select an upcoming teaching date for this class.")
+    return target
+
+
 @router.put("/classes/{class_id}/teachers/{teacher_id}/reassign")
 def reassign_class_teacher(
     class_id: str,
@@ -573,7 +582,7 @@ def reassign_class_teacher(
 
     mode = payload.mode.upper()
     if mode == "TEMPORARY":
-        effective_date = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).date()
+        effective_date = temporary_teaching_date(target_class["day_of_week"], payload.effective_date)
         db.execute(
             text("""
                 INSERT INTO class_teacher_reassignment_overrides (
@@ -614,6 +623,7 @@ def reassign_class_teacher(
         update_class_assignment_state(db, class_id)
         return {
             "message": "teacher temporarily reassigned",
+            "effective_date": effective_date,
             "class_id": class_id,
             "old_teacher_id": teacher_id,
             "teacher_id": payload.teacher_id,
@@ -659,6 +669,7 @@ def reassign_class_teacher(
 def restore_permanent_class_teacher(
     class_id: str,
     teacher_id: str,
+    effective_date: date | None = None,
     db: Session = Depends(get_db),
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
@@ -683,10 +694,10 @@ def restore_permanent_class_teacher(
             DELETE FROM class_teacher_reassignment_overrides
             WHERE class_id = :class_id
               AND original_teacher_id = :teacher_id
-              AND effective_date <= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
+              AND effective_date = COALESCE(CAST(:effective_date AS DATE), CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE))
               AND expires_on >= CAST(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh' AS DATE)
         """),
-        {"class_id": class_id, "teacher_id": teacher_id},
+        {"class_id": class_id, "teacher_id": teacher_id, "effective_date": effective_date},
     ).rowcount
 
     if deleted == 0:

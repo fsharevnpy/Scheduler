@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
 import BackupManagement from "./BackupManagement.jsx";
+import AttendanceReportPanel from "./AttendanceReportPanel.jsx";
+import { useLanguage } from "../../lib/i18n.jsx";
+import { getRoleTitle } from "../../lib/roles.js";
 import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
-import { formatClockTimeValue, formatDateTimeValue, formatTimeDraft, formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatDateTimeValue, formatTimeDraft, formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
-  formatAttendanceTime, getAttendanceDateKey, getAttendanceDayCode, getAttendanceDateKeys,
+  formatAttendanceTime, getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getAttendanceDateKeys,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -18,7 +21,7 @@ const REASSIGNMENT_MODES = [
   {
     value: "TEMPORARY",
     title: "Temporary",
-    description: "Today only. The class returns to the original teacher tomorrow.",
+    description: "For the selected teaching date only.",
   },
   {
     value: "PERMANENT",
@@ -28,23 +31,23 @@ const REASSIGNMENT_MODES = [
 ];
 
 function getDatetimeLocalValue(date = new Date()) {
-  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localTime.toISOString().slice(0, 16);
+  return `${getAttendanceDateKey(date)}T${formatAttendanceTime(date)}`;
 }
 
-function getLocalDateKey(date = new Date()) {
-  return getDatetimeLocalValue(date).slice(0, 10);
+function upcomingTeachingDates(day) {
+  const today = new Date(`${getAttendanceDateKey()}T00:00:00Z`);
+  const weekday = (today.getUTCDay() + 6) % 7;
+  const offset = (CLASS_DAYS.indexOf(day) - weekday + 7) % 7;
+  return Array.from({ length: 52 }, (_, index) => {
+    const date = new Date(today);
+    date.setUTCDate(today.getUTCDate() + offset + index * 7);
+    return date.toISOString().slice(0, 10);
+  });
 }
 
-function getPreviousMonthDateRange(date = new Date()) {
-  const startDate = new Date(date.getFullYear(), date.getMonth() - 1, 1);
-  const endDate = new Date(date.getFullYear(), date.getMonth(), 0);
 
-  return {
-    start_date: getLocalDateKey(startDate),
-    end_date: getLocalDateKey(endDate),
-  };
-}
+
+
 
 function filterLeaveRequestsByView(leaveRequests, view) {
   if (view === "active") {
@@ -69,7 +72,7 @@ function getClassTeacherModes(classItem) {
   return teacherIds.map((_, index) => modes[index] || "PERMANENT");
 }
 
-function renderTeacherNames(label, teacherIds = [], teacherModes = [], originalTeacherIds = [], onSelect = null) {
+function renderTeacherNames(t, label, teacherIds = [], teacherModes = [], originalTeacherIds = [], onSelect = null) {
   if (!label || label === "-") {
     return <span>-</span>;
   }
@@ -103,7 +106,7 @@ function renderTeacherNames(label, teacherIds = [], teacherModes = [], originalT
             className={className}
             key={`${teacherId}-${item}`}
             onClick={() => onSelect(teacherId, item, teacherMode, originalTeacherId)}
-            title={isTemporary ? "Temporary assignment for today" : "Permanent assignment"}
+            title={isTemporary ? t("Temporary assignment for today") : t("Permanent assignment")}
           >
             {item}
           </button>
@@ -113,11 +116,7 @@ function renderTeacherNames(label, teacherIds = [], teacherModes = [], originalT
   );
 }
 
-function getDownloadFilename(response, fallback) {
-  const contentDisposition = response.headers.get("content-disposition") || "";
-  const match = /filename="?([^"]+)"?/i.exec(contentDisposition);
-  return match?.[1] || fallback;
-}
+
 
 export default function AdminMonitorView({
   actionStatus,
@@ -150,6 +149,7 @@ export default function AdminMonitorView({
   onCreateManualAttendance,
   onUpdateClassTime,
 }) {
+  const { t, language } = useLanguage();
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
   const [selectedSuggestionTeacher, setSelectedSuggestionTeacher] = useState(null);
   const [selectedSuggestionClass, setSelectedSuggestionClass] = useState(null);
@@ -159,6 +159,8 @@ export default function AdminMonitorView({
   const [classTeacherSuggestions, setClassTeacherSuggestions] = useState([]);
   const [selectedReassignTeacherId, setSelectedReassignTeacherId] = useState("");
   const [selectedReassignMode, setSelectedReassignMode] = useState("TEMPORARY");
+  const [selectedReassignDate, setSelectedReassignDate] = useState("");
+  const [showReassignDates, setShowReassignDates] = useState(false);
   const [selectedAvatarTeacher, setSelectedAvatarTeacher] = useState(null);
   const [selectedTeacherDetail, setSelectedTeacherDetail] = useState(null);
   const [selectedProfileEdit, setSelectedProfileEdit] = useState(null);
@@ -185,9 +187,9 @@ export default function AdminMonitorView({
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
   const [isAttendanceExportPanelOpen, setIsAttendanceExportPanelOpen] = useState(false);
-  const [isAttendanceExporting, setIsAttendanceExporting] = useState(false);
-  const [attendanceExportStatus, setAttendanceExportStatus] = useState({ kind: "", message: "" });
-  const [attendanceExportForm, setAttendanceExportForm] = useState(() => getPreviousMonthDateRange());
+
+
+
   const [manualAttendanceForm, setManualAttendanceForm] = useState({
     event_type: "CHECK_IN",
     teacher_id: "",
@@ -288,17 +290,17 @@ export default function AdminMonitorView({
 
   const profileEditMeta = {
     elo: {
-      label: "ELO",
+      label: t("ELO"),
       inputProps: { type: "number", min: "0", required: true },
       normalize: (value) => Number(value),
     },
     education_score: {
-      label: "Education",
+      label: t("Education"),
       inputProps: { type: "number", min: "0", max: "10", step: "0.1", placeholder: "0 - 10" },
       normalize: (value) => (value === "" ? null : Number(value)),
     },
     max_slots_per_day: {
-      label: "Max Slots / Day",
+      label: t("Max Slots / Day"),
       inputProps: { type: "number", min: "1", required: true },
       normalize: (value) => Number(value),
     },
@@ -329,7 +331,7 @@ export default function AdminMonitorView({
       }).then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(payload.detail || "Failed to load score events");
+          throw new Error(payload.detail || t("Failed to load score events"));
         }
         return payload;
       });
@@ -359,7 +361,7 @@ export default function AdminMonitorView({
       return;
     }
 
-    setProfilePanelStatus({ kind: "success", message: `${meta.label} updated.` });
+    setProfilePanelStatus({ kind: "success", message: "Teacher profile updated." });
     setSelectedProfileEdit((current) => (current ? { ...current, teacher: { ...current.teacher, ...payload } } : current));
   }
 
@@ -368,7 +370,7 @@ export default function AdminMonitorView({
       return;
     }
 
-    if (!confirm(`Delete profile image for ${selectedAvatarTeacher.teacher_id} - ${selectedAvatarTeacher.name}?`)) {
+    if (!confirm(t("Delete profile image for {p0} - {p1}?", { p0: selectedAvatarTeacher.teacher_id, p1: selectedAvatarTeacher.name }))) {
       return;
     }
 
@@ -403,12 +405,34 @@ export default function AdminMonitorView({
       return;
     }
 
+    const delta = Number(scoreForm.delta);
+    if (!scoreForm.delta.trim() || !Number.isInteger(delta) || delta === 0) {
+      setScorePanelStatus({ kind: "error", message: "Enter a non-zero whole number of points." });
+      return;
+    }
+    if (!scoreForm.reason.trim()) {
+      setScorePanelStatus({ kind: "error", message: "Please enter a reason." });
+      return;
+    }
+
+    const evidenceUrl = scoreForm.evidence_url.trim();
+    if (evidenceUrl) {
+      try {
+        const url = new URL(evidenceUrl);
+        if (!["https:", "http:"].includes(url.protocol)) throw new Error();
+      } catch {
+        setScorePanelStatus({ kind: "error", message: "Enter a valid evidence link or leave it empty." });
+        return;
+      }
+    }
+    setScorePanelStatus({ kind: "", message: "" });
+
     const success = await onCreateTeacherScoreEvent(selectedScoreTeacher.teacher_id, {
       score_month: new Date().toISOString().slice(0, 10),
-      delta: Number(scoreForm.delta),
-      reason: scoreForm.reason,
-      evidence_text: scoreForm.evidence_text,
-      evidence_url: scoreForm.evidence_url || null,
+      delta,
+      reason: scoreForm.reason.trim(),
+      evidence_text: scoreForm.evidence_text.trim() || null,
+      evidence_url: evidenceUrl || null,
     });
 
     if (!success) {
@@ -433,64 +457,9 @@ export default function AdminMonitorView({
     setIsManualAttendancePanelOpen(true);
   }
 
-  function openAttendanceExportPanel() {
-    setAttendanceExportForm(getPreviousMonthDateRange());
-    setAttendanceExportStatus({ kind: "", message: "" });
-    setIsAttendanceExportPanelOpen(true);
-  }
+  function openAttendanceExportPanel() { setIsAttendanceExportPanelOpen(true); }
 
-  async function handleAttendanceExportSubmit(event) {
-    event.preventDefault();
 
-    if (!attendanceExportForm.start_date || !attendanceExportForm.end_date) {
-      setAttendanceExportStatus({ kind: "error", message: "Select both start and end dates." });
-      return;
-    }
-
-    if (attendanceExportForm.end_date < attendanceExportForm.start_date) {
-      setAttendanceExportStatus({ kind: "error", message: "End date must be after start date." });
-      return;
-    }
-
-    setIsAttendanceExporting(true);
-    setAttendanceExportStatus({ kind: "", message: "" });
-
-    try {
-      const params = new URLSearchParams({
-        start_date: attendanceExportForm.start_date,
-        end_date: attendanceExportForm.end_date,
-      });
-      const response = await fetch(`${apiBase}/attendance-records/export?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || "Failed to export attendance report");
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = getDownloadFilename(
-        response,
-        `teacher_attendance_${attendanceExportForm.start_date}_to_${attendanceExportForm.end_date}.xlsx`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-
-      setAttendanceExportStatus({ kind: "success", message: "Excel report downloaded." });
-    } catch (error) {
-      setAttendanceExportStatus({ kind: "error", message: error.message });
-    } finally {
-      setIsAttendanceExporting(false);
-    }
-  }
 
   async function handleManualAttendanceSubmit(event) {
     event.preventDefault();
@@ -502,7 +471,7 @@ export default function AdminMonitorView({
     const success = await onCreateManualAttendance({
       teacherId: manualAttendanceForm.teacher_id,
       centerId: manualAttendanceForm.center_id,
-      checkedAt: new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00`).toISOString(),
+      checkedAt: new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00+07:00`).toISOString(),
       eventType: manualAttendanceForm.event_type,
     });
 
@@ -576,12 +545,14 @@ export default function AdminMonitorView({
     }
   }
 
-  async function openClassTeacherPanel(classItem, teacherId, teacherName, assignmentMode = "PERMANENT", originalTeacherId = teacherId) {
+  async function openClassTeacherPanel(classItem, teacherId, teacherName, assignmentMode = "PERMANENT", originalTeacherId = teacherId, effectiveDate = null) {
     setSelectedClassTeacher({ classItem, teacherId, teacherName, assignmentMode, originalTeacherId });
     setClassTeacherAction("manage");
     setClassTeacherSuggestions([]);
     setSelectedReassignTeacherId("");
     setSelectedReassignMode("TEMPORARY");
+    setSelectedReassignDate(effectiveDate || upcomingTeachingDates(classItem.day_of_week)[0]);
+    setShowReassignDates(false);
   }
 
   async function openReassignClassTeacher() {
@@ -615,7 +586,7 @@ export default function AdminMonitorView({
       return;
     }
 
-    const confirmed = window.confirm("Restore this class to its permanent teacher now?");
+    const confirmed = window.confirm(t("Restore this class to its permanent teacher now?"));
     if (!confirmed) {
       return;
     }
@@ -623,6 +594,7 @@ export default function AdminMonitorView({
     const success = await onRestorePermanentClassTeacher(
       selectedClassTeacher.classItem.class_id,
       selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId,
+      selectedReassignDate,
     );
 
     if (success) {
@@ -643,6 +615,7 @@ export default function AdminMonitorView({
       selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId,
       selectedReassignTeacherId,
       selectedReassignMode,
+      selectedReassignDate,
     );
     if (success) {
       setSelectedClassTeacher(null);
@@ -656,34 +629,34 @@ export default function AdminMonitorView({
     <>
       <section className="monitor-grid monitor-grid-summary">
         <article className="info-card">
-          <p className="eyebrow">Teachers</p>
+          <p className="eyebrow">{t("Teachers")}</p>
           <h2>{teachers.length}</h2>
-          <p className="subtle">All available teacher records.</p>
+          <p className="subtle">{t("All available teacher records.")}</p>
         </article>
 
         <article className="info-card">
-          <p className="eyebrow">Classes</p>
+          <p className="eyebrow">{t("Classes")}</p>
           <h2>{classes.length}</h2>
-          <p className="subtle">All classes currently in the system.</p>
+          <p className="subtle">{t("All classes currently in the system.")}</p>
         </article>
 
         <article className="info-card">
-          <p className="eyebrow">Leave Requests</p>
+          <p className="eyebrow">{t("Leave Requests")}</p>
           <h2>{activeLeaveRequestCount}</h2>
-          <p className="subtle">Active leave request records.</p>
+          <p className="subtle">{t("Active leave request records.")}</p>
         </article>
 
         <article className="info-card">
-          <p className="eyebrow">Attendance</p>
+          <p className="eyebrow">{t("Attendance")}</p>
           <h2>{attendanceRecords.length}</h2>
-          <p className="subtle">Recorded attendance events from users.</p>
+          <p className="subtle">{t("Recorded attendance events from users.")}</p>
         </article>
 
         {role === "developer" ? (
           <article className="info-card">
-            <p className="eyebrow">Managers</p>
+            <p className="eyebrow">{t("Managers")}</p>
             <h2>{managerUsers.length}</h2>
-            <p className="subtle">Manager accounts visible to developer.</p>
+            <p className="subtle">{t("Manager accounts visible to developer.")}</p>
           </article>
         ) : null}
       </section>
@@ -695,15 +668,15 @@ export default function AdminMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Attendance</p>
+            <p className="eyebrow">{t("Attendance")}</p>
             <div className="section-title-row">
-              <h2>Attendance records</h2>
+              <h2>{t("Attendance records")}</h2>
               <button
                 type="button"
                 className="section-add-button"
                 onClick={openManualAttendancePanel}
-                aria-label="Create manual attendance event"
-                title="Create manual attendance event"
+                aria-label={t("Create manual attendance event")}
+                title={t("Create manual attendance event")}
               >
                 +
               </button>
@@ -711,55 +684,49 @@ export default function AdminMonitorView({
                 type="button"
                 className="table-action-button"
                 onClick={openAttendanceExportPanel}
-              >
-                Export Excel
-              </button>
+              >{t("Export Excel")}{" "}</button>
             </div>
             <p className="subtle">
               {attendanceView === "current"
-                ? `Today: ${todayLabel} | ${getAttendanceDayCode(todayKey)} | Rows: ${todayAttendanceRows.length} (UTC+7)`
-                : `${attendanceView === "history" ? "History" : "All"}: ${selectedAttendanceDateLabel} | Recorded sessions: ${visibleAttendanceRecords.length} (UTC+7)`}
+                ? t("Today: {date} | {day} | Rows: {count} (UTC+7)", { date: todayLabel, day: formatAttendanceWeekday(todayKey, language), count: todayAttendanceRows.length })
+                : t("{view}: {date} | Recorded sessions: {count} (UTC+7)", { view: t(attendanceView === "history" ? "History" : "All"), date: selectedAttendanceDateLabel, count: visibleAttendanceRecords.length })}
             </p>
           </div>
-          <div className="section-toggle-group" role="tablist" aria-label="Attendance filter">
+          <div className="section-toggle-group" role="tablist" aria-label={t("Attendance filter")}>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("current")}
-            >
-              Current
-            </button>
+            >{t("Current")}{" "}</button>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("history")}
-            >
-              History
-            </button>
+            >{t("History")}{" "}</button>
             <button
               type="button"
               className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
               onClick={() => setAttendanceView("all")}
-            >
-              All
-            </button>
+            >{t("All")}{" "}</button>
           </div>
         </div>
 
         {attendanceView !== "current" ? (
-          <p className="subtle">Recorded events only. Older records without a saved shift show “-”; absence is not inferred from the current schedule.</p>
+          <p className="subtle">{t("Recorded events only. Older records without a saved shift show “-”; absence is not inferred from the current schedule.")}</p>
         ) : null}
         <DataTable
           key={`${attendanceView}:${selectedAttendanceDateKey}`}
-          title="Attendance records"
+          title={t("Attendance records")}
           columns={[
-            { key: "display_name", label: "User" },
-            { key: "user_code", label: "User Code" },
-            { key: "teacher_id", label: "Teacher ID" },
-            { key: "class_id", label: "Class ID" },
+            { key: "date", label: t("Date"), render: (row) => formatAttendanceDate(row.attendance_date) },
+            { key: "weekday", label: t("Weekday"), render: (row) => formatAttendanceWeekday(row.attendance_date, language) },
+            { key: "display_name", label: t("User") },
+            { key: "user_code", label: t("User Code") },
+            { key: "teacher_id", label: t("Teacher ID") },
+            { key: "class_id", label: t("Class ID") },
             {
               key: "expected_shift",
-              label: "Expected Shift",
+              label: t("Expected Shift"),
               render: (row) =>
                 row.start_time && row.end_time
                   ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
@@ -767,49 +734,48 @@ export default function AdminMonitorView({
             },
             {
               key: "checked_at",
-              label: "Check-in",
+              label: t("Check-in"),
               render: (row) => formatAttendanceTime(row.checked_at),
             },
-            { key: "check_out_at", label: "Checkout", render: (row) => formatAttendanceTime(row.check_out_at) },
+            { key: "check_out_at", label: t("Checkout"), render: (row) => formatAttendanceTime(row.check_out_at) },
             {
               key: "nearest_center_name",
-              label: "Location",
+              label: t("Location"),
               render: (row) =>
-                (!row.checked_at && !row.check_out_at) || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
-                  ? row.nearest_center_name || "Nearest center"
-                  : "INVALID",
+                (!row.checked_at && !row.check_out_at) || row.status === "VALID" || row.status === t("MANUAL") || row.status === "-"
+                  ? row.nearest_center_name || t("Nearest center")
+                  : t("status_INVALID"),
             },
             {
               key: "status",
-              label: "Location Status",
+              label: t("Location Status"),
               render: (row) => <StatusPill value={row.status === "-" ? "-" : row.status || "PENDING"} />,
             },
             {
               key: "attendance_status",
-              label: "Check-in Status",
-              render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
+              label: t("Check-in Status"),
+              render: (row) => <StatusPill value={row.attendance_status || t("UNMATCHED")} />,
             },
             {
               key: "checkout_status",
-              label: "Checkout Status",
+              label: t("Checkout Status"),
               render: (row) => <StatusPill value={row.checkout_status || "-"} />,
             },
             {
               key: "checkout_location_status",
-              label: "Checkout Location Status",
+              label: t("Checkout Location Status"),
               render: (row) => <StatusPill value={row.checkout_location_status || "-"} />,
             },
           ]}
           rows={visibleAttendanceRecords}
           resetPageOnRowsChange={false}
-          emptyMessage="No attendance records found."
+          emptyMessage={t("No attendance records found.")}
           embedded
           pageSize={attendanceView === "current" ? 10 : null}
         />
         {attendanceView !== "current" && attendanceDateKeys.length > 0 ? (
           <div className="table-pagination">
-            <span>
-              Page {effectiveAttendanceDatePage} of {attendanceDatePageCount}
+            <span>{t("Page")}{" "}{effectiveAttendanceDatePage}{" "}{t("of")}{" "}{attendanceDatePageCount}
             </span>
             <div className="table-pagination-actions">
               <button
@@ -817,17 +783,13 @@ export default function AdminMonitorView({
                 className="table-action-button table-action-button-muted"
                 disabled={effectiveAttendanceDatePage === 1}
                 onClick={() => setAttendanceDatePage((current) => Math.max(1, current - 1))}
-              >
-                Newer day
-              </button>
+              >{t("Newer day")}{" "}</button>
               <button
                 type="button"
                 className="table-action-button"
                 disabled={effectiveAttendanceDatePage === attendanceDatePageCount}
                 onClick={() => setAttendanceDatePage((current) => Math.min(attendanceDatePageCount, current + 1))}
-              >
-                Older day
-              </button>
+              >{t("Older day")}{" "}</button>
             </div>
           </div>
         ) : null}
@@ -835,14 +797,14 @@ export default function AdminMonitorView({
 
       {isManualAttendancePanelOpen ? (
         <FloatingPanel
-          eyebrow="Attendance"
-          title="Manual attendance"
+          eyebrow={t("Attendance")}
+          title={t("Manual attendance")}
           titleId="manual-attendance-title"
           onClose={() => setIsManualAttendancePanelOpen(false)}
         >
           <form className="floating-panel-form" onSubmit={handleManualAttendanceSubmit}>
             <label className="field">
-              <span>Type</span>
+              <span>{t("Type")}</span>
               <select
                 value={manualAttendanceForm.event_type}
                 required
@@ -853,13 +815,13 @@ export default function AdminMonitorView({
                   }))
                 }
               >
-                <option value="CHECK_IN">Check-in</option>
-                <option value="CHECK_OUT">Checkout</option>
+                <option value="CHECK_IN">{t("Check-in")}</option>
+                <option value="CHECK_OUT">{t("Checkout")}</option>
               </select>
             </label>
 
             <label className="field">
-              <span>Teacher</span>
+              <span>{t("Teacher")}</span>
               <select
                 value={manualAttendanceForm.teacher_id}
                 required
@@ -879,7 +841,7 @@ export default function AdminMonitorView({
             </label>
 
             <label className="field">
-              <span>Center</span>
+              <span>{t("Center")}</span>
               <select
                 value={manualAttendanceForm.center_id}
                 required
@@ -900,7 +862,7 @@ export default function AdminMonitorView({
 
             <div className="floating-panel-grid">
               <label className="field">
-                <span>Date</span>
+                <span>{t("Date")}</span>
                 <input
                   type="date"
                   value={manualAttendanceForm.checked_date}
@@ -915,13 +877,13 @@ export default function AdminMonitorView({
               </label>
 
               <label className="field">
-                <span>{manualAttendanceForm.event_type === "CHECK_OUT" ? "Checkout time" : "Check-in time"}</span>
+                <span>{manualAttendanceForm.event_type === "CHECK_OUT" ? t("Checkout time") : t("Check-in time")}</span>
                 <input
                   type="text"
                   inputMode="numeric"
                   placeholder="HH:MM"
                   pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                  title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                  title={t("Use 24-hour time, HH:MM from 00:00 to 23:59")}
                   maxLength="5"
                   value={manualAttendanceForm.checked_time}
                   required
@@ -937,8 +899,8 @@ export default function AdminMonitorView({
 
             <div className="floating-panel-summary">
               <div className="floating-panel-summary-row">
-                <span>Status</span>
-                <StatusPill value="MANUAL" />
+                <span>{t("Status")}</span>
+                <StatusPill value={t("MANUAL")} />
               </div>
             </div>
 
@@ -955,114 +917,48 @@ export default function AdminMonitorView({
                 }
               >
                 {pendingAction === "manual-attendance"
-                  ? "Saving..."
-                  : `Save manual ${manualAttendanceForm.event_type === "CHECK_OUT" ? "checkout" : "check-in"}`}
+                  ? t("Saving...")
+                  : t("Save manual {p0}", { p0: t(manualAttendanceForm.event_type === "CHECK_OUT" ? "Checkout" : "Check-in") })}
               </button>
               <button
                 type="button"
                 className="table-action-button table-action-button-muted"
                 onClick={() => setIsManualAttendancePanelOpen(false)}
-              >
-                Cancel
-              </button>
+              >{t("Cancel")}{" "}</button>
             </div>
           </form>
         </FloatingPanel>
       ) : null}
 
-      {isAttendanceExportPanelOpen ? (
-        <FloatingPanel
-          eyebrow="Attendance"
-          title="Export teacher report"
-          titleId="attendance-export-title"
-          onClose={() => setIsAttendanceExportPanelOpen(false)}
-        >
-          <form className="floating-panel-form" onSubmit={handleAttendanceExportSubmit}>
-            <div className="floating-panel-grid">
-              <label className="field">
-                <span>Start date</span>
-                <input
-                  type="date"
-                  value={attendanceExportForm.start_date}
-                  required
-                  onChange={(event) =>
-                    setAttendanceExportForm((current) => ({
-                      ...current,
-                      start_date: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <label className="field">
-                <span>End date</span>
-                <input
-                  type="date"
-                  value={attendanceExportForm.end_date}
-                  required
-                  onChange={(event) =>
-                    setAttendanceExportForm((current) => ({
-                      ...current,
-                      end_date: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
-            {attendanceExportStatus.message ? (
-              <p className={`status-banner ${attendanceExportStatus.kind}`}>
-                {attendanceExportStatus.message}
-              </p>
-            ) : null}
-
-            <div className="floating-panel-actions">
-              <button
-                type="submit"
-                className="table-action-button"
-                disabled={isAttendanceExporting}
-              >
-                {isAttendanceExporting ? "Exporting..." : "Download Excel"}
-              </button>
-              <button
-                type="button"
-                className="table-action-button table-action-button-muted"
-                onClick={() => setIsAttendanceExportPanelOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </FloatingPanel>
-      ) : null}
+      {isAttendanceExportPanelOpen ? <AttendanceReportPanel apiBase={apiBase} token={token} teachers={teachers} onClose={() => setIsAttendanceExportPanelOpen(false)} /> : null}
 
       {selectedClassTime ? (
         <FloatingPanel
-          eyebrow="Class Time"
-          title={`${selectedClassTime.center_label || selectedClassTime.center_id} | ${selectedClassTime.day_of_week}`}
+          eyebrow={t("Class Time")}
+          title={`${selectedClassTime.center_label || selectedClassTime.center_id} | ${formatAttendanceDayCode(selectedClassTime.day_of_week, language)}`}
           titleId="class-time-edit-title"
           onClose={() => setSelectedClassTime(null)}
         >
           <form className="floating-panel-form" onSubmit={handleClassTimeSubmit}>
             <div className="floating-panel-grid">
               <div>
-                <p className="subtle">Status</p>
+                <p className="subtle">{t("Status")}</p>
                 <StatusPill value={selectedClassTime.status} />
               </div>
               <div>
-                <p className="subtle">Teachers</p>
+                <p className="subtle">{t("Teachers")}</p>
                 <strong>{selectedClassTime.teacher_count || selectedClassTime.teacher_ids?.length || 0}/2</strong>
               </div>
             </div>
 
             <label className="field">
-              <span>Start Time</span>
+              <span>{t("Start Time")}</span>
               <input
                 type="text"
                 inputMode="numeric"
                 placeholder="HH:MM"
                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                title={t("Use 24-hour time, HH:MM from 00:00 to 23:59")}
                 maxLength="5"
                 value={classTimeForm.start_time}
                 required
@@ -1076,13 +972,13 @@ export default function AdminMonitorView({
             </label>
 
             <label className="field">
-              <span>End Time</span>
+              <span>{t("End Time")}</span>
               <input
                 type="text"
                 inputMode="numeric"
                 placeholder="HH:MM"
                 pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                title="Use 24-hour time, HH:MM from 00:00 to 23:59"
+                title={t("Use 24-hour time, HH:MM from 00:00 to 23:59")}
                 maxLength="5"
                 value={classTimeForm.end_time}
                 required
@@ -1101,15 +997,13 @@ export default function AdminMonitorView({
                 className="table-action-button"
                 disabled={pendingAction === `class-time-${selectedClassTime.class_id}`}
               >
-                {pendingAction === `class-time-${selectedClassTime.class_id}` ? "Saving..." : "Save time"}
+                {pendingAction === `class-time-${selectedClassTime.class_id}` ? t("Saving...") : t("Save time")}
               </button>
               <button
                 type="button"
                 className="table-action-button table-action-button-muted"
                 onClick={() => setSelectedClassTime(null)}
-              >
-                Cancel
-              </button>
+              >{t("Cancel")}{" "}</button>
             </div>
           </form>
         </FloatingPanel>
@@ -1118,40 +1012,36 @@ export default function AdminMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Resources</p>
-            <h2>{resourceView === "teachers" ? "Teachers" : "Classes by center"}</h2>
+            <p className="eyebrow">{t("Resources")}</p>
+            <h2>{resourceView === "teachers" ? t("Teachers") : t("Classes by center")}</h2>
           </div>
-          <div className="section-toggle-group" role="tablist" aria-label="Resource view">
+          <div className="section-toggle-group" role="tablist" aria-label={t("Resource view")}>
             <button
               type="button"
               className={`section-toggle-button ${resourceView === "teachers" ? "active" : ""}`.trim()}
               onClick={() => setResourceView("teachers")}
-            >
-              Teachers
-            </button>
+            >{t("Teachers")}{" "}</button>
             <button
               type="button"
               className={`section-toggle-button ${resourceView === "classes" ? "active" : ""}`.trim()}
               onClick={() => setResourceView("classes")}
-            >
-              Classes
-            </button>
+            >{t("Classes")}{" "}</button>
           </div>
         </div>
 
         {resourceView === "teachers" ? (
           <DataTable
-          title="Teachers"
+          title={t("Teachers")}
           columns={[
             {
               key: "avatar",
-              label: "Avatar",
+              label: t("Avatar"),
               render: (row) => (
                 <button
                   type="button"
                   className="avatar-preview-button"
                   onClick={() => setSelectedAvatarTeacher(row)}
-                  aria-label={`View avatar for ${row.name}`}
+                  aria-label={t("View avatar for {p0}", { p0: row.name })}
                 >
                   <UserAvatar
                     apiBase={apiBase}
@@ -1163,21 +1053,21 @@ export default function AdminMonitorView({
                 </button>
               ),
             },
-            { key: "user_code", label: "User Code" },
+            { key: "user_code", label: t("User Code") },
             {
               key: "name",
-              label: "Name",
+              label: t("Name"),
               render: (row) => (
                 <button type="button" className="teacher-name-button" onClick={() => setSelectedTeacherDetail(row)}>
                   {formatValue(row.name)}
                 </button>
               ),
             },
-            { key: "contact", label: "Phone" },
-            { key: "email", label: "Email" },
+            { key: "contact", label: t("Phone") },
+            { key: "email", label: t("Email") },
             {
               key: "elo",
-              label: <span className="table-value-center">ELO</span>,
+              label: <span className="table-value-center">{t("ELO")}</span>,
               render: (row) => (
                 <span className="table-value-center">
                   <button type="button" className="score-button" onClick={() => openProfilePanel(row, "elo")}>
@@ -1188,7 +1078,7 @@ export default function AdminMonitorView({
             },
             {
               key: "education_score",
-              label: <span className="table-value-center">Education</span>,
+              label: <span className="table-value-center">{t("Education")}</span>,
               render: (row) => (
                 <span className="table-value-center">
                   <button type="button" className="score-button" onClick={() => openProfilePanel(row, "education_score")}>
@@ -1199,7 +1089,7 @@ export default function AdminMonitorView({
             },
             {
               key: "max_slots_per_day",
-              label: <span className="table-value-center">Max Slots</span>,
+              label: <span className="table-value-center">{t("Max Slots")}</span>,
               render: (row) => (
                 <span className="table-value-center">
                   <button type="button" className="score-button" onClick={() => openProfilePanel(row, "max_slots_per_day")}>
@@ -1210,7 +1100,7 @@ export default function AdminMonitorView({
             },
             {
               key: "monthly_score",
-              label: "Monthly Score",
+              label: t("Monthly Score"),
               render: (row) => {
                 const score = scoresByTeacherId.get(row.teacher_id) || { score: 100, max_score: 110 };
                 return (
@@ -1222,7 +1112,7 @@ export default function AdminMonitorView({
             },
             {
               key: "active",
-              label: "Active",
+              label: t("Active"),
               render: (row) => (
                 <select
                   className={`table-select ${row.active ? "table-select-active" : "table-select-inactive"}`}
@@ -1230,32 +1120,31 @@ export default function AdminMonitorView({
                   disabled={pendingAction === `teacher-active-${row.teacher_id}`}
                   onChange={(event) => onUpdateTeacherActive(row.teacher_id, event.target.value === "yes")}
                 >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
+                  <option value="yes">{t("Yes")}</option>
+                  <option value="no">{t("No")}</option>
                 </select>
               ),
             },
           ]}
           rows={teachers}
-          emptyMessage="No teachers found."
+          emptyMessage={t("No teachers found.")}
           embedded
           pageSize={10}
         />
         ) : replacementQueue.length === 0 ? (
-          <p className="subtle">No classes found.</p>
+          <p className="subtle">{t("No classes found.")}</p>
         ) : (
           <div className="center-class-group">
             <div className="center-class-head">
               <div>
                 <h3>{currentAssignmentCenterLabel}</h3>
-                <span className="subtle">{currentAssignmentClasses.length} classes</span>
+                <span className="subtle">{currentAssignmentClasses.length}{" "}{t("classes")}</span>
               </div>
-              <span className="subtle">
-                Center {assignmentCenterPage} of {assignmentCenterPageCount}
+              <span className="subtle">{t("Center")}{" "}{assignmentCenterPage}{" "}{t("of")}{" "}{assignmentCenterPageCount}
               </span>
             </div>
 
-            <div className="class-week-grid assignment-week-grid" role="table" aria-label={`${currentAssignmentCenterLabel} assignment queue by weekday`}>
+            <div className="class-week-grid assignment-week-grid" role="table" aria-label={t("{p0} assignment queue by weekday", { p0: currentAssignmentCenterLabel })}>
               {CLASS_DAYS.map((day) => {
                 const dayClasses = currentAssignmentClasses
                   .filter((item) => item.day_of_week === day)
@@ -1263,10 +1152,10 @@ export default function AdminMonitorView({
 
                 return (
                   <div className="class-week-column" role="cell" key={`${currentAssignmentCenterLabel}-${day}`}>
-                    <div className="class-week-day">{day}</div>
+                    <div className="class-week-day">{formatAttendanceDayCode(day, language)}</div>
                     <div className="class-week-list">
                       {dayClasses.length === 0 ? (
-                        <span className="class-week-empty">No classes</span>
+                        <span className="class-week-empty">{t("No classes")}</span>
                       ) : (
                         dayClasses.map((item) => {
                           const teacherCount = item.teacher_count || item.teacher_ids?.length || (item.teacher_id ? 1 : 0);
@@ -1282,13 +1171,20 @@ export default function AdminMonitorView({
                                 type="button"
                                 className="class-time-button"
                                 onClick={() => openClassTimePanel(item)}
-                                title="Edit class time"
+                                title={t("Edit class time")}
                               >
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                               </button>
-                              {renderTeacherNames(item.teacher_label, item.teacher_ids, getClassTeacherModes(item), item.original_teacher_ids, (teacherId, teacherName, assignmentMode, originalTeacherId) =>
+                              {renderTeacherNames(t, item.teacher_label, item.teacher_ids, getClassTeacherModes(item), item.original_teacher_ids, (teacherId, teacherName, assignmentMode, originalTeacherId) =>
                                 openClassTeacherPanel(item, teacherId, teacherName, assignmentMode, originalTeacherId),
                               )}
+                              {(item.temporary_assignments || []).map((assignment) => (
+                                <button type="button" className="class-teacher-button temporary"
+                                  key={`${assignment.original_teacher_id}-${assignment.effective_date}`}
+                                  onClick={() => openClassTeacherPanel(item, assignment.teacher_id, assignment.teacher_name, "TEMPORARY", assignment.original_teacher_id, assignment.effective_date)}>
+                                  {assignment.teacher_name} · {t("Teaching replacement date")} {formatAttendanceDate(assignment.effective_date)}
+                                </button>
+                              ))}
                               {canAssignMoreTeachers ? (
                                 <button
                                   type="button"
@@ -1296,7 +1192,7 @@ export default function AdminMonitorView({
                                   disabled={pendingAction === `suggest-${item.class_id}`}
                                   onClick={() => openSuggestionPanel(item)}
                                 >
-                                  {pendingAction === `suggest-${item.class_id}` ? "Loading..." : "Load suggestions"}
+                                  {pendingAction === `suggest-${item.class_id}` ? t("Loading...") : t("Load suggestions")}
                                 </button>
                               ) : null}
                             </article>
@@ -1311,7 +1207,7 @@ export default function AdminMonitorView({
 
             <div className="table-pagination class-center-pagination">
               <span>
-                {currentAssignmentCenterLabel} | {assignmentCenterPage} of {assignmentCenterPageCount}
+                {currentAssignmentCenterLabel} | {assignmentCenterPage}{" "}{t("of")}{" "}{assignmentCenterPageCount}
               </span>
               <div className="table-pagination-actions">
                 <button
@@ -1319,17 +1215,13 @@ export default function AdminMonitorView({
                   className="table-action-button table-action-button-muted"
                   disabled={assignmentCenterPage === 1}
                   onClick={() => setAssignmentCenterPage((current) => Math.max(1, current - 1))}
-                >
-                  Previous center
-                </button>
+                >{t("Previous center")}{" "}</button>
                 <button
                   type="button"
                   className="table-action-button"
                   disabled={assignmentCenterPage === assignmentCenterPageCount}
                   onClick={() => setAssignmentCenterPage((current) => Math.min(assignmentCenterPageCount, current + 1))}
-                >
-                  Next center
-                </button>
+                >{t("Next center")}{" "}</button>
               </div>
             </div>
           </div>
@@ -1339,92 +1231,80 @@ export default function AdminMonitorView({
       <section className="dashboard-section">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Requests</p>
-            <h2>{requestView === "leave" ? "Leave Requests" : "Password Reset Requests"}</h2>
+            <p className="eyebrow">{t("Requests")}</p>
+            <h2>{requestView === "leave" ? t("Leave Requests") : t("Password Reset Requests")}</h2>
           </div>
-          <div className="section-toggle-group" role="tablist" aria-label="Request view">
+          <div className="section-toggle-group" role="tablist" aria-label={t("Request view")}>
             <button
               type="button"
               className={`section-toggle-button ${requestView === "leave" ? "active" : ""}`.trim()}
               onClick={() => setRequestView("leave")}
-            >
-              Leave
-            </button>
+            >{t("Leave")}{" "}</button>
             <button
               type="button"
               className={`section-toggle-button ${requestView === "password" ? "active" : ""}`.trim()}
               onClick={() => setRequestView("password")}
-            >
-              Password Change
-            </button>
+            >{t("Password Change")}{" "}</button>
           </div>
         </div>
 
         {requestView === "leave" ? (
           <>
             <div className="table-filter-row">
-              <div className="section-toggle-group" role="tablist" aria-label="Leave request filter">
+              <div className="section-toggle-group" role="tablist" aria-label={t("Leave request filter")}>
                 <button
                   type="button"
                   className={`section-toggle-button ${leaveRequestView === "active" ? "active" : ""}`.trim()}
                   onClick={() => setLeaveRequestView("active")}
-                >
-                  Active
-                </button>
+                >{t("Active")}{" "}</button>
                 <button
                   type="button"
                   className={`section-toggle-button ${leaveRequestView === "history" ? "active" : ""}`.trim()}
                   onClick={() => setLeaveRequestView("history")}
-                >
-                  History
-                </button>
+                >{t("History")}{" "}</button>
                 <button
                   type="button"
                   className={`section-toggle-button ${leaveRequestView === "all" ? "active" : ""}`.trim()}
                   onClick={() => setLeaveRequestView("all")}
-                >
-                  All
-                </button>
+                >{t("All")}{" "}</button>
               </div>
             </div>
           <DataTable
-            title="Leave Requests"
+            title={t("Leave Requests")}
             columns={[
-              { key: "request_id", label: "Request ID" },
-              { key: "class_id", label: "Class ID" },
-              { key: "center_id", label: "Center" },
-              { key: "teacher_name", label: "Teacher" },
-              { key: "assigned_manager_name", label: "Assigned Manager" },
-              { key: "class_day_of_week", label: "Class Day" },
-              { key: "request_date", label: "Request Date" },
-              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
+              { key: "request_id", label: t("Request ID") },
+              { key: "class_id", label: t("Class ID") },
+              { key: "center_id", label: t("Center") },
+              { key: "teacher_name", label: t("Teacher") },
+              { key: "assigned_manager_name", label: t("Assigned Manager") },
+              { key: "class_day_of_week", label: t("Class Day"), render: (row) => formatAttendanceDayCode(row.class_day_of_week, language) },
+              { key: "request_date", label: t("Request Date") },
+              { key: "status", label: t("Status"), render: (row) => <StatusPill value={row.status} /> },
               {
                 key: "info",
-                label: "Info",
+                label: t("Info"),
                 render: (row) => (
                   <button
                     type="button"
                     className="table-action-button table-action-button-muted"
                     onClick={() => setSelectedLeaveRequest(row)}
-                  >
-                    Show
-                  </button>
+                  >{t("Show")}{" "}</button>
                 ),
               },
             ]}
             rows={visibleLeaveRequests}
-            emptyMessage="No leave requests found."
+            emptyMessage={t("No leave requests found.")}
             embedded
           />
           </>
         ) : (
           <DataTable
-            title="Password Reset Requests"
+            title={t("Password Reset Requests")}
             columns={[
-              { key: "user_code", label: "User Code" },
+              { key: "user_code", label: t("User Code") },
               {
                 key: "display_name",
-                label: "Display Name",
+                label: t("Display Name"),
                 render: (row) => (
                   <div className="user-inline-cell">
                     <UserAvatar
@@ -1438,12 +1318,12 @@ export default function AdminMonitorView({
                   </div>
                 ),
               },
-              { key: "created_at", label: "Created" },
-              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
-              { key: "request_note", label: "Note", render: (row) => formatValue(row.request_note) },
+              { key: "created_at", label: t("Created") },
+              { key: "status", label: t("Status"), render: (row) => <StatusPill value={row.status} /> },
+              { key: "request_note", label: t("Note"), render: (row) => formatValue(row.request_note) },
               {
                 key: "actions",
-                label: "Actions",
+                label: t("Actions"),
                 render: (row) => (
                   <div className="table-actions">
                     {row.status === "REQUESTED" ? (
@@ -1453,19 +1333,17 @@ export default function AdminMonitorView({
                           className="table-action-button"
                           disabled={pendingAction === `reset-request-${row.request_id}`}
                           onClick={() => onResetPasswordRequest(row.request_id)}
-                        >
-                          Reset to default
-                        </button>
+                        >{t("Reset to default")}{" "}</button>
                       </>
                     ) : (
-                      <span className="subtle">Processed</span>
+                      <span className="subtle">{t("Processed")}</span>
                     )}
                   </div>
                 ),
               },
             ]}
             rows={resetRequests}
-            emptyMessage="No password reset requests found."
+            emptyMessage={t("No password reset requests found.")}
             embedded
           />
         )}
@@ -1473,7 +1351,7 @@ export default function AdminMonitorView({
 
       {selectedClassTeacher ? (
         <FloatingPanel
-          eyebrow="Class Teacher"
+          eyebrow={t("Class Teacher")}
           title={selectedClassTeacher.teacherName}
           titleId="class-teacher-action-title"
           onClose={() => {
@@ -1486,24 +1364,23 @@ export default function AdminMonitorView({
         >
           <div className="floating-panel-grid">
             <div>
-              <p className="subtle">Class</p>
-              <strong>{selectedClassTeacher.classItem.day_of_week}</strong>
+              <p className="subtle">{t("Class")}</p>
+              <strong>{formatAttendanceDayCode(selectedClassTeacher.classItem.day_of_week, language)}</strong>
             </div>
             <div>
-              <p className="subtle">Time</p>
+              <p className="subtle">{t("Time")}</p>
               <strong>
                 {formatTimeValue(selectedClassTeacher.classItem.start_time)} - {formatTimeValue(selectedClassTeacher.classItem.end_time)}
               </strong>
             </div>
             <div>
-              <p className="subtle">Center</p>
+              <p className="subtle">{t("Center")}</p>
               <strong>{formatValue(selectedClassTeacher.classItem.center_label)}</strong>
             </div>
             <div>
-              <p className="subtle">Teacher</p>
+              <p className="subtle">{t("Teacher")}</p>
               <strong>{selectedClassTeacher.teacherName}</strong>
-              <p className={`subtle assignment-type-label ${selectedClassTeacher.assignmentMode === "TEMPORARY" ? "temporary" : ""}`}>
-                Current assignment: {selectedClassTeacher.assignmentMode === "TEMPORARY" ? "Temporary" : "Permanent"}
+              <p className={`subtle assignment-type-label ${selectedClassTeacher.assignmentMode === "TEMPORARY" ? "temporary" : ""}`}>{t("Current assignment:")}{" "}{selectedClassTeacher.assignmentMode === "TEMPORARY" ? t("Temporary") : t("Permanent")}
               </p>
             </div>
           </div>
@@ -1511,8 +1388,8 @@ export default function AdminMonitorView({
           {classTeacherAction === "reassign" ? (
             <div className="floating-panel-section">
               <div className="field">
-                <span>Reassign mode</span>
-                <div className="reassign-mode-grid" role="group" aria-label="Reassign mode">
+                <span>{t("Reassign mode")}</span>
+                <div className="reassign-mode-grid" role="group" aria-label={t("Reassign mode")}>
                   {REASSIGNMENT_MODES.map((mode) => (
                     <button
                       key={mode.value}
@@ -1520,14 +1397,25 @@ export default function AdminMonitorView({
                       className={`reassign-mode-option${selectedReassignMode === mode.value ? " selected" : ""}`}
                       onClick={() => setSelectedReassignMode(mode.value)}
                     >
-                      <strong>{mode.title}</strong>
-                      <span>{mode.description}</span>
+                      <strong>{t(mode.title)}</strong>
+                      <span>{t(mode.description)}</span>
                     </button>
                   ))}
                 </div>
               </div>
+              {selectedReassignMode === "TEMPORARY" ? (
+                <div className="field">
+                  <span>{t("Teaching replacement date")}: {formatAttendanceDate(selectedReassignDate)}</span>
+                  <button type="button" className="inline-text-action" onClick={() => setShowReassignDates((value) => !value)}>{t("Change date")}</button>
+                  {showReassignDates ? (
+                    <select aria-label={t("Teaching replacement date")} value={selectedReassignDate} onChange={(event) => setSelectedReassignDate(event.target.value)}>
+                      {upcomingTeachingDates(selectedClassTeacher.classItem.day_of_week).map((date) => <option key={date} value={date}>{formatAttendanceWeekday(date, language)} - {formatAttendanceDate(date)}</option>)}
+                    </select>
+                  ) : null}
+                </div>
+              ) : null}
               <label className="field">
-                <span>Reassign to</span>
+                <span>{t("Reassign to")}</span>
                 <select
                   value={selectedReassignTeacherId}
                   onChange={(event) => setSelectedReassignTeacherId(event.target.value)}
@@ -1540,7 +1428,7 @@ export default function AdminMonitorView({
                 </select>
               </label>
               {classTeacherSuggestions.length === 0 ? (
-                <p className="subtle">No eligible teachers found for this class.</p>
+                <p className="subtle">{t("No eligible teachers found for this class.")}</p>
               ) : null}
             </div>
           ) : null}
@@ -1550,7 +1438,7 @@ export default function AdminMonitorView({
               <>
                 {selectedClassTeacher.assignmentMode === "TEMPORARY" ? (
                   <>
-                    <p className="subtle floating-panel-action-note">Temporary assignments return to the original teacher tomorrow.</p>
+                    <p className="subtle floating-panel-action-note">{t("For the selected teaching date only.")}</p>
                     <button
                       type="button"
                       className="table-action-button table-action-button-muted"
@@ -1560,8 +1448,8 @@ export default function AdminMonitorView({
                       onClick={handleRestorePermanentClassTeacher}
                     >
                       {pendingAction === `class-teacher-restore-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
-                        ? "Restoring..."
-                        : "Restore permanent"}
+                        ? t("Restoring...")
+                        : t("Restore permanent")}
                     </button>
                   </>
                 ) : (
@@ -1571,12 +1459,10 @@ export default function AdminMonitorView({
                     disabled={pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}`}
                     onClick={handleRemoveClassTeacher}
                   >
-                    {pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}` ? "Removing..." : "Remove"}
+                    {pendingAction === `class-teacher-remove-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.teacherId}` ? t("Removing...") : t("Remove")}
                   </button>
                 )}
-                <button type="button" className="table-action-button" onClick={openReassignClassTeacher}>
-                  Reassign
-                </button>
+                <button type="button" className="table-action-button" onClick={openReassignClassTeacher}>{t("Reassign")}{" "}</button>
               </>
             ) : (
               <>
@@ -1590,16 +1476,14 @@ export default function AdminMonitorView({
                   onClick={handleReassignClassTeacher}
                 >
                   {pendingAction === `class-teacher-reassign-${selectedClassTeacher.classItem.class_id}-${selectedClassTeacher.originalTeacherId || selectedClassTeacher.teacherId}`
-                    ? "Reassigning..."
-                    : "Save reassign"}
+                    ? t("Reassigning...")
+                    : t("Save reassign")}
                 </button>
                 <button
                   type="button"
                   className="table-action-button table-action-button-muted"
                   onClick={() => setClassTeacherAction("manage")}
-                >
-                  Back
-                </button>
+                >{t("Back")}{" "}</button>
               </>
             )}
           </div>
@@ -1608,8 +1492,8 @@ export default function AdminMonitorView({
 
       {selectedSuggestionClass ? (
         <FloatingPanel
-          eyebrow="Replacement Suggestions"
-          title={`${selectedSuggestionClass.center_label || selectedSuggestionClass.center_id} | ${selectedSuggestionClass.day_of_week} ${formatTimeValue(selectedSuggestionClass.start_time)} - ${formatTimeValue(selectedSuggestionClass.end_time)}`}
+          eyebrow={t("Replacement Suggestions")}
+          title={`${selectedSuggestionClass.center_label || selectedSuggestionClass.center_id} | ${formatAttendanceDayCode(selectedSuggestionClass.day_of_week, language)} ${formatTimeValue(selectedSuggestionClass.start_time)} - ${formatTimeValue(selectedSuggestionClass.end_time)}`}
           titleId="replacement-suggestions-title"
           onClose={() => {
             setSelectedSuggestionClass(null);
@@ -1618,13 +1502,13 @@ export default function AdminMonitorView({
         >
           <div className="floating-panel-section">
             <div className="replacement-selection-summary">
-              <span className="subtle">Select up to {selectedClassAvailableTeacherSlots} teachers</span>
-              <strong>{selectedSuggestionTeacherIds.length}/{selectedClassAvailableTeacherSlots} selected</strong>
+              <span className="subtle">{t("Select up to")}{" "}{selectedClassAvailableTeacherSlots}{" "}{t("teachers")}</span>
+              <strong>{selectedSuggestionTeacherIds.length}/{selectedClassAvailableTeacherSlots}{" "}{t("selected")}</strong>
             </div>
           </div>
 
           {selectedClassSuggestions.length === 0 ? (
-            <p className="subtle">No eligible teachers found.</p>
+            <p className="subtle">{t("No eligible teachers found.")}</p>
           ) : (
             <div className="replacement-suggestions replacement-panel-suggestions">
               {selectedClassSuggestions.map((suggestion) => {
@@ -1659,14 +1543,11 @@ export default function AdminMonitorView({
                         >
                           {suggestion.teacher_id} - {suggestion.name}
                         </button>
-                        <span className="subtle">
-                          Final {suggestion.final_score.toFixed(4)} | ELO {suggestion.normalized_score.toFixed(4)} | Education {suggestion.normalized_education_score.toFixed(4)}
+                        <span className="subtle">{t("Final")}{" "}{suggestion.final_score.toFixed(4)}{" "}{t("| ELO")}{" "}{suggestion.normalized_score.toFixed(4)}{" "}{t("| Education")}{" "}{suggestion.normalized_education_score.toFixed(4)}
                         </span>
-                        <span className="subtle">
-                          Center match {suggestion.center_match ? "Yes" : "No"} | Time match {suggestion.time_match ? "Yes" : "No"}
+                        <span className="subtle">{t("Center match")}{" "}{suggestion.center_match ? t("Yes") : t("No")}{" "}{t("| Time match")}{" "}{suggestion.time_match ? t("Yes") : t("No")}
                         </span>
-                        <span className="subtle">
-                          Slots {suggestion.assigned_slots_that_day}/{suggestion.max_slots_per_day}
+                        <span className="subtle">{t("Slots")}{" "}{suggestion.assigned_slots_that_day}/{suggestion.max_slots_per_day}
                         </span>
                       </span>
                     </div>
@@ -1683,7 +1564,7 @@ export default function AdminMonitorView({
               disabled={selectedSuggestionTeacherIds.length === 0 || pendingAction.startsWith(`assign-${selectedSuggestionClass.class_id}-`)}
               onClick={assignSelectedSuggestions}
             >
-              {pendingAction.startsWith(`assign-${selectedSuggestionClass.class_id}-`) ? "Assigning..." : "Assign selected"}
+              {pendingAction.startsWith(`assign-${selectedSuggestionClass.class_id}-`) ? t("Assigning...") : t("Assign selected")}
             </button>
           </div>
         </FloatingPanel>
@@ -1691,43 +1572,43 @@ export default function AdminMonitorView({
 
       {selectedLeaveRequest ? (
         <FloatingPanel
-          eyebrow="Leave Request"
+          eyebrow={t("Leave Request")}
           title={selectedLeaveRequest.request_id}
           titleId="leave-request-info-title"
           onClose={() => setSelectedLeaveRequest(null)}
         >
                 <div className="floating-panel-grid">
                   <div>
-                    <p className="subtle">Teacher</p>
+                    <p className="subtle">{t("Teacher")}</p>
                     <strong>{formatValue(selectedLeaveRequest.teacher_name)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Class</p>
+                    <p className="subtle">{t("Class")}</p>
                     <strong>{formatValue(selectedLeaveRequest.class_id)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Center</p>
+                    <p className="subtle">{t("Center")}</p>
                     <strong>{formatValue(selectedLeaveRequest.center_id)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Class Day</p>
-                    <strong>{formatValue(selectedLeaveRequest.class_day_of_week)}</strong>
+                    <p className="subtle">{t("Class Day")}</p>
+                    <strong>{formatAttendanceDayCode(selectedLeaveRequest.class_day_of_week, language)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Request Date</p>
+                    <p className="subtle">{t("Request Date")}</p>
                     <strong>{formatValue(selectedLeaveRequest.request_date)}</strong>
                   </div>
                 </div>
 
                 <div className="floating-panel-section">
-                  <p className="subtle">Reason</p>
+                  <p className="subtle">{t("Reason")}</p>
                   <div className="floating-panel-reason-box">
                     <p>{formatValue(selectedLeaveRequest.reason)}</p>
                   </div>
                 </div>
 
                 <div className="floating-panel-section floating-panel-status-row">
-                  <p className="subtle">Status</p>
+                  <p className="subtle">{t("Status")}</p>
                   <StatusPill value={selectedLeaveRequest.status} />
                 </div>
 
@@ -1739,7 +1620,7 @@ export default function AdminMonitorView({
                       disabled={pendingAction === `approve-${selectedLeaveRequest.request_id}`}
                       onClick={() => onApproveLeaveRequest(selectedLeaveRequest.request_id)}
                     >
-                      {pendingAction === `approve-${selectedLeaveRequest.request_id}` ? "Approving..." : "Approve"}
+                      {pendingAction === `approve-${selectedLeaveRequest.request_id}` ? t("Approving...") : t("Approve")}
                     </button>
                   ) : null}
                   {selectedLeaveRequest.status === "REQUESTED" ? (
@@ -1749,7 +1630,7 @@ export default function AdminMonitorView({
                       disabled={pendingAction === `reject-${selectedLeaveRequest.request_id}`}
                       onClick={() => onRejectLeaveRequest(selectedLeaveRequest.request_id)}
                     >
-                      {pendingAction === `reject-${selectedLeaveRequest.request_id}` ? "Rejecting..." : "Reject"}
+                      {pendingAction === `reject-${selectedLeaveRequest.request_id}` ? t("Rejecting...") : t("Reject")}
                     </button>
                   ) : null}
                 </div>
@@ -1758,26 +1639,26 @@ export default function AdminMonitorView({
 
       {selectedSuggestionTeacher ? (
         <FloatingPanel
-          eyebrow="Teacher Contact"
+          eyebrow={t("Teacher Contact")}
           title={`${selectedSuggestionTeacher.teacher_id} - ${selectedSuggestionTeacher.name}`}
           titleId="suggestion-teacher-title"
           onClose={() => setSelectedSuggestionTeacher(null)}
         >
                 <div className="floating-panel-grid">
                   <div>
-                    <p className="subtle">Phone</p>
+                    <p className="subtle">{t("Phone")}</p>
                     <strong>{formatValue(selectedSuggestionTeacher.contact)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Personal Email</p>
+                    <p className="subtle">{t("Personal Email")}</p>
                     <strong>{formatValue(selectedSuggestionTeacher.email)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">ELO</p>
+                    <p className="subtle">{t("ELO")}</p>
                     <strong>{formatValue(selectedSuggestionTeacher.elo)}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Education Score</p>
+                    <p className="subtle">{t("Education Score")}</p>
                     <strong>{formatValue(selectedSuggestionTeacher.education_score)}</strong>
                   </div>
                 </div>
@@ -1786,7 +1667,7 @@ export default function AdminMonitorView({
 
       {selectedAvatarTeacher ? (
         <FloatingPanel
-          eyebrow="Teacher Avatar"
+          eyebrow={t("Teacher Avatar")}
           title={`${selectedAvatarTeacher.teacher_id} - ${selectedAvatarTeacher.name}`}
           titleId="teacher-avatar-title"
           onClose={() => setSelectedAvatarTeacher(null)}
@@ -1808,14 +1689,14 @@ export default function AdminMonitorView({
                   disabled={pendingAction === `teacher-avatar-delete-${selectedAvatarTeacher.teacher_id}`}
                   onClick={handleDeleteTeacherAvatar}
                 >
-                  {pendingAction === `teacher-avatar-delete-${selectedAvatarTeacher.teacher_id}` ? "Deleting..." : "Delete"}
+                  {pendingAction === `teacher-avatar-delete-${selectedAvatarTeacher.teacher_id}` ? t("Deleting...") : t("Delete")}
                 </button>
               ) : null}
             </div>
             <div className="teacher-avatar-verification-copy">
-              <p className="subtle">Teacher ID</p>
+              <p className="subtle">{t("Teacher ID")}</p>
               <strong>{formatValue(selectedAvatarTeacher.teacher_id)}</strong>
-              <p className="subtle">Name</p>
+              <p className="subtle">{t("Name")}</p>
               <strong>{formatValue(selectedAvatarTeacher.name)}</strong>
             </div>
           </div>
@@ -1824,7 +1705,7 @@ export default function AdminMonitorView({
 
       {selectedTeacherDetail ? (
         <FloatingPanel
-          eyebrow="Teacher Detail"
+          eyebrow={t("Teacher Detail")}
           title={`${selectedTeacherDetail.user_code || selectedTeacherDetail.teacher_id} - ${selectedTeacherDetail.name}`}
           titleId="teacher-detail-title"
           onClose={() => setSelectedTeacherDetail(null)}
@@ -1845,27 +1726,27 @@ export default function AdminMonitorView({
 
           <div className="floating-panel-grid score-summary-grid">
             <div>
-              <p className="subtle">Assigned Classes</p>
+              <p className="subtle">{t("Assigned Classes")}</p>
               <strong>{selectedTeacherAssignedClasses.length}</strong>
             </div>
             <div>
-              <p className="subtle">Today Classes</p>
+              <p className="subtle">{t("Today Classes")}</p>
               <strong>{selectedTeacherTodayRows.length}</strong>
             </div>
             <div>
-              <p className="subtle">Checked In Today</p>
+              <p className="subtle">{t("Checked In Today")}</p>
               <strong>{selectedTeacherTodayRows.filter((item) => item.checked_at).length}</strong>
             </div>
             <div>
-              <p className="subtle">Checked Out Today</p>
+              <p className="subtle">{t("Checked Out Today")}</p>
               <strong>{selectedTeacherTodayRows.filter((item) => item.check_out_at).length}</strong>
             </div>
           </div>
 
           <div className="floating-panel-section">
-            <p className="subtle">Today attendance status</p>
+            <p className="subtle">{t("Today attendance status")}</p>
             {selectedTeacherTodayRows.length === 0 ? (
-              <p className="subtle">No classes scheduled today.</p>
+              <p className="subtle">{t("No classes scheduled today.")}</p>
             ) : (
               <div className="teacher-detail-session-list">
                 {selectedTeacherTodayRows.map((item) => (
@@ -1878,14 +1759,14 @@ export default function AdminMonitorView({
                     </div>
                     <div className="teacher-detail-session-status-grid">
                       <div className="teacher-detail-session-status">
-                        <span className="subtle">Check-in</span>
+                        <span className="subtle">{t("Check-in")}</span>
                         <StatusPill value={item.attendance_status || "PENDING"} />
-                        <span className="subtle">{formatClockTimeValue(item.checked_at)}</span>
+                        <span className="subtle">{formatAttendanceTime(item.checked_at)}</span>
                       </div>
                       <div className="teacher-detail-session-status">
-                        <span className="subtle">Checkout</span>
+                        <span className="subtle">{t("Checkout")}</span>
                         <StatusPill value={item.checkout_status || "-"} />
-                        <span className="subtle">{formatClockTimeValue(item.check_out_at)}</span>
+                        <span className="subtle">{formatAttendanceTime(item.check_out_at)}</span>
                       </div>
                     </div>
                   </article>
@@ -1898,14 +1779,14 @@ export default function AdminMonitorView({
 
       {selectedProfileEdit ? (
         <FloatingPanel
-          eyebrow="Teacher Profile"
+          eyebrow={t("Teacher Profile")}
           title={`${profileEditMeta[selectedProfileEdit.field].label} | ${selectedProfileEdit.teacher.teacher_id} - ${selectedProfileEdit.teacher.name}`}
           titleId="teacher-profile-edit-title"
           onClose={() => setSelectedProfileEdit(null)}
         >
           <div className="floating-panel-grid score-summary-grid">
             <div>
-              <p className="subtle">Current {profileEditMeta[selectedProfileEdit.field].label}</p>
+              <p className="subtle">{t("Current")}{" "}{profileEditMeta[selectedProfileEdit.field].label}</p>
               <strong>{formatValue(selectedProfileEdit.teacher[selectedProfileEdit.field])}</strong>
             </div>
           </div>
@@ -1920,17 +1801,17 @@ export default function AdminMonitorView({
               />
             </label>
             <button className="table-action-button" type="submit" disabled={pendingAction === `teacher-profile-${selectedProfileEdit.teacher.teacher_id}`}>
-              {pendingAction === `teacher-profile-${selectedProfileEdit.teacher.teacher_id}` ? "Saving..." : "Save"}
+              {pendingAction === `teacher-profile-${selectedProfileEdit.teacher.teacher_id}` ? t("Saving...") : t("Save")}
             </button>
           </form>
 
-          <div className={`status score-panel-status ${profilePanelStatus.kind}`.trim()}>{profilePanelStatus.message}</div>
+          <div className={`status score-panel-status ${profilePanelStatus.kind}`.trim()}>{t(profilePanelStatus.message)}</div>
         </FloatingPanel>
       ) : null}
 
       {selectedScoreTeacher ? (
         <FloatingPanel
-          eyebrow="Teacher Score"
+          eyebrow={t("Teacher Score")}
           title={`${selectedScoreTeacher.teacher_id} - ${selectedScoreTeacher.name}`}
           titleId="teacher-score-title"
           onClose={() => setSelectedScoreTeacher(null)}
@@ -1946,28 +1827,28 @@ export default function AdminMonitorView({
               <>
                 <div className="floating-panel-grid score-summary-grid">
                   <div>
-                    <p className="subtle">Monthly Score</p>
+                    <p className="subtle">{t("Monthly Score")}</p>
                     <strong>{score.score}/{score.max_score}</strong>
                   </div>
                   <div>
-                    <p className="subtle">Events</p>
+                    <p className="subtle">{t("Events")}</p>
                     <strong>{score.event_count}</strong>
                   </div>
                 </div>
 
-                <form className="auth-form compact score-panel-form" onSubmit={handleScoreSubmit}>
+                <form className="auth-form compact score-panel-form" onSubmit={handleScoreSubmit} noValidate>
                   <label className="field">
-                    <span>Delta</span>
+                    <span>{t("Delta")}</span>
                     <input
                       value={scoreForm.delta}
                       onChange={(event) => setScoreForm((current) => ({ ...current, delta: event.target.value }))}
                       type="number"
-                      placeholder="-5 or 3"
+                      placeholder={t("-5 or 3")}
                       required
                     />
                   </label>
                   <label className="field">
-                    <span>Reason</span>
+                    <span>{t("Reason")}</span>
                     <input
                       value={scoreForm.reason}
                       onChange={(event) => setScoreForm((current) => ({ ...current, reason: event.target.value }))}
@@ -1976,15 +1857,14 @@ export default function AdminMonitorView({
                     />
                   </label>
                   <label className="field">
-                    <span>Evidence Text</span>
+                    <span>{t("Evidence Text")}</span>
                     <textarea
                       value={scoreForm.evidence_text}
                       onChange={(event) => setScoreForm((current) => ({ ...current, evidence_text: event.target.value }))}
-                      required
                     />
                   </label>
                   <label className="field">
-                    <span>Evidence URL</span>
+                    <span>{t("Evidence URL")}</span>
                     <input
                       value={scoreForm.evidence_url}
                       onChange={(event) => setScoreForm((current) => ({ ...current, evidence_url: event.target.value }))}
@@ -1992,33 +1872,33 @@ export default function AdminMonitorView({
                     />
                   </label>
                   <button className="table-action-button" type="submit" disabled={pendingAction === `score-${selectedScoreTeacher.teacher_id}`}>
-                    {pendingAction === `score-${selectedScoreTeacher.teacher_id}` ? "Saving..." : "Save score event"}
+                    {pendingAction === `score-${selectedScoreTeacher.teacher_id}` ? t("Saving...") : t("Save score event")}
                   </button>
                 </form>
 
-                <div className={`status score-panel-status ${scorePanelStatus.kind}`.trim()}>{scorePanelStatus.message}</div>
+                <div className={`status score-panel-status ${scorePanelStatus.kind || actionStatus.kind}`.trim()} role="status" aria-live="polite">
+                  {t(scorePanelStatus.message || (actionStatus.kind === "error" ? actionStatus.message : ""))}
+                </div>
 
                 <div className="floating-panel-section score-history-section">
                   <button type="button" className="score-history-toggle" onClick={toggleScoreHistory}>
-                    {isScoreHistoryVisible ? "Hide Score History" : "Show Score History"}
+                    {isScoreHistoryVisible ? t("Hide Score History") : t("Show Score History")}
                   </button>
                   {isScoreHistoryVisible ? (
                     isScoreEventsLoading ? (
-                      <p className="subtle">Loading score events...</p>
+                      <p className="subtle">{t("Loading score events...")}</p>
                     ) : scoreEvents.length === 0 ? (
-                      <p className="subtle">No score events this month.</p>
+                      <p className="subtle">{t("No score events this month.")}</p>
                     ) : (
                       <div className="score-event-list">
                         {scoreEvents.map((item) => (
                           <article className="score-event-item" key={item.event_id}>
-                            <strong>{item.delta > 0 ? "+" : ""}{item.delta} points</strong>
-                            <span>{formatDateTimeValue(item.created_at)}</span>
+                            <strong>{item.delta > 0 ? "+" : ""}{item.delta}{" "}{t("points")}</strong>
+                            <span>{formatDateTimeValue(item.created_at, language)}</span>
                             <p>{item.reason}</p>
                             <p className="subtle">{item.evidence_text}</p>
                             {item.evidence_url ? (
-                              <a className="inline-link" href={item.evidence_url} target="_blank" rel="noreferrer">
-                                View evidence
-                              </a>
+                              <a className="inline-link" href={item.evidence_url} target="_blank" rel="noreferrer">{t("View evidence")}{" "}</a>
                             ) : null}
                           </article>
                         ))}
@@ -2038,12 +1918,12 @@ export default function AdminMonitorView({
 
       {role === "developer" ? (
         <DataTable
-          title="Managers"
+          title={t("Managers")}
           columns={[
-            { key: "user_code", label: "User Code" },
+            { key: "user_code", label: t("User Code") },
             {
               key: "display_name",
-              label: "Display Name",
+              label: t("Display Name"),
               render: (row) => (
                 <div className="user-inline-cell">
                   <UserAvatar
@@ -2057,11 +1937,11 @@ export default function AdminMonitorView({
                 </div>
               ),
             },
-            { key: "role", label: "Role" },
-            { key: "teacher_id", label: "Teacher ID" },
+            { key: "role", label: t("Role"), render: (row) => getRoleTitle(row.role, t) },
+            { key: "teacher_id", label: t("Teacher ID") },
           ]}
           rows={managerUsers}
-          emptyMessage="No manager accounts found."
+          emptyMessage={t("No manager accounts found.")}
         />
       ) : null}
     </>

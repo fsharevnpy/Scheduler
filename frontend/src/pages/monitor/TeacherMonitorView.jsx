@@ -8,7 +8,7 @@ import { useLanguage } from "../../lib/i18n.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
-  formatAttendanceTime, getAttendanceDateKey, getAttendanceDayCode,
+  formatAttendanceTime, getAttendanceDateKey, formatAttendanceWeekday,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -57,7 +57,7 @@ export default function TeacherMonitorView({
   onCreateLeaveRequest,
   onCancelLeaveRequest,
 }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
   const [isAttendancePanelOpen, setIsAttendancePanelOpen] = useState(false);
   const [attendancePanelAction, setAttendancePanelAction] = useState("check-in");
@@ -229,7 +229,7 @@ export default function TeacherMonitorView({
             <p className="eyebrow">{t("attendance")}</p>
             <h2>{t("attendanceRecords")}</h2>
             <p className="subtle">
-              {t("todaySummary", { date: todayLabel, day: getAttendanceDayCode(todayKey), count: todayAttendanceRows.length })}
+              {t("todaySummary", { date: todayLabel, day: formatAttendanceWeekday(todayKey, language), count: todayAttendanceRows.length })}
             </p>
           </div>
         </div>
@@ -310,6 +310,7 @@ export default function TeacherMonitorView({
           title={t("attendanceRecords")}
           columns={[
             { key: "attendance_date", label: t("attendanceDate"), render: (row) => formatAttendanceDate(row.attendance_date) },
+            { key: "weekday", label: t("Weekday"), render: (row) => formatAttendanceWeekday(row.attendance_date, language) },
             { key: "class_id", label: t("classId") },
             {
               key: "expected_shift",
@@ -485,6 +486,7 @@ export default function TeacherMonitorView({
           {attendanceError ? <div className="status error">{attendanceError}</div> : null}
 
           <div className="floating-panel-actions">
+            {actionStatus.kind === "error" ? <div className="status error" role="alert">{t(actionStatus.message)}</div> : null}
             <button
               type="button"
               className="table-action-button"

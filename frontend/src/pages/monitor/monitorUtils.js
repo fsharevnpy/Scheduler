@@ -64,7 +64,7 @@ export function formatTimeDraft(value) {
   return `0${digits[0]}:${digits.slice(1, 3)}`;
 }
 
-export function formatDateTimeValue(value) {
+export function formatDateTimeValue(value, language) {
   if (!value) {
     return "-";
   }
@@ -74,7 +74,7 @@ export function formatDateTimeValue(value) {
     return formatValue(value);
   }
 
-  return date.toLocaleString();
+  return date.toLocaleString(language === "vi" ? "vi-VN" : language === "en" ? "en-GB" : undefined);
 }
 
 export function formatClockTimeValue(value) {

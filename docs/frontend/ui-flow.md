@@ -138,6 +138,11 @@ Suggested content:
 - New automatic and manual events save class ID, center ID and scheduled start/end times.
   Older records are not backfilled from today's schedule: unknown historical shifts
   display `-`. Deleted classes keep their saved identity on new records.
+- New check-ins additionally save `session_block`: the selected class and forward
+  contiguous classes assigned to the same teacher, at the same center and weekday.
+  Checkouts save `check_in_record_id` and use this captured block even if the schedule
+  subsequently changes. History expands the linked pair into one row per saved class,
+  sharing the actual in/out times. Weekdays follow the selected English/Vietnamese language.
 - `GET /attendance-records` remains an array response. `limit` defaults to 200 (maximum 500);
   `before_checked_at` (timezone-aware) and `before_record_id` must be supplied together.
   Ordering is descending timestamp, then UUID. The monitor follows every page before
@@ -153,7 +158,7 @@ Validation:
 npm test
 npm run build
 # From backend (with its requirements installed):
-python -m unittest discover -s tests -p test_attendance_history.py
+python -m unittest discover -s tests -p "test_attendance*.py"
 ```
 
 For a database-free browser regression, start the Vite dev server and open
@@ -162,6 +167,56 @@ forward: each date must contain exactly one row, including the unmatched event.
 The teacher's History must contain three rows with both check-in and checkout on
 the latest historical row. On the pagination fixture, move to page 2 and refresh
 rows: it must stay on page 2. This fixture is not included in the production build.
+
+## Teacher attendance statistics and monthly reports
+
+- Managers and developers open **Statistics & reports** from the attendance section.
+  Teachers cannot access either report API.
+- Choose one teacher or all teachers, then a calendar month or a custom inclusive
+  date range of up to 366 days. The default is the previous month in Vietnam time.
+- **View statistics** previews a summary and expandable detail for each teacher.
+  **Download Excel** uses the same teacher, date range and language. The workbook
+  contains a summary sheet and one detail sheet per teacher, including weekdays,
+  saved shift times, actual in/out times, results and review notes.
+- Counts are evidence-based, not an estimate from the current assignment:
+  - **Recorded sessions** = confirmed sessions + sessions requiring review.
+  - **Confirmed sessions** require saved shift times, valid/manual attendance and a
+    linked in/out pair covering the entire shift. Repeated records do not double count
+    a teacher/date/class. Confirmed minutes use the scheduled duration, not overtime.
+  - **Sessions to review** include late arrival, early departure, missing in/out,
+    invalid location or missing historical linkage. These are warnings, not absences,
+    and remain separate from confirmed totals.
+  - **Unverified events** lack sufficient historical shift evidence or have invalid
+    saved intervals. They are not silently treated as taught or absent.
+- Example: 07:00-08:30 and 08:30-11:00, with one linked 07:00/11:00 pair, count as
+  **two confirmed sessions / 240 minutes**. Arriving at 07:05 makes only the first
+  session reviewable; leaving at 10:30 makes only the second reviewable.
+- Existing events are not retrospectively linked across different classes using
+  today's schedule. An explicit link plus an individual saved shift can verify that
+  single class, but cannot invent an older double shift.
+- Endpoints: `GET /attendance-records/report` (JSON) and
+  `GET /attendance-records/export` (XLSX). Both accept `start_date`, `end_date`,
+  optional `teacher_id`, and `language=vi|en`. Filtering uses Vietnam day boundaries.
+- Manager controls, status labels, weekdays, report labels and workbook headings
+  follow the selected language. Names, identifiers and user-entered notes are not
+  translated. Action confirmations are translated at render time when switching language.
+- Changing report filters or closing the panel cancels the pending request, preventing
+  old results from overwriting a new selection.
+- For database-free report UI checks, open
+  `/tests/attendance-browser.html?reportFixture`. It supplies test responses, including
+  a mock download (not a real workbook). `globalThis.attendanceReportRequests` records
+  preview/export filters; `globalThis.attendanceReportDelay` allows cancellation checks.
+  Real workbook contents and double-shift calculations are covered by backend tests.
+- Rebuild both services after updating the source:
+
+  ```powershell
+  docker compose up -d --build backend frontend
+  docker compose restart gateway
+  ```
+
+  Nullable snapshot/link columns are added through the existing schema initialization.
+  Do not remove database volumes. Tests mock database access; a real PostgreSQL
+  integration check is still required in the deployment environment.
 
 ## Logout Flow
 

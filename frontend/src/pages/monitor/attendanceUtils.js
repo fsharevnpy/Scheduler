@@ -21,6 +21,19 @@ export function formatAttendanceDate(dateKey) {
   return dateKey ? dateKey.split("-").reverse().join("/") : "-";
 }
 
+export function formatAttendanceWeekday(dateKey, language) {
+  return dateKey ? new Intl.DateTimeFormat(language === "vi" ? "vi-VN" : "en-GB", {
+    timeZone: TIME_ZONE, weekday: "long",
+  }).format(new Date(`${dateKey}T12:00:00+07:00`)) : "-";
+}
+
+export function formatAttendanceDayCode(code, language) {
+  const days = language === "vi"
+    ? ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"]
+    : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[DAY_CODES.indexOf(code)] || code;
+}
+
 export function formatAttendanceTime(value) {
   return value ? clockFormatter.format(new Date(value)) : "-";
 }
@@ -67,12 +80,47 @@ export function buildAttendanceHistoryRows(records) {
   const groups = new Map();
   const seen = new Set();
   const rows = [];
+  const linkedOuts = new Map();
+  for (const record of records) {
+    if (record.event_type === "CHECK_OUT" && record.check_in_record_id) {
+      if (!linkedOuts.has(record.check_in_record_id)) linkedOuts.set(record.check_in_record_id, []);
+      linkedOuts.get(record.check_in_record_id).push(record);
+    }
+  }
+  for (const checkIn of records) {
+    if (checkIn.event_type !== "CHECK_IN") continue;
+    const shifts = checkIn.session_block?.length ? checkIn.session_block
+      : linkedOuts.has(checkIn.record_id) && (checkIn.session_class_id || checkIn.class_id) ? [{
+        class_id: checkIn.session_class_id || checkIn.class_id, center_id: checkIn.session_center_id,
+        start_time: checkIn.session_start_time, end_time: checkIn.session_end_time,
+      }] : [];
+    if (!shifts.length) continue;
+    const checkOut = latest((linkedOuts.get(checkIn.record_id) || []).filter((candidate) =>
+      identity(candidate) === identity(checkIn)
+      && getAttendanceDateKey(candidate.checked_at) === getAttendanceDateKey(checkIn.checked_at)
+      && new Date(candidate.checked_at) >= new Date(checkIn.checked_at)));
+    seen.add(checkIn.record_id);
+    if (checkOut) seen.add(checkOut.record_id);
+    const date = getAttendanceDateKey(checkIn.checked_at);
+    for (const [index, shift] of shifts.entries()) {
+      const row = eventRow(rowKey(date, identity(checkIn), shift.class_id), checkIn, checkOut);
+      const enteredLate = new Date(checkIn.checked_at) > new Date(`${date}T${shift.start_time}+07:00`);
+      const leftEarly = checkOut && new Date(checkOut.checked_at) < new Date(`${date}T${shift.end_time}+07:00`);
+      rows.push({
+        ...row, class_id: shift.class_id, center_id: shift.center_id,
+        nearest_center_name: shift.center_name || row.nearest_center_name,
+        start_time: shift.start_time, end_time: shift.end_time,
+        attendance_status: enteredLate ? "LATE" : index === 0 ? checkIn.attendance_status : "COVERED",
+        checkout_status: leftEarly ? "LEFT_EARLY" : checkOut && index < shifts.length - 1 ? "CONTINUED" : row.checkout_status,
+      });
+    }
+  }
   for (const record of records) {
     if (seen.has(record.record_id)) continue;
     seen.add(record.record_id);
     const dateKey = getAttendanceDateKey(record.checked_at);
     const classId = record.session_class_id || record.class_id;
-    if (!classId || !identity(record)) {
+    if (!classId || !identity(record) || record.check_in_record_id) {
       rows.push(eventRow(`event:${record.record_id}`, record.event_type === "CHECK_OUT" ? null : record,
         record.event_type === "CHECK_OUT" ? record : null));
       continue;
@@ -91,7 +139,12 @@ export function buildAttendanceHistoryRows(records) {
       rows.push(eventRow(key, checkIn, checkOut));
     }
   }
-  return rows.sort((a, b) => b.attendance_date.localeCompare(a.attendance_date)
+  const unique = new Map();
+  for (const row of rows) {
+    const existing = unique.get(row.id);
+    if (!existing || new Date(row.checked_at || row.check_out_at) >= new Date(existing.checked_at || existing.check_out_at)) unique.set(row.id, row);
+  }
+  return [...unique.values()].sort((a, b) => b.attendance_date.localeCompare(a.attendance_date)
     || String(a.checked_at || a.check_out_at).localeCompare(String(b.checked_at || b.check_out_at))
     || a.id.localeCompare(b.id));
 }

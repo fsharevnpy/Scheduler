@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState } from "react";
+import { managerVietnamese, managerEnglish } from "./managerTranslations.js";
 
 const LANGUAGE_STORAGE_KEY = "scheduler_language";
 const SUPPORTED_LANGUAGES = new Set(["vi", "en"]);
@@ -11,10 +12,10 @@ const translations = {
     approving: "Đang duyệt...",
     assignedClasses: "Ca đã nhận",
     cancel: "Hủy",
-    checkIn: "Check-in",
-    checkOut: "Check-out",
-    checkedInToday: "Đã check-in hôm nay",
-    checkedOutToday: "Đã check-out hôm nay",
+    checkIn: "Giờ vào",
+    checkOut: "Giờ ra",
+    checkedInToday: "Đã ghi giờ vào hôm nay",
+    checkedOutToday: "Đã ghi giờ ra hôm nay",
     class: "Ca dạy",
     classDay: "Thứ",
     closeForgotPassword: "Đóng quên mật khẩu",
@@ -60,7 +61,7 @@ const translations = {
     password: "Mật khẩu",
     passwordChanged: "Đổi mật khẩu thành công.",
     passwordHelp: "Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
-    passwordResetCopy: "Yêu cầu đặt lại mật khẩu sẽ được quản lý hoặc developer xử lý nội bộ.",
+    passwordResetCopy: "Yêu cầu đặt lại mật khẩu sẽ được quản lý hoặc nhà phát triển xử lý nội bộ.",
     personalEmail: "Email cá nhân",
     phone: "Số điện thoại",
     previous: "Trước",
@@ -92,7 +93,7 @@ const translations = {
     reject: "Từ chối",
     rejecting: "Đang từ chối...",
     requestDate: "Ngày xin nghỉ",
-    resetRequestSent: "Đã gửi yêu cầu đặt lại mật khẩu. Vui lòng liên hệ quản lý hoặc developer.",
+    resetRequestSent: "Đã gửi yêu cầu đặt lại mật khẩu. Vui lòng liên hệ quản lý hoặc nhà phát triển.",
     restoringSession: "Đang khôi phục phiên đăng nhập...",
     role: "Vai trò",
     save: "Lưu",
@@ -103,7 +104,7 @@ const translations = {
     signIn: "Đăng nhập",
     signingIn: "Đang đăng nhập...",
     status: "Trạng thái",
-    systemDeveloper: "Developer hệ thống",
+    systemDeveloper: "Nhà phát triển hệ thống",
     teacher: "Giáo viên",
     teacherId: "Mã giáo viên",
     teacherProfileUpdated: "Hồ sơ giáo viên được cập nhật",
@@ -119,8 +120,8 @@ const translations = {
     attendanceRecords: "Lịch sử điểm danh",
     attendanceDate: "Ngày (UTC+7)",
     attendanceHistoryHelp: "Chỉ hiển thị sự kiện đã ghi nhận. Bản ghi cũ chưa lưu giờ ca hiển thị dấu gạch ngang; không suy ra vắng từ lịch hiện tại.",
-    checkoutLocationStatus: "Vị trí check-out",
-    attendanceStatus: "Trạng thái check-in",
+    checkoutLocationStatus: "Vị trí giờ ra",
+    attendanceStatus: "Trạng thái giờ vào",
     cancelling: "Đang hủy...",
     center: "Cơ sở",
     classId: "Mã ca",
@@ -349,7 +350,8 @@ export function LanguageProvider({ children }) {
         setLanguageState(safeLanguage);
       },
       t(key, values) {
-        const template = translations[language][key] || translations.en[key] || key;
+        const manager = language === "vi" ? managerVietnamese : managerEnglish;
+        const template = translations[language][key] || manager[key] || translations.en[key] || key;
         return interpolate(template, values);
       },
     }),
