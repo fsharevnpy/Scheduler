@@ -5,33 +5,14 @@ import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
 import { useLanguage } from "../../lib/i18n.jsx";
-import { formatClockTimeValue, formatTimeValue, formatValue } from "./monitorUtils.js";
+import { formatTimeValue, formatValue } from "./monitorUtils.js";
+import {
+  buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
+  formatAttendanceTime, getAttendanceDateKey, getAttendanceDayCode,
+} from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
-const WEEKDAY_BY_INDEX = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-
-function getDatetimeLocalValue(date = new Date()) {
-  const localTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localTime.toISOString().slice(0, 16);
-}
-
-function getLocalDateKey(date = new Date()) {
-  return getDatetimeLocalValue(date).slice(0, 10);
-}
-
-function getDayCode(date = new Date()) {
-  return WEEKDAY_BY_INDEX[date.getDay()];
-}
-
-function getTimeMinutes(value) {
-  const [hours, minutes] = String(formatTimeValue(value)).split(":").map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return 0;
-  }
-
-  return hours * 60 + minutes;
-}
 
 function filterLeaveRequestsByView(leaveRequests, view) {
   if (view === "active") {
@@ -43,110 +24,6 @@ function filterLeaveRequestsByView(leaveRequests, view) {
   }
 
   return leaveRequests;
-}
-
-function filterTeacherAttendanceByView(attendanceRecords, view) {
-  if (view === "current") {
-    return attendanceRecords.slice(0, 1);
-  }
-
-  if (view === "history") {
-    return attendanceRecords.slice(1);
-  }
-
-  return attendanceRecords;
-}
-
-function getFallbackAttendanceStatus(classItem, now) {
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const endMinutes = getTimeMinutes(classItem.end_time);
-
-  return currentMinutes > endMinutes ? "MISSED" : "PENDING";
-}
-
-function findContiguousClass(highlightedClasses, classItem, direction) {
-  return highlightedClasses.find((item) => {
-    if (item.class_id === classItem.class_id || item.center_id !== classItem.center_id || item.day_of_week !== classItem.day_of_week) {
-      return false;
-    }
-
-    return direction === "previous"
-      ? formatTimeValue(item.end_time) === formatTimeValue(classItem.start_time)
-      : formatTimeValue(item.start_time) === formatTimeValue(classItem.end_time);
-  });
-}
-
-function getClassBlock(highlightedClasses, classItem) {
-  let startClass = classItem;
-  let endClass = classItem;
-  let previousClass = findContiguousClass(highlightedClasses, startClass, "previous");
-  let nextClass = findContiguousClass(highlightedClasses, endClass, "next");
-
-  while (previousClass) {
-    startClass = previousClass;
-    previousClass = findContiguousClass(highlightedClasses, startClass, "previous");
-  }
-
-  while (nextClass) {
-    endClass = nextClass;
-    nextClass = findContiguousClass(highlightedClasses, endClass, "next");
-  }
-
-  return { startClass, endClass };
-}
-
-function buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today }) {
-  const todayKey = getLocalDateKey(today);
-  const todayDayCode = getDayCode(today);
-  const latestCheckInByClass = new Map();
-  const latestCheckOutByClass = new Map();
-
-  attendanceRecords.forEach((record) => {
-    if (!record.class_id || getLocalDateKey(new Date(record.checked_at)) !== todayKey) {
-      return;
-    }
-
-    const target = record.event_type === "CHECK_OUT" ? latestCheckOutByClass : latestCheckInByClass;
-    const current = target.get(record.class_id);
-    if (!current || new Date(record.checked_at) > new Date(current.checked_at)) {
-      target.set(record.class_id, record);
-    }
-  });
-
-  return highlightedClasses
-    .filter((classItem) => classItem.day_of_week === todayDayCode)
-    .map((classItem) => {
-      const { startClass, endClass } = getClassBlock(highlightedClasses, classItem);
-      const isBlockStart = classItem.class_id === startClass.class_id;
-      const isBlockEnd = classItem.class_id === endClass.class_id;
-      const directCheckInRecord = latestCheckInByClass.get(classItem.class_id);
-      const directCheckOutRecord = latestCheckOutByClass.get(classItem.class_id);
-      const blockStartCheckInRecord = latestCheckInByClass.get(startClass.class_id);
-      const blockEndCheckOutRecord = latestCheckOutByClass.get(endClass.class_id);
-      const checkInRecord = directCheckInRecord || (!isBlockStart ? blockStartCheckInRecord : null);
-      const checkOutRecord = directCheckOutRecord || (!isBlockEnd ? blockEndCheckOutRecord : null);
-
-      return {
-        record_id:
-          checkInRecord?.record_id ||
-          checkOutRecord?.record_id ||
-          `attendance-${todayKey}-${classItem.class_id}`,
-        checked_at: checkInRecord?.checked_at || null,
-        check_out_at: checkOutRecord?.checked_at || null,
-        nearest_center_name: checkInRecord?.nearest_center_name || checkOutRecord?.nearest_center_name || classItem.center_label || classItem.center_id,
-        status: checkInRecord?.status || "-",
-        attendance_status: checkInRecord
-          ? isBlockStart
-            ? checkInRecord.attendance_status
-            : "COVERED"
-          : getFallbackAttendanceStatus(classItem, today),
-        checkout_status: !isBlockEnd && checkInRecord ? "CONTINUED" : checkOutRecord?.attendance_status || (checkInRecord ? "PENDING" : "-"),
-        class_id: classItem.class_id,
-        start_time: classItem.start_time,
-        end_time: classItem.end_time,
-      };
-    })
-    .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)));
 }
 
 function getScoreBand(score) {
@@ -166,6 +43,7 @@ function getScoreBand(score) {
 }
 
 export default function TeacherMonitorView({
+  teacherId,
   highlightedClasses,
   attendanceRecords,
   leaveRequestManagers = [],
@@ -192,15 +70,9 @@ export default function TeacherMonitorView({
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
-    const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 0, 0);
-    const timeout = window.setTimeout(() => {
-      setCurrentDate(new Date());
-    }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 1000));
-
-    return () => window.clearTimeout(timeout);
-  }, [currentDate]);
+    const timer = window.setInterval(() => setCurrentDate(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const activeLeaveClassIds = useMemo(
     () =>
@@ -224,30 +96,19 @@ export default function TeacherMonitorView({
     creatableClasses.find((item) => item.class_id === selectedClassId) || creatableClasses[0] || null;
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
-  const classesById = useMemo(
-    () => new Map(highlightedClasses.map((item) => [item.class_id, item])),
-    [highlightedClasses],
-  );
+  const todayKey = getAttendanceDateKey(currentDate);
+  const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
   const todayAttendanceRows = useMemo(
-    () => buildTodayAttendanceRows({ attendanceRecords, highlightedClasses, today: currentDate }),
-    [attendanceRecords, currentDate, highlightedClasses],
+    () => buildCurrentAttendanceRows({ records: attendanceRecords, classes: highlightedClasses, now: currentDate, teacherId }),
+    [attendanceRecords, currentDate, highlightedClasses, teacherId],
   );
-  const visibleAttendanceRecords =
-    attendanceView === "current"
+  const visibleAttendanceRecords = useMemo(
+    () => attendanceView === "current"
       ? todayAttendanceRows
-      : filterTeacherAttendanceByView(attendanceRecords, attendanceView).map((record) => {
-          const classItem = classesById.get(record.class_id);
-          return {
-            ...record,
-            start_time: record.start_time || classItem?.start_time || "",
-            end_time: record.end_time || classItem?.end_time || "",
-          };
-        });
-  const todayLabel = currentDate.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+      : historicalAttendanceRows.filter((row) => attendanceView === "all" || row.attendance_date < todayKey),
+    [attendanceView, todayAttendanceRows, historicalAttendanceRows, todayKey],
+  );
+  const todayLabel = formatAttendanceDate(todayKey);
   const scoreValue = teacherScore?.score ?? 100;
   const scoreMax = teacherScore?.max_score ?? 110;
   const scoreBand = getScoreBand(scoreValue);
@@ -368,7 +229,7 @@ export default function TeacherMonitorView({
             <p className="eyebrow">{t("attendance")}</p>
             <h2>{t("attendanceRecords")}</h2>
             <p className="subtle">
-              {t("todaySummary", { date: todayLabel, day: getDayCode(currentDate), count: todayAttendanceRows.length })}
+              {t("todaySummary", { date: todayLabel, day: getAttendanceDayCode(todayKey), count: todayAttendanceRows.length })}
             </p>
           </div>
         </div>
@@ -442,10 +303,14 @@ export default function TeacherMonitorView({
           {actionStatus.message}
         </div>
         {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+        {attendanceView !== "current" ? <p className="subtle">{t("attendanceHistoryHelp")}</p> : null}
 
         <DataTable
+          key={attendanceView}
           title={t("attendanceRecords")}
           columns={[
+            { key: "attendance_date", label: t("attendanceDate"), render: (row) => formatAttendanceDate(row.attendance_date) },
+            { key: "class_id", label: t("classId") },
             {
               key: "expected_shift",
               label: t("expectedShift"),
@@ -454,20 +319,20 @@ export default function TeacherMonitorView({
                   ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
                   : "-",
             },
-            { key: "checked_at", label: t("checkIn"), render: (row) => formatClockTimeValue(row.checked_at) },
-            { key: "check_out_at", label: t("checkOut"), render: (row) => formatClockTimeValue(row.check_out_at) },
+            { key: "checked_at", label: t("checkIn"), render: (row) => formatAttendanceTime(row.checked_at) },
+            { key: "check_out_at", label: t("checkOut"), render: (row) => formatAttendanceTime(row.check_out_at) },
             {
               key: "nearest_center_name",
               label: t("location"),
               render: (row) =>
-                !row.checked_at || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
+                (!row.checked_at && !row.check_out_at) || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
                   ? row.nearest_center_name || t("nearestCenter")
                   : t("outsideValidArea"),
             },
             {
               key: "status",
               label: t("locationStatus"),
-              render: (row) => <StatusPill value={!row.checked_at || row.status === "-" ? "PENDING" : row.status || "PENDING"} />,
+              render: (row) => <StatusPill value={row.status === "-" ? "-" : row.status || "PENDING"} />,
             },
             {
               key: "attendance_status",
@@ -479,8 +344,14 @@ export default function TeacherMonitorView({
               label: t("checkOut"),
               render: (row) => <StatusPill value={row.checkout_status || "-"} />,
             },
+            {
+              key: "checkout_location_status",
+              label: t("checkoutLocationStatus"),
+              render: (row) => <StatusPill value={row.checkout_location_status || "-"} />,
+            },
           ]}
           rows={visibleAttendanceRecords}
+          resetPageOnRowsChange={false}
           emptyMessage={t("noAttendanceRecords")}
           embedded
           pageSize={10}

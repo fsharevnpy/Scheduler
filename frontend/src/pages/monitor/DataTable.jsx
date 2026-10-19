@@ -4,6 +4,9 @@ import { useLanguage } from "../../lib/i18n.jsx";
 import { formatValue } from "./monitorUtils.js";
 
 function buildRowKey(row, index) {
+  if (row?.id !== null && row?.id !== undefined) {
+    return row.id;
+  }
   const keyParts = [
     row?.id,
     row?.record_id,
@@ -36,6 +39,7 @@ export default function DataTable({
   tableClassName = "",
   colClasses = [],
   pageSize = null,
+  resetPageOnRowsChange = true,
 }) {
   const [page, setPage] = useState(1);
   const { t } = useLanguage();
@@ -55,8 +59,8 @@ export default function DataTable({
   }, [pageCount]);
 
   useEffect(() => {
-    setPage(1);
-  }, [rows]);
+    if (resetPageOnRowsChange) setPage(1);
+  }, [rows, resetPageOnRowsChange]);
 
   const content = (
     <>

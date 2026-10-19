@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from math import atan2, cos, radians, sin, sqrt
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from openpyxl import Workbook
@@ -117,6 +117,15 @@ def ensure_attendance_table(db: Session) -> None:
     )
     db.execute(
         text("""
+            ALTER TABLE attendance_records
+            ADD COLUMN IF NOT EXISTS session_class_id VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS session_center_id VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS session_start_time TIME,
+            ADD COLUMN IF NOT EXISTS session_end_time TIME
+        """)
+    )
+    db.execute(
+        text("""
             UPDATE attendance_records
             SET status = 'INVALID'
             WHERE status = 'NON_VALID'
@@ -135,6 +144,27 @@ def ensure_attendance_table(db: Session) -> None:
         """)
     )
     db.commit()
+
+
+def snapshot_attendance_session(db: Session, record):
+    if not record["class_id"]:
+        return dict(record)
+
+    snapshot = db.execute(
+        text("""
+            UPDATE attendance_records ar
+            SET session_class_id = c.class_id,
+                session_center_id = c.center_id,
+                session_start_time = c.start_time,
+                session_end_time = c.end_time
+            FROM classes c
+            WHERE ar.record_id = :record_id AND c.class_id = ar.class_id
+            RETURNING ar.session_class_id, ar.session_center_id,
+                      ar.session_start_time, ar.session_end_time
+        """),
+        {"record_id": record["record_id"]},
+    ).mappings().one()
+    return {**dict(record), **dict(snapshot)}
 
 
 def ensure_assignment_tables(db: Session) -> None:
@@ -737,10 +767,17 @@ def build_teacher_attendance_workbook(rows, weekly_schedule_rows, attendance_row
 def get_attendance_records(
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER)),
     db: Session = Depends(get_db),
+    limit: int = Query(200, ge=1, le=500),
+    before_checked_at: datetime | None = Query(None),
+    before_record_id: UUID | None = Query(None),
 ):
+    if (before_checked_at is None) != (before_record_id is None):
+        raise HTTPException(status_code=400, detail="both attendance cursor fields are required")
+    if before_checked_at is not None and before_checked_at.utcoffset() is None:
+        raise HTTPException(status_code=400, detail="attendance cursor timestamp must include a timezone")
     ensure_attendance_table(db)
 
-    params = {}
+    params = {"limit": limit}
     query = """
         SELECT
             ar.record_id,
@@ -755,16 +792,27 @@ def get_attendance_records(
             ar.nearest_center_name,
             ar.class_id,
             ar.attendance_status,
-            ar.event_type
+            ar.event_type,
+            ar.session_class_id,
+            ar.session_center_id,
+            ar.session_start_time,
+            ar.session_end_time
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
 
+    filters = []
     if current_user.role == ROLE_TEACHER:
-        query += " WHERE ar.user_code = :user_code"
+        filters.append("ar.user_code = :user_code")
         params["user_code"] = current_user.user_code
 
-    query += " ORDER BY ar.checked_at DESC LIMIT 200"
+    if before_checked_at is not None:
+        filters.append("(ar.checked_at, ar.record_id) < (:before_checked_at, CAST(:before_record_id AS UUID))")
+        params["before_checked_at"] = before_checked_at
+        params["before_record_id"] = str(before_record_id)
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
+    query += " ORDER BY ar.checked_at DESC, ar.record_id DESC LIMIT :limit"
 
     records = db.execute(text(query), params).mappings().all()
     return [dict(item) for item in records]
@@ -1113,6 +1161,7 @@ def check_in_attendance(
             "attendance_status": session_match["attendance_status"],
         },
     ).mappings().first()
+    record = snapshot_attendance_session(db, record)
     db.commit()
 
     return {
@@ -1205,6 +1254,7 @@ def check_out_attendance(
             "attendance_status": checkout_status,
         },
     ).mappings().first()
+    record = snapshot_attendance_session(db, record)
     db.commit()
 
     return {
@@ -1315,6 +1365,7 @@ def create_manual_attendance(
             "event_type": payload.event_type,
         },
     ).mappings().first()
+    record = snapshot_attendance_session(db, record)
     db.commit()
 
     return {

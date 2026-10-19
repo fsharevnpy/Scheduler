@@ -122,6 +122,47 @@ Suggested content:
 - create leave request
 - cancel my own leave request when allowed
 
+## Attendance history
+
+- Dates and clock times use `Asia/Ho_Chi_Minh` (UTC+7), regardless of the device timezone.
+- `Current` compares today's recorded events with the current schedule. Adjacent classes
+  retain their existing check-in coverage / continued-session presentation.
+- `History` shows only dates before today with recorded events; `All` includes today.
+  Historical rows never infer absence or assignment from today's class configuration.
+- Events are grouped by date, teacher (or user), and class, taking the latest check-in
+  and checkout. An earlier checkout is not paired with a later check-in. Events without
+  a matching class remain separate, visible rows. Different classes are not guessed to
+  be a historical block when no recorded relationship exists.
+- A row has a stable, unique identity independent of arrival order. Date/view navigation
+  resets the table page, while clock updates do not reset pagination.
+- New automatic and manual events save class ID, center ID and scheduled start/end times.
+  Older records are not backfilled from today's schedule: unknown historical shifts
+  display `-`. Deleted classes keep their saved identity on new records.
+- `GET /attendance-records` remains an array response. `limit` defaults to 200 (maximum 500);
+  `before_checked_at` (timezone-aware) and `before_record_id` must be supplied together.
+  Ordering is descending timestamp, then UUID. The monitor follows every page before
+  displaying attendance, avoiding incomplete pairs and false absence from the old cap.
+  Large histories consequently take longer to load; page errors are shown, not hidden.
+- Deploy backend and frontend together. The backend adds nullable snapshot columns on
+  first attendance access; no database reset or manual historical backfill is required.
+
+Validation:
+
+```powershell
+# From frontend:
+npm test
+npm run build
+# From backend (with its requirements installed):
+python -m unittest discover -s tests -p test_attendance_history.py
+```
+
+For a database-free browser regression, start the Vite dev server and open
+`/tests/attendance-browser.html`. Switch the manager's History dates backward and
+forward: each date must contain exactly one row, including the unmatched event.
+The teacher's History must contain three rows with both check-in and checkout on
+the latest historical row. On the pagination fixture, move to page 2 and refresh
+rows: it must stay on page 2. This fixture is not included in the production build.
+
 ## Logout Flow
 
 Since the current backend does not have a dedicated logout API:

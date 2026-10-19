@@ -8,6 +8,7 @@ import WebPushControl from "../../components/WebPushControl.jsx";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
+import { loadAttendanceRecords } from "../../lib/attendance.js";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
 import AdminMonitorView from "./AdminMonitorView.jsx";
 import TeacherMonitorView from "./TeacherMonitorView.jsx";
@@ -52,6 +53,7 @@ export default function MonitorPage({ auth }) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadData() {
       setState((current) => {
@@ -76,7 +78,7 @@ export default function MonitorPage({ auth }) {
           requestJson(`${auth.apiBase}/centers`, { headers }),
           requestJson(`${auth.apiBase}/classes`, { headers }),
           requestJson(`${auth.apiBase}/leave-requests`, { headers }),
-          requestJson(`${auth.apiBase}/attendance-records`, { headers }),
+          loadAttendanceRecords(auth.apiBase, { headers, signal: controller.signal }),
           requestJson(`${auth.apiBase}/teacher-scores`, { headers }),
         ];
 
@@ -167,6 +169,7 @@ export default function MonitorPage({ auth }) {
     loadData();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [auth.apiBase, headers, user.role]);
 
@@ -1003,6 +1006,7 @@ export default function MonitorPage({ auth }) {
           <div className="page-status compact">{t("loadingMonitorData")}</div>
         ) : user.role === "teacher" ? (
           <TeacherMonitorView
+            teacherId={user.teacher_id}
             highlightedClasses={highlightedClasses}
             attendanceRecords={state.attendanceRecords}
             leaveRequestManagers={state.leaveRequestManagers}
