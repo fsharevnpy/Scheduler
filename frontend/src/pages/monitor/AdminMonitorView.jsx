@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
+import ChessIcon from "../../components/ChessIcon.jsx";
 import BackupManagement from "./BackupManagement.jsx";
 import AttendanceReportPanel from "./AttendanceReportPanel.jsx";
 import { useLanguage } from "../../lib/i18n.jsx";
@@ -506,6 +507,9 @@ export default function AdminMonitorView({
   }
 
   async function openSuggestionPanel(item) {
+    setSelectedReassignMode("PERMANENT");
+    setSelectedReassignDate(upcomingTeachingDates(item.day_of_week)[0]);
+    setShowReassignDates(false);
     setSelectedSuggestionClass(item);
     setSelectedSuggestionTeacherIds([]);
     await onLoadReplacementSuggestions(item.class_id);
@@ -532,7 +536,7 @@ export default function AdminMonitorView({
 
     let allSucceeded = true;
     for (const teacherId of selectedSuggestionTeacherIds) {
-      const success = await onAssignReplacement(selectedSuggestionClass.class_id, teacherId);
+      const success = await onAssignReplacement(selectedSuggestionClass.class_id, teacherId, selectedReassignMode, selectedReassignDate);
       if (!success) {
         allSucceeded = false;
         break;
@@ -629,24 +633,28 @@ export default function AdminMonitorView({
     <>
       <section className="monitor-grid monitor-grid-summary">
         <article className="info-card">
+          <ChessIcon className="chess-stat-icon" />
           <p className="eyebrow">{t("Teachers")}</p>
           <h2>{teachers.length}</h2>
           <p className="subtle">{t("All available teacher records.")}</p>
         </article>
 
         <article className="info-card">
+          <ChessIcon piece="rook" className="chess-stat-icon" />
           <p className="eyebrow">{t("Classes")}</p>
           <h2>{classes.length}</h2>
           <p className="subtle">{t("All classes currently in the system.")}</p>
         </article>
 
         <article className="info-card">
+          <ChessIcon piece="bishop" className="chess-stat-icon" />
           <p className="eyebrow">{t("Leave Requests")}</p>
           <h2>{activeLeaveRequestCount}</h2>
           <p className="subtle">{t("Active leave request records.")}</p>
         </article>
 
         <article className="info-card">
+          <ChessIcon piece="king" className="chess-stat-icon" />
           <p className="eyebrow">{t("Attendance")}</p>
           <h2>{attendanceRecords.length}</h2>
           <p className="subtle">{t("Recorded attendance events from users.")}</p>
@@ -654,6 +662,7 @@ export default function AdminMonitorView({
 
         {role === "developer" ? (
           <article className="info-card">
+            <ChessIcon piece="king" className="chess-stat-icon" />
             <p className="eyebrow">{t("Managers")}</p>
             <h2>{managerUsers.length}</h2>
             <p className="subtle">{t("Manager accounts visible to developer.")}</p>
@@ -661,11 +670,18 @@ export default function AdminMonitorView({
         ) : null}
       </section>
 
+      <nav className="monitor-navigation" aria-label={t("Dashboard sections")}>
+        <a href="#monitor-attendance"><ChessIcon piece="king" />{t("Attendance")}</a>
+        <a href="#monitor-resources"><ChessIcon piece="rook" />{t("Teachers & classes")}</a>
+        <a href="#monitor-requests"><ChessIcon piece="bishop" />{t("Requests")}</a>
+        <button type="button" onClick={openAttendanceExportPanel}><ChessIcon />{t("Reports")}</button>
+      </nav>
+
       {role === "developer" ? (
         <BackupManagement apiBase={apiBase} token={token} />
       ) : null}
 
-      <section className="dashboard-section">
+      <section id="monitor-attendance" className="dashboard-section">
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Attendance")}</p>
@@ -677,9 +693,7 @@ export default function AdminMonitorView({
                 onClick={openManualAttendancePanel}
                 aria-label={t("Create manual attendance event")}
                 title={t("Create manual attendance event")}
-              >
-                +
-              </button>
+              ><span aria-hidden="true">+</span><span className="section-add-label">{t("Manual attendance")}</span></button>
               <button
                 type="button"
                 className="table-action-button"
@@ -1009,7 +1023,7 @@ export default function AdminMonitorView({
         </FloatingPanel>
       ) : null}
 
-      <section className="dashboard-section">
+      <section id="monitor-resources" className="dashboard-section">
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Resources")}</p>
@@ -1228,7 +1242,7 @@ export default function AdminMonitorView({
         )}
       </section>
 
-      <section className="dashboard-section">
+      <section id="monitor-requests" className="dashboard-section">
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Requests")}</p>
@@ -1500,6 +1514,22 @@ export default function AdminMonitorView({
             setSelectedSuggestionTeacherIds([]);
           }}
         >
+          {actionStatus.kind === "error" ? <p className="status error" role="alert">{actionStatus.message}</p> : null}
+          <div className="reassign-mode-grid" role="group" aria-label={t("Reassign mode")}>
+            {REASSIGNMENT_MODES.map((mode) => (
+              <button type="button" key={mode.value} className={`reassign-mode-option${selectedReassignMode === mode.value ? " selected" : ""}`}
+                onClick={() => setSelectedReassignMode(mode.value)}><strong>{t(mode.title)}</strong></button>
+            ))}
+          </div>
+          {selectedReassignMode === "TEMPORARY" ? (
+            <div className="field">
+              <span>{t("Teaching replacement date")}: {formatAttendanceDate(selectedReassignDate)}</span>
+              <button type="button" className="inline-text-action" onClick={() => setShowReassignDates((value) => !value)}>{t("Change date")}</button>
+              {showReassignDates ? <select aria-label={t("Teaching replacement date")} value={selectedReassignDate} onChange={(event) => setSelectedReassignDate(event.target.value)}>
+                {upcomingTeachingDates(selectedSuggestionClass.day_of_week).map((date) => <option key={date} value={date}>{formatAttendanceWeekday(date, language)} - {formatAttendanceDate(date)}</option>)}
+              </select> : null}
+            </div>
+          ) : null}
           <div className="floating-panel-section">
             <div className="replacement-selection-summary">
               <span className="subtle">{t("Select up to")}{" "}{selectedClassAvailableTeacherSlots}{" "}{t("teachers")}</span>

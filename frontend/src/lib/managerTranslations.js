@@ -1,4 +1,11 @@
 export const managerVietnamese = {
+  "Every day, a better move.": "Mỗi ngày, một nước đi tiến bộ.",
+  "Dashboard sections": "Các mục quản lý",
+  "Teachers & classes": "Giáo viên & ca dạy",
+  "Reports": "Báo cáo",
+  "Teacher summary": "Tổng hợp theo giáo viên",
+  "A clear view of every teaching session.": "Theo dõi rõ ràng từng ca dạy.",
+  "Choose a teacher and period, then view statistics or download your report.": "Chọn giáo viên và khoảng thời gian để xem thống kê hoặc tải báo cáo.",
   "Teaching replacement date": "Dạy thay ngày",
   "Change date": "Đổi ngày",
   "For the selected teaching date only.": "Chỉ áp dụng cho ngày dạy đã chọn.",

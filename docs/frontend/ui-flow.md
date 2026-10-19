@@ -103,6 +103,19 @@ Rules:
 
 ### Developer / Manager Monitor
 
+Visual layout:
+- Chess Fighters header uses the existing logo, a subtle chessboard pattern and a
+  decorative knight. Operational copy remains localized in English/Vietnamese.
+- Summary cards use decorative chess-piece icons; their counts keep their existing
+  meanings (attendance events are not relabeled as taught sessions).
+- A quick-navigation bar jumps to attendance, resources and requests; its reports
+  button opens the same reporting workflow as the attendance section.
+- Reports use a wider responsive dialog, a compact filter area, summary highlights
+  and expandable teacher details. All report categories remain available in the table.
+- On small screens summary cards use two columns, report filters reflow, and wide
+  tables scroll inside their containers rather than widening the page.
+- Motion is limited to brief entry/hover effects and respects reduced-motion settings.
+
 Suggested content:
 - class list
 - leave request list

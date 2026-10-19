@@ -1,12 +1,12 @@
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../lib/i18n.jsx";
 
-export default function FloatingPanel({ eyebrow, title, titleId, onClose, children }) {
+export default function FloatingPanel({ eyebrow, title, titleId, onClose, children, className = "" }) {
   const { t } = useLanguage();
   return createPortal(
     <div className="floating-panel-backdrop" role="presentation" onClick={onClose}>
       <section
-        className="floating-panel"
+        className={`floating-panel ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

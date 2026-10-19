@@ -1,7 +1,7 @@
 {
-  "name": "Fighters Academy",
-  "short_name": "Fighters Academy",
-  "description": "Teacher scheduling and attendance for Fighters Academy.",
+  "name": "Chess Fighters",
+  "short_name": "Chess Fighters",
+  "description": "Teacher scheduling and attendance for Chess Fighters.",
   "id": "/",
   "start_url": "/monitor",
   "scope": "/",

@@ -3,6 +3,7 @@ import { useLanguage } from "../../lib/i18n.jsx";
 import { requestJson } from "../../lib/http.js";
 import FloatingPanel from "./FloatingPanel.jsx";
 import DataTable from "./DataTable.jsx";
+import ChessIcon from "../../components/ChessIcon.jsx";
 import { formatAttendanceDate, formatAttendanceTime, formatAttendanceWeekday, getAttendanceDateKey } from "./attendanceUtils.js";
 
 export function monthRange(month) {
@@ -83,8 +84,8 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
   }
 
   return (
-    <FloatingPanel eyebrow={t("Attendance")} title={t("Export teacher report")} titleId="attendance-report-title" onClose={onClose}>
-      <form lang={language} className="floating-panel-form" onSubmit={(event) => { event.preventDefault(); run(false); }}>
+    <FloatingPanel className="attendance-report-panel" eyebrow={t("Attendance")} title={t("Export teacher report")} titleId="attendance-report-title" onClose={onClose}>
+      <form lang={language} className="floating-panel-form report-filters" onSubmit={(event) => { event.preventDefault(); run(false); }}>
         <div className="floating-panel-grid">
           <label className="field"><span>{t("Teacher")}</span>
             <select value={filters.teacher_id} onChange={(event) => setFilters((current) => ({ ...current, teacher_id: event.target.value }))}>
@@ -115,7 +116,20 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
       </form>
       {report ? (
         <>
-          <DataTable title={t("Export teacher report")} rows={report.summary.map((row) => ({ ...row, id: row.teacher_id }))}
+          <div className="report-highlights">
+            {[
+              ["recorded_sessions", "Recorded sessions", "rook"],
+              ["confirmed_sessions", "Confirmed sessions", "king"],
+              ["warning_sessions", "Sessions to review", "bishop"],
+            ].map(([key, label, piece]) => (
+              <article key={key} className={`report-highlight report-highlight-${key}`}>
+                <ChessIcon piece={piece} />
+                <div><span>{t(label)}</span><strong>{report.summary.reduce((sum, row) => sum + row[key], 0)}</strong></div>
+              </article>
+            ))}
+          </div>
+          <h3 className="report-summary-title">{t("Teacher summary")}</h3>
+          <DataTable title={t("Teacher summary")} embedded rows={report.summary.map((row) => ({ ...row, id: row.teacher_id }))}
             emptyMessage={t("No report data.")} columns={[
               { key: "teacher_name", label: t("Teacher") },
               { key: "teacher_id", label: t("Teacher ID") },
@@ -127,7 +141,7 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
               { key: "confirmed_minutes", label: t("Confirmed minutes") },
             ]} />
           {report.summary.map((teacher) => (
-            <details key={teacher.teacher_id} className="floating-panel-section">
+            <details key={teacher.teacher_id} className="floating-panel-section report-teacher-detail">
               <summary>{teacher.teacher_name} ({teacher.teacher_id}) — {t("Details")}</summary>
               <DataTable title={t("Details")} embedded pageSize={10}
                 rows={report.sessions.filter((row) => row.teacher_id === teacher.teacher_id).map((row, index) => ({ ...row, id: `${row.date}:${row.class_id}:${index}` }))}
@@ -145,7 +159,13 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
             </details>
           ))}
         </>
-      ) : null}
+      ) : !busy ? (
+        <div className="report-empty-state">
+          <ChessIcon piece="rook" />
+          <h3>{t("A clear view of every teaching session.")}</h3>
+          <p>{t("Choose a teacher and period, then view statistics or download your report.")}</p>
+        </div>
+      ) : <p role="status" className="report-loading">{t("Loading...")}</p>}
     </FloatingPanel>
   );
 }

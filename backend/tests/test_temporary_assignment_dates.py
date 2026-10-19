@@ -9,6 +9,23 @@ from unittest.mock import MagicMock, patch
 
 
 class TemporaryDatesTests(unittest.TestCase):
+    def test_suggestion_temporary_assignment_does_not_create_permanent_row(self):
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value.first.side_effect = [
+            {"class_id": "C1", "day_of_week": "T7", "center_id": "CS1", "start_time": "08:00", "end_time": "09:30", "status": "OPEN"},
+            {"teacher_id": "T2", "name": "Teacher", "active": True, "max_slots_per_day": 4},
+        ]
+        db.execute.return_value.first.return_value = None
+        db.execute.return_value.scalar_one.return_value = 0
+        day = date(2026, 10, 24)
+        with patch.object(replacements, "ensure_class_teachers_table"), patch.object(replacements, "ensure_class_teacher_reassignment_overrides_table"), patch.object(replacements, "class_teacher_count", return_value=0), patch.object(replacements, "temporary_teaching_date", return_value=day):
+            result = replacements.assign_replacement("C1", AssignReplacementPayload(teacher_id="T2", mode="TEMPORARY", effective_date=day), db, SimpleNamespace(user_code="0000000"))
+        self.assertEqual(result["effective_date"], day)
+        statements = [str(call.args[0]) for call in db.execute.call_args_list]
+        self.assertTrue(any("INSERT INTO class_teacher_reassignment_overrides" in sql for sql in statements))
+        self.assertFalse(any("INSERT INTO class_teachers " in sql for sql in statements))
+        db.commit.assert_called_once()
+
     def test_temporary_save_preserves_permanent_teacher_and_expires_on_teaching_day(self):
         db = MagicMock()
         db.execute.return_value.first.side_effect = [(1,), None, None, None]

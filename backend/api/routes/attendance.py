@@ -58,6 +58,9 @@ EFFECTIVE_ASSIGNMENTS_FOR_CHECKED_AT_CTE = """
                     ON active_override.class_id = c.class_id
                    AND active_override.original_teacher_id = c.teacher_id
                 WHERE c.teacher_id IS NOT NULL
+                UNION
+                SELECT class_id, replacement_teacher_id FROM active_teacher_overrides
+                WHERE original_teacher_id = replacement_teacher_id
             ),
             assigned_classes AS (
                 SELECT DISTINCT class_id

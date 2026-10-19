@@ -85,6 +85,9 @@ def get_classes(
                 ON override.class_id = c.class_id
                AND override.original_teacher_id = c.teacher_id
             WHERE c.teacher_id IS NOT NULL
+            UNION
+            SELECT class_id, replacement_teacher_id, original_teacher_id, 'TEMPORARY', NOW()
+            FROM active_teacher_overrides WHERE original_teacher_id = replacement_teacher_id
         ),
         distinct_assignments AS (
             SELECT DISTINCT ON (class_id, teacher_id) class_id, teacher_id, original_teacher_id, assignment_mode, assigned_at
@@ -110,7 +113,8 @@ def get_classes(
                COALESCE(assignment_summary.teacher_assignment_modes, ARRAY[]::TEXT[]) AS teacher_assignment_modes,
                COALESCE(assignment_summary.original_teacher_ids, ARRAY[]::VARCHAR[]) AS original_teacher_ids,
                COALESCE(assignment_summary.teacher_count, 0) AS teacher_count,
-               c.status,
+               CASE WHEN c.status = 'OPEN' AND COALESCE(assignment_summary.teacher_count, 0) > 0
+                    THEN 'ASSIGNED' ELSE c.status END AS status,
                COALESCE((SELECT jsonb_agg(jsonb_build_object(
                    'teacher_id', o.replacement_teacher_id, 'teacher_name', t.name,
                    'original_teacher_id', o.original_teacher_id, 'effective_date', o.effective_date

@@ -106,6 +106,9 @@ def get_replacement_suggestions(
                     ON active_override.class_id = c.class_id
                    AND active_override.original_teacher_id = c.teacher_id
                 WHERE c.teacher_id IS NOT NULL
+                UNION
+                SELECT class_id, replacement_teacher_id FROM active_teacher_overrides
+                WHERE original_teacher_id = replacement_teacher_id
             )
             SELECT
                 t.teacher_id,
@@ -271,6 +274,8 @@ def assign_replacement(
     _: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
 ):
     ensure_class_teachers_table(db)
+    ensure_class_teacher_reassignment_overrides_table(db)
+    db.execute(text("SELECT class_id FROM classes WHERE class_id = :id FOR UPDATE"), {"id": class_id})
     target_class = db.execute(
         text(f"""
             SELECT
@@ -289,7 +294,35 @@ def assign_replacement(
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
 
+    teaching_date = temporary_teaching_date(target_class["day_of_week"], payload.effective_date) if payload.mode == "TEMPORARY" else None
+    if teaching_date:
+        temporary_count = db.execute(text("""
+            SELECT COUNT(*) FROM class_teacher_reassignment_overrides
+            WHERE class_id=:id AND effective_date=:day
+              AND original_teacher_id=replacement_teacher_id
+        """), {"id": class_id, "day": teaching_date}).scalar_one()
+        if class_teacher_count(db, class_id) + temporary_count >= 2:
+            raise HTTPException(status_code=400, detail="class already has maximum 2 teachers")
+        conflict = db.execute(text("""
+            SELECT 1 FROM class_teacher_reassignment_overrides o JOIN classes c USING (class_id)
+            WHERE o.replacement_teacher_id=:teacher AND o.effective_date=:day
+              AND (c.class_id=:id OR (c.start_time < :end AND c.end_time > :start))
+        """), {"teacher": payload.teacher_id, "day": teaching_date, "id": class_id,
+                "start": target_class["start_time"], "end": target_class["end_time"]}).first()
+        if conflict:
+            raise HTTPException(status_code=400, detail="replacement teacher has schedule conflict")
+
     existing_assignment_count = class_teacher_count(db, class_id)
+    if not teaching_date:
+        reserved = db.execute(text("""
+            SELECT COALESCE(MAX(n), 0) FROM (
+                SELECT COUNT(*) AS n FROM class_teacher_reassignment_overrides
+                WHERE class_id=:id AND original_teacher_id=replacement_teacher_id
+                  AND effective_date >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                GROUP BY effective_date
+            ) slots
+        """), {"id": class_id}).scalar_one()
+        existing_assignment_count += reserved
     if existing_assignment_count >= 2:
         raise HTTPException(status_code=400, detail="class already has maximum 2 teachers")
 
@@ -380,6 +413,22 @@ def assign_replacement(
 
     if assigned_count >= teacher_row["max_slots_per_day"]:
         raise HTTPException(status_code=400, detail="replacement teacher exceeds max slots per day")
+
+    if teaching_date:
+        temporary_slots = db.execute(text("""
+            SELECT COUNT(*) FROM class_teacher_reassignment_overrides
+            WHERE replacement_teacher_id=:teacher AND effective_date=:day
+        """), {"teacher": payload.teacher_id, "day": teaching_date}).scalar_one()
+        if assigned_count + temporary_slots >= teacher_row["max_slots_per_day"]:
+            raise HTTPException(status_code=400, detail="replacement teacher exceeds max slots per day")
+        # Self-reference denotes a dated assignment to an empty slot, not a replacement.
+        db.execute(text("""
+            INSERT INTO class_teacher_reassignment_overrides
+              (class_id, original_teacher_id, replacement_teacher_id, effective_date, expires_on, created_by)
+            VALUES (:id, :teacher, :teacher, :day, :day, :creator)
+        """), {"id": class_id, "teacher": payload.teacher_id, "day": teaching_date, "creator": _.user_code})
+        db.commit()
+        return {"class_id": class_id, "teacher_id": payload.teacher_id, "mode": "TEMPORARY", "effective_date": teaching_date}
 
     db.execute(
         text("""
@@ -687,7 +736,12 @@ def restore_permanent_class_teacher(
     ).first()
 
     if not assignment_exists:
-        raise HTTPException(status_code=404, detail="permanent teacher is not assigned to this class")
+        direct = db.execute(text("""SELECT 1 FROM class_teacher_reassignment_overrides
+            WHERE class_id=:id AND original_teacher_id=:teacher AND replacement_teacher_id=:teacher
+              AND effective_date=COALESCE(CAST(:day AS DATE), (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
+        """), {"id": class_id, "teacher": teacher_id, "day": effective_date}).first()
+        if not direct:
+            raise HTTPException(status_code=404, detail="active temporary reassignment not found")
 
     deleted = db.execute(
         text("""

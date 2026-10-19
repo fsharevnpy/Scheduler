@@ -70,7 +70,8 @@ export default function LoginPage({ auth }) {
           <LanguageToggle />
         </div>
         <div className="login-brand">
-          <img src={logo} alt="Fighters Academy" className="brand-mark large" />
+          <img src={logo} alt="Chess Fighters" className="brand-mark large" />
+          <p className="chess-login-motto">{t("Every day, a better move.")}</p>
           <h1 className="login-title">{t("signIn")}</h1>
           <p className="login-copy">{t("loginCopy")}</p>
         </div>

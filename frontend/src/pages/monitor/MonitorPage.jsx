@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
 import LanguageToggle from "../../components/LanguageToggle.jsx";
+import ChessHeader from "../../components/ChessHeader.jsx";
 import NotificationBell from "../../components/NotificationBell.jsx";
 import UserAvatar from "../../components/UserAvatar.jsx";
 import WebPushControl from "../../components/WebPushControl.jsx";
@@ -584,17 +585,22 @@ export default function MonitorPage({ auth }) {
     }
   }
 
-  async function assignReplacement(classId, teacherId) {
+  async function assignReplacement(classId, teacherId, mode = "PERMANENT", effectiveDate = null) {
     const success = await runAction(
       `assign-${classId}-${teacherId}`,
       () =>
         requestJson(`${auth.apiBase}/classes/${classId}/assign-replacement`, {
           method: "PUT",
           headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ teacher_id: teacherId }),
+          body: JSON.stringify({ teacher_id: teacherId, mode, effective_date: mode === "TEMPORARY" ? effectiveDate : null }),
         }),
       message("Assigned replacement {p0} to class {p1}.", { p0: teacherId, p1: classId }),
-      () => {
+      async () => {
+        if (mode === "TEMPORARY") {
+          const classes = await requestJson(`${auth.apiBase}/classes`, { headers });
+          setState((current) => ({ ...current, classes }));
+          return;
+        }
         setState((current) => ({
           ...current,
           classes: current.classes.map((item) => {
@@ -949,16 +955,7 @@ export default function MonitorPage({ auth }) {
   return (
     <main className="dashboard-shell">
       <section className="dashboard-card dashboard-card-wide">
-        <div className="dashboard-head">
-          <div>
-            <p className="eyebrow">{t("monitor")}</p>
-            <h1 className="dashboard-title">{t("welcomeBack", { name: user.display_name || user.user_code })}</h1>
-            <p className="subtle">
-              {user.role === "teacher"
-                ? t("dashboardTeacherCopy")
-                : t("dashboardAdminCopy")}
-            </p>
-          </div>
+        <ChessHeader name={user.display_name || user.user_code} role={user.role}>
           <div className="dashboard-actions">
             <NotificationBell
               notifications={notifications}
@@ -1007,7 +1004,7 @@ export default function MonitorPage({ auth }) {
               )}
             </div>
           </div>
-        </div>
+        </ChessHeader>
 
         {state.error ? <div className="status error">{state.error}</div> : null}
 

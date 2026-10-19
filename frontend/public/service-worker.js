@@ -38,7 +38,7 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("push", (event) => {
   let payload = {
-    title: "Fighters Academy",
+    title: "Chess Fighters",
     body: "You have a new notification.",
     url: "/monitor",
   };

@@ -2,8 +2,8 @@
   position: relative;
   overflow: hidden;
   border-color: rgba(69, 45, 34, 0.1);
-  background: rgba(255, 253, 247, 0.96);
-  box-shadow: 0 24px 64px rgba(79, 48, 30, 0.1);
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow: 0 24px 64px rgba(79, 48, 30, 0.07);
 }
 
 .dashboard-card-wide::before {
@@ -48,6 +48,8 @@
 
 .dashboard-section {
   background: #fffefa;
+  scroll-margin-top: 24px;
+  border-radius: 18px;
 }
 
 .field input,
@@ -103,8 +105,15 @@
 }
 
 .data-table th {
-  background: #f8f1e4;
+  background: #f5f1e9;
   color: #65554c;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.data-table td {
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table tbody tr:hover {
@@ -120,8 +129,8 @@
 
 .login-shell {
   background:
-    radial-gradient(circle at 50% 45%, rgba(228, 173, 38, 0.22), transparent 36%),
-    linear-gradient(135deg, #fffdf7, #f3e8d3);
+    radial-gradient(ellipse at 50% 45%, #faf4e8 25%, transparent 75%),
+    repeating-conic-gradient(from 0deg, #eadcc7 0% 25%, #f7efdf 0% 50%) 0 0 / 120px 120px;
 }
 
 .login-shell::before,
@@ -163,4 +172,384 @@
 
 :where(button, a, input, textarea, select):focus-visible {
   outline-color: rgba(173, 61, 40, 0.4);
+}
+
+.chess-icon {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.chess-dashboard-head {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  gap: 28px;
+  margin-bottom: 24px;
+  padding: clamp(24px, 3vw, 38px);
+  border: 1px solid #753525;
+  border-radius: 22px;
+  background: linear-gradient(115deg, #382820, #612e25 65%, #8c3e29);
+  box-shadow: 0 16px 32px #592d2018;
+}
+
+.chess-dashboard-head::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-conic-gradient(#fff1cc08 0% 25%, transparent 0% 50%) 0 0 / 72px 72px;
+  mask-image: linear-gradient(to right, transparent, #000);
+  pointer-events: none;
+  content: "";
+}
+
+.chess-welcome,
+.chess-dashboard-head .dashboard-actions {
+  position: relative;
+  min-width: 0;
+}
+
+.chess-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.chess-brand img {
+  object-fit: contain;
+  border: 1px solid #f4d59570;
+  border-radius: 14px;
+  background: #fff8e6;
+}
+
+.chess-brand strong,
+.chess-brand span {
+  display: block;
+}
+
+.chess-brand strong {
+  color: #f4d595;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+}
+
+.chess-brand span {
+  margin-top: 4px;
+  color: #f0dfd0;
+  font-size: 0.82rem;
+}
+
+.chess-dashboard-head .dashboard-title {
+  max-width: 26ch;
+  color: #fff9ee;
+  font-size: clamp(1.7rem, 2.5vw, 2.5rem);
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.chess-dashboard-head .subtle {
+  color: #f0dfd0;
+  font-size: 0.95rem;
+}
+
+.chess-hero-piece {
+  position: absolute;
+  z-index: -1;
+  right: 29%;
+  bottom: 10px;
+  width: 180px;
+  height: 180px;
+  color: #f2cb8140;
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+.chess-dashboard-head .dashboard-actions {
+  align-content: center;
+  justify-content: flex-end;
+}
+
+.chess-dashboard-head .inline-link {
+  color: #ffe4b7;
+}
+
+.chess-dashboard-head :where(button, a):focus-visible {
+  outline: 3px solid #f4d595;
+  outline-offset: 3px;
+}
+
+.chess-dashboard-head .dashboard-action-stack {
+  min-width: 160px;
+}
+
+.chess-dashboard-head .language-toggle,
+.chess-dashboard-head .account-chip,
+.chess-dashboard-head .secondary-button {
+  background: #fffaf2;
+}
+
+.monitor-grid-summary > .info-card:not(.teacher-summary-card) {
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fffefa 65%, #f6efdf);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  animation: fade-up 320ms ease both;
+}
+
+.monitor-grid-summary > .info-card:not(.teacher-summary-card):hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px #592d2012;
+}
+
+.monitor-grid-summary > .info-card:nth-child(2) { animation-delay: 40ms; }
+.monitor-grid-summary > .info-card:nth-child(3) { animation-delay: 80ms; }
+.monitor-grid-summary > .info-card:nth-child(4) { animation-delay: 120ms; }
+
+.chess-stat-icon {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border: 1px solid #b77d3220;
+  border-radius: 13px;
+  background: #f7ead3;
+  color: #9c432c;
+}
+
+.info-card:has(.chess-stat-icon) > .eyebrow {
+  max-width: calc(100% - 45px);
+  min-height: 30px;
+}
+
+.info-card:has(.chess-stat-icon) h2 {
+  font-size: 2.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-card:has(.chess-stat-icon) .subtle {
+  margin-bottom: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.monitor-navigation {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  margin: 24px 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f2ecdf;
+}
+
+.monitor-navigation a,
+.monitor-navigation button {
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #594033;
+  text-decoration: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.monitor-navigation a:hover,
+.monitor-navigation button:hover {
+  background: #fffdf8;
+  color: var(--accent-dark);
+}
+
+.monitor-navigation button {
+  background: #843c2a;
+  color: #fff9ee;
+}
+
+.section-title-row .section-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.attendance-action-card {
+  position: relative;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.attendance-action-card-primary {
+  background: linear-gradient(120deg, #7f3526, #ab5134);
+  border-color: #7f3526;
+  color: #fff8e9;
+}
+
+.attendance-action-card-primary span,
+.attendance-action-card-primary strong {
+  color: #fff8e9;
+}
+
+.attendance-action-card-primary::after {
+  position: absolute;
+  inset: 0 0 0 60%;
+  background: repeating-conic-gradient(#fff1cc0c 0% 25%, transparent 0% 50%) 0 0 / 40px 40px;
+  pointer-events: none;
+  content: "";
+}
+
+.floating-panel.attendance-report-panel {
+  width: min(1180px, 100%);
+  max-height: 90vh;
+}
+
+.attendance-report-panel .floating-panel-head {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-filters {
+  padding: 18px;
+  border: 1px solid #e6ddcc;
+  border-radius: 14px;
+  background: #f8f4eb;
+}
+
+.report-filters .floating-panel-grid {
+  grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(0, 1fr));
+}
+
+.report-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.report-highlight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e5d8bf;
+  border-radius: 14px;
+  background: #faf1df;
+  color: #705223;
+}
+
+.report-highlight-confirmed_sessions {
+  background: #edf5ef;
+  border-color: #d3e5d9;
+  color: #286145;
+}
+
+.report-highlight-warning_sessions {
+  background: #fff3e6;
+  border-color: #f0dcc2;
+  color: #8b511c;
+}
+
+.report-highlight span,
+.report-highlight strong {
+  display: block;
+}
+
+.report-highlight span { font-size: 0.85rem; }
+.report-highlight strong { margin-top: 6px; font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+.report-summary-title { margin: 24px 0 14px; font-size: 1.05rem; }
+
+.report-teacher-detail {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffefa;
+}
+
+.report-teacher-detail summary {
+  padding: 6px 0;
+  color: #703d2b;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-teacher-detail[open] summary {
+  margin-bottom: 16px;
+}
+
+.report-empty-state,
+.report-loading {
+  padding: 38px 18px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.report-empty-state .chess-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 18px;
+  background: #f2e5cc;
+  color: #9a5d32;
+}
+
+.report-empty-state h3 { color: var(--ink); font-size: 1.05rem; }
+.report-empty-state p { margin-bottom: 0; line-height: 1.6; }
+.chess-login-motto { margin: 8px 0 20px; font-size: 0.9rem; color: var(--accent-dark); }
+
+@media (max-width: 1100px) {
+  .chess-dashboard-head { grid-template-columns: 1fr; }
+  .chess-dashboard-head .dashboard-actions { justify-content: flex-start; }
+  .chess-hero-piece { right: 5%; top: 20px; }
+}
+
+@media (max-width: 720px) {
+  .chess-dashboard-head { padding: 22px; border-radius: 18px; }
+  .chess-dashboard-head .dashboard-actions { flex-direction: row; align-items: center; gap: 12px; }
+  .chess-dashboard-head .dashboard-action-stack { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .chess-dashboard-head .dashboard-action-stack > .secondary-button { grid-column: 1 / -1; }
+  .chess-dashboard-head .account-chip { flex: 1 1 100%; }
+  .chess-brand span { max-width: 24ch; line-height: 1.5; }
+  .monitor-grid-summary:has(> .info-card > .chess-stat-icon) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .monitor-grid-summary > .info-card:has(.chess-stat-icon) { padding: 16px; }
+  .info-card:has(.chess-stat-icon) > .eyebrow { max-width: calc(100% - 26px); font-size: 0.65rem; }
+  .info-card:has(.chess-stat-icon) h2 { font-size: 2rem; }
+  .chess-stat-icon { top: 12px; right: 10px; width: 32px; height: 32px; padding: 5px; border-radius: 9px; }
+  .monitor-navigation { gap: 4px; }
+  .monitor-navigation a,
+  .monitor-navigation button { padding: 10px 12px; }
+  .report-filters .floating-panel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-highlights { grid-template-columns: 1fr; gap: 8px; }
+  .report-highlight { padding: 12px 16px; }
+  .report-highlight > div { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 12px; }
+  .report-highlight strong { margin: 0; font-size: 1.5rem; }
+  .floating-panel.attendance-report-panel { padding: 16px; max-height: 90dvh; }
+  .attendance-report-panel .floating-panel-head { flex-direction: row; align-items: flex-start; gap: 12px; }
+  .attendance-report-panel .floating-panel-head .table-action-button { width: auto; flex-shrink: 0; }
+}
+
+@media (max-width: 400px) {
+  .report-filters .floating-panel-grid { grid-template-columns: 1fr; }
+  .chess-brand strong { font-size: 0.75rem; letter-spacing: 0.1em; }
 }
