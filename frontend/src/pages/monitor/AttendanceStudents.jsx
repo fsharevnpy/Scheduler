@@ -26,10 +26,8 @@ export function AttendanceStudentsFields({ count, names, onCountChange, onNamesC
         <input type="number" inputMode="numeric" min="1" max={MAX_STUDENT_COUNT} step="1" required value={count}
           onChange={(event) => onCountChange(event.target.value)} />
       </label>
-      {slots.length > 0 ? <p className="subtle">{t("Enter each name in its own field. No line breaks needed.")}</p> : null}
       {slots.map((name, index) => (
-        <div key={index} className="attendance-student-input-row">
-          <label className="field">
+          <label key={index} className="field attendance-student-name">
             <span>{t("Student {number}", { number: index + 1 })}</span>
             <input type="text" required autoComplete="off" autoCapitalize="words"
               enterKeyHint={index < slots.length - 1 ? "next" : "done"}
@@ -47,10 +45,6 @@ export function AttendanceStudentsFields({ count, names, onCountChange, onNamesC
                 }
               }} />
           </label>
-          <button type="button" className="student-next-button" onClick={() => focusNext(index)}>
-            {t(index < slots.length - 1 ? "Next student" : "Done entering names")}
-          </button>
-        </div>
       ))}
       <p className="subtle" role="status">{t("Names entered: {count}", { count: slots.filter((name) => name.trim()).length })}</p>
     </fieldset>

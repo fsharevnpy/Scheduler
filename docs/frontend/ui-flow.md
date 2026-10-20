@@ -191,8 +191,8 @@ rows: it must stay on page 2. This fixture is not included in the production bui
   characters. Children with identical names are retained as separate entries.
   The joined list is limited to Excel's 32,767-character cell limit so exports do
   not silently truncate names.
-- Changing the count creates numbered name inputs. A **Next student** button and
-  the keyboard's Next/Enter action move focus without submitting the checkout.
+- Changing the count creates numbered name inputs. The keyboard's Next/Enter
+  action moves focus without submitting the checkout; there are no per-name buttons.
   The last field's Done action dismisses the keyboard; checkout still needs explicit
   confirmation. Reducing the count excludes extra names from submission but retains
   them in the current form draft if the count is increased again.

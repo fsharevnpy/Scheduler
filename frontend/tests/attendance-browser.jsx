@@ -33,6 +33,22 @@ const records = [
 const status = { kind: "", message: "" };
 const classes = [{ class_id: "C1", center_id: "CS1", day_of_week: "T2", start_time: "12:00:00", end_time: "13:00:00", teacher_ids: ["T2"] }];
 
+if (new URLSearchParams(location.search).get("view") === "teacher") {
+  const original = Object.getOwnPropertyDescriptor(navigator, "geolocation");
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition(success) {
+        setTimeout(() => success({ coords: { latitude: 10.77, longitude: 106.69, accuracy: 8 } }), 350);
+      },
+    },
+  });
+  if (import.meta.hot) import.meta.hot.dispose(() => {
+    if (original) Object.defineProperty(navigator, "geolocation", original);
+    else delete navigator.geolocation;
+  });
+}
+
 if (new URLSearchParams(location.search).has("reportFixture")) {
   const originalFetch = globalThis.fetch;
   globalThis.attendanceReportRequests = [];
@@ -60,28 +76,34 @@ if (new URLSearchParams(location.search).has("reportFixture")) {
   if (import.meta.hot) import.meta.hot.dispose(() => { globalThis.fetch = originalFetch; });
 }
 
-function FixtureHeader() {
-  const { t } = useLanguage();
+function FixtureHeader({ teacherOnly }) {
+  const { t, language } = useLanguage();
   return (
-    <ChessHeader name="Chess Fighters" role="manager">
+    <>
+    <ChessHeader name="Chess Fighters" role={teacherOnly ? "teacher" : "manager"}>
       <div className="dashboard-actions">
         <NotificationBell notifications={[]} />
         <LanguageToggle />
         <div className="account-chip">
           <UserAvatar name="Chess Fighters" fallbackCode="CF" size="medium" />
-          <div className="account-chip-copy"><strong>{t("operationsManager")}</strong><span>CF-DEMO</span></div>
+          <div className="account-chip-copy"><strong>{t(teacherOnly ? "teacher" : "operationsManager")}</strong><span>CF-DEMO</span></div>
         </div>
         <div className="dashboard-action-stack">
           <button type="button" className="secondary-button">{t("logout")}</button>
           <a className="inline-link" href="#teacher">{t("profileSettings")}</a>
-          <a className="inline-link" href="#admin">{t("openRegisterScreen")}</a>
+          {!teacherOnly ? <a className="inline-link" href="#admin">{t("openRegisterScreen")}</a> : null}
         </div>
       </div>
     </ChessHeader>
+    {teacherOnly ? <p className="subtle" role="status">{language === "vi"
+      ? "Bản thử nghiệm dành cho giáo viên. Vị trí được giả lập, dữ liệu không lưu vào hệ thống thật."
+      : "Teacher demo. Location is simulated; no data is saved to the live system."}</p> : null}
+    </>
   );
 }
 
 function Fixture() {
+  const teacherOnly = new URLSearchParams(location.search).get("view") === "teacher";
   const [rows, setRows] = useState(() => Array.from({ length: 21 }, (_, index) => ({ id: `row-${index}`, name: `Entry ${index}` })));
   const [attendance, setAttendance] = useState(records);
   const [fixtureStatus, setFixtureStatus] = useState(status);
@@ -104,8 +126,8 @@ function Fixture() {
   return (
     <LanguageProvider>
       <main className="dashboard-shell"><div className="dashboard-card dashboard-card-wide">
-      <FixtureHeader />
-      <section id="admin">
+      <FixtureHeader teacherOnly={teacherOnly} />
+      {!teacherOnly ? <section id="admin">
         <AdminMonitorView
           actionStatus={fixtureStatus} attendanceRecords={attendance} classes={classes}
           apiBase="/api" token="fixture"
@@ -114,7 +136,7 @@ function Fixture() {
           replacementSuggestions={{}} resetRequests={[]} role="manager" teacherScores={[]}
           onCreateManualAttendance={async (payload) => { globalThis.manualStudentPayload = payload; return true; }}
         />
-      </section>
+      </section> : null}
       <section id="teacher">
         <TeacherMonitorView
           teacherId="T1" highlightedClasses={[]} attendanceRecords={attendance}
@@ -123,11 +145,11 @@ function Fixture() {
           onCheckInAttendance={async (payload) => { globalThis.checkinFixturePayload = payload; return true; }}
         />
       </section>
-      <section id="pagination">
+      {!teacherOnly ? <section id="pagination">
         <button onClick={() => setRows((current) => current.map((row) => ({ ...row })))}>Refresh rows</button>
         <DataTable title="Pagination regression" columns={[{ key: "name", label: "Name" }]}
           rows={rows} pageSize={10} resetPageOnRowsChange={false} />
-      </section>
+      </section> : null}
       </div></main>
     </LanguageProvider>
   );

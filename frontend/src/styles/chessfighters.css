@@ -527,23 +527,8 @@
 }
 .attendance-students-fields legend { padding: 0 6px; font-weight: 700; color: var(--accent-dark); }
 .attendance-students-fields p { margin: 0; font-size: 0.88rem; line-height: 1.5; }
-.attendance-student-input-row { display: flex; align-items: end; gap: 8px; }
-.attendance-student-input-row .field { flex: 1; min-width: 0; }
-.attendance-student-input-row input { min-width: 0; font-size: 16px; }
-.student-next-button {
-  min-height: 44px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fffefa;
-  color: var(--accent-dark);
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-@media (max-width: 400px) {
-  .attendance-student-input-row { flex-wrap: wrap; }
-  .attendance-student-input-row .field { flex-basis: 100%; }
-}
+.attendance-student-name { min-width: 0; }
+.attendance-student-name input { min-width: 0; font-size: 16px; }
 .attendance-students { min-width: 170px; max-width: 320px; white-space: normal; }
 .attendance-students summary { cursor: pointer; color: var(--accent-dark); font-weight: 600; }
 .attendance-students p { margin: 10px 0; font-size: 0.8rem; }
