@@ -82,11 +82,16 @@ role and weekday API values can be verified independently of their translated la
 ### Managing classes in the monitor
 
 - In Teachers & teaching schedule, select Classes to use the weekly grid for each center.
+- On phones (up to 720px), a weekday selector above the cards defaults to today in
+  Vietnam time. Only the selected day's classes are visible, full-width with no
+  horizontal swiping. Switching centers retains the chosen weekday. Desktop keeps
+  the seven-column week. The teacher's My teaching schedule uses the same mobile
+  selector; an empty day displays an explicit no-classes message.
 - Every weekday heading has a `+` button. The create dialog fixes the selected center/day;
   enter start/end time and optionally a teacher. The weekly recurrence is explicit.
 - Click a class's time to edit it, or its teacher name to manage assignment as before.
 - Each class has a `−` button that only opens a confirmation with center, weekday, time
-  and teachers. Cancel, Close or clicking the backdrop never deletes the class.
+  and teachers. Close or clicking the backdrop never deletes the class.
 - Only the explicit Delete class button sends DELETE. While saving, confirmation,
   cancellation and closing are disabled; failures remain visible in the dialog.
 - Existing backend deletion semantics are unchanged: linked leave requests are deleted,
@@ -94,8 +99,13 @@ role and weekday API values can be verified independently of their translated la
   The confirmation explicitly warns about linked leave requests.
 - Empty centers still display all seven weekday headings so the first class can be created.
 - Demo: `/tests/attendance-browser.html?reportFixture&view=manager&classFixture`.
-  Test creation in the empty second center, cancel/backdrop/confirm deletion, failure/retry
+  Test creation in the empty second center, close/backdrop/confirm deletion, failure/retry
   (`globalThis.classDemoError`) and double-click protection (`globalThis.classDemoDelay`).
+- Panels have one dismissal button: Close in the header. Duplicate footer Cancel/Close
+  buttons are removed from attendance, leave creation, class create/delete/time-edit
+  and contact-edit panels. Submit/save/delete actions remain in the footer, and closing
+  is disabled while their save is pending. Cancelling an already-submitted leave request
+  remains a separate action in the request list.
 
 ### Loading performance
 

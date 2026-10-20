@@ -16,6 +16,8 @@ export const managerVietnamese = {
   "Select day": "Chọn thứ",
   "Select center": "Chọn cơ sở",
   "Create class": "Tạo ca dạy",
+  "Teaching day": "Thứ dạy",
+  "No classes on this day.": "Không có ca dạy vào thứ này.",
   "Session {number}": "Ca {number}",
   "student lists must match the checked-in teaching sessions": "Danh sách học viên phải khớp với các ca đã ghi giờ vào.",
   "enter students separately for each teaching session": "Vui lòng nhập học viên riêng cho từng ca dạy.",

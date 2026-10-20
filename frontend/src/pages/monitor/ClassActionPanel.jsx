@@ -66,7 +66,6 @@ export default function ClassActionPanel({ context, teachers, onCreate, onDelete
         </>}
         {error ? <p className="status error" role="alert">{t(error)}</p> : null}
         <div className="floating-panel-actions">
-          <button type="button" className="table-action-button table-action-button-muted" disabled={busy} onClick={onClose}>{t("Cancel")}</button>
           <button type="submit" className="table-action-button" disabled={busy}>{t(busy ? "Saving..." : deleting ? "Delete class" : "Create class")}</button>
         </div>
       </form>

@@ -452,6 +452,7 @@ export default function ProfileSettingsPage({ auth }) {
             title={t("editField", { label: contactEditLabel })}
             titleId="contact-change-title"
             onClose={closeContactEditPanel}
+            closeDisabled={isSavingContactChange}
           >
             <form className="floating-panel-form" onSubmit={handleSaveContactChange}>
               <label className="field">
@@ -479,14 +480,6 @@ export default function ProfileSettingsPage({ auth }) {
                   disabled={!hasContactChanges || isSavingContactChange}
                 >
                   {isSavingContactChange ? t("saving") : t("saveChange")}
-                </button>
-                <button
-                  type="button"
-                  className="table-action-button table-action-button-muted"
-                  disabled={isSavingContactChange}
-                  onClick={closeContactEditPanel}
-                >
-                  {t("cancel")}
                 </button>
               </div>
             </form>

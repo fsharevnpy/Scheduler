@@ -5,6 +5,7 @@ import UserAvatar from "../../components/UserAvatar.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
 import AsyncContent from "../../components/AsyncContent.jsx";
 import SectionNavigation from "./SectionNavigation.jsx";
+import ScheduleDaySelect from "./ScheduleDaySelect.jsx";
 import ClassActionPanel from "./ClassActionPanel.jsx";
 import AttendanceStudents, { AttendanceStudentsFields, SessionStudentsFields } from "./AttendanceStudents.jsx";
 import { prepareCheckoutStudents } from "../../lib/attendanceStudents.js";
@@ -17,7 +18,7 @@ import { formatDateTimeValue, formatTimeDraft, formatTimeValue, formatValue } fr
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
   formatAttendanceTime, getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getAttendanceDateKeys,
-  getTeacherAttendanceAvailability,
+  getTeacherAttendanceAvailability, getAttendanceDayCode,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -196,6 +197,7 @@ export default function AdminMonitorView({
   const [attendanceDatePage, setAttendanceDatePage] = useState(1);
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState("");
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("attendance");
   const [hasOpenedReports, setHasOpenedReports] = useState(false);
@@ -282,6 +284,7 @@ export default function AdminMonitorView({
   const pendingRequestCount = [...leaveRequests, ...resetRequests].filter((item) => item.status === "REQUESTED").length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const todayKey = getAttendanceDateKey(currentDate);
+  const scheduleDay = selectedScheduleDay || getAttendanceDayCode(todayKey);
   const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
   const todayAttendanceRows = useMemo(
     () => buildCurrentAttendanceRows({ historyRows: historicalAttendanceRows, classes, teachers, now: currentDate }),
@@ -879,6 +882,7 @@ export default function AdminMonitorView({
           title={t("Manual attendance")}
           titleId="manual-attendance-title"
           onClose={() => setIsManualAttendancePanelOpen(false)}
+          closeDisabled={pendingAction === "manual-attendance"}
         >
           <form className="floating-panel-form" onSubmit={handleManualAttendanceSubmit}>
             <label className="field">
@@ -1008,11 +1012,6 @@ export default function AdminMonitorView({
                   ? t("Saving...")
                   : t("Save manual {p0}", { p0: t(manualAttendanceForm.event_type === "CHECK_OUT" ? "Checkout" : "Check-in") })}
               </button>
-              <button
-                type="button"
-                className="table-action-button table-action-button-muted"
-                onClick={() => setIsManualAttendancePanelOpen(false)}
-              >{t("Cancel")}{" "}</button>
             </div>
           </form>
         </FloatingPanel>
@@ -1028,6 +1027,7 @@ export default function AdminMonitorView({
           title={`${selectedClassTime.center_label || selectedClassTime.center_id} | ${formatAttendanceDayCode(selectedClassTime.day_of_week, language)}`}
           titleId="class-time-edit-title"
           onClose={() => setSelectedClassTime(null)}
+          closeDisabled={pendingAction === `class-time-${selectedClassTime.class_id}`}
         >
           <form className="floating-panel-form" onSubmit={handleClassTimeSubmit}>
             <div className="floating-panel-grid">
@@ -1089,11 +1089,6 @@ export default function AdminMonitorView({
               >
                 {pendingAction === `class-time-${selectedClassTime.class_id}` ? t("Saving...") : t("Save time")}
               </button>
-              <button
-                type="button"
-                className="table-action-button table-action-button-muted"
-                onClick={() => setSelectedClassTime(null)}
-              >{t("Cancel")}{" "}</button>
             </div>
           </form>
         </FloatingPanel>
@@ -1237,6 +1232,7 @@ export default function AdminMonitorView({
               </span>
             </div>
 
+            <ScheduleDaySelect value={scheduleDay} onChange={setSelectedScheduleDay} />
             <div className="class-week-grid assignment-week-grid" role="table" aria-label={t("{p0} assignment queue by weekday", { p0: currentAssignmentCenterLabel })}>
               {CLASS_DAYS.map((day) => {
                 const dayClasses = currentAssignmentClasses
@@ -1244,7 +1240,7 @@ export default function AdminMonitorView({
                   .sort((left, right) => String(left.start_time).localeCompare(String(right.start_time)));
 
                 return (
-                  <div className="class-week-column" role="cell" key={`${currentAssignmentCenterLabel}-${day}`}>
+                  <div className="class-week-column" role="cell" key={`${currentAssignmentCenterLabel}-${day}`} data-selected-day={day === scheduleDay}>
                     <div className="class-week-day class-week-day-actions">
                       <span>{formatAttendanceDayCode(day, language)}</span>
                       <button type="button" className="class-symbol-button"

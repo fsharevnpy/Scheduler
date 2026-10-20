@@ -3,10 +3,10 @@ import { formatTimeValue } from "./monitorUtils.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { formatAttendanceDayCode } from "./attendanceUtils.js";
 
-export default function TeacherClassCard({ item }) {
+export default function TeacherClassCard({ item, selectedDay }) {
   const { t, language } = useLanguage();
   return (
-    <article className="class-highlight-card">
+    <article className="class-highlight-card" data-selected-day={!selectedDay || item.day_of_week === selectedDay}>
       <div className="class-highlight-top">
         <p className="eyebrow">{t("Assigned class")}</p>
         <StatusPill value={item.status} />

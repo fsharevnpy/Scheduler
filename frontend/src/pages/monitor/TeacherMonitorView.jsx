@@ -6,13 +6,14 @@ import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
 import TeacherAttendanceRecords from "./TeacherAttendanceRecords.jsx";
 import SectionNavigation from "./SectionNavigation.jsx";
+import ScheduleDaySelect from "./ScheduleDaySelect.jsx";
 import { AttendanceStudentsFields, SessionStudentsFields } from "./AttendanceStudents.jsx";
 import { prepareCheckoutStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
-  getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getTeacherAttendanceAvailability,
+  getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getTeacherAttendanceAvailability, getAttendanceDayCode,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -74,6 +75,7 @@ export default function TeacherMonitorView({
   const [isReadingLocation, setIsReadingLocation] = useState(false);
   const attendanceRequest = useRef(0);
   const [activeSection, setActiveSection] = useState("today");
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState("");
   const [attendanceView, setAttendanceView] = useState("history");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -113,6 +115,7 @@ export default function TeacherMonitorView({
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const todayKey = getAttendanceDateKey(currentDate);
+  const scheduleDay = selectedScheduleDay || getAttendanceDayCode(todayKey);
   const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
   const todayAttendanceRows = useMemo(
     () => buildCurrentAttendanceRows({ historyRows: historicalAttendanceRows, classes: highlightedClasses, now: currentDate, teacherId }),
@@ -358,12 +361,16 @@ export default function TeacherMonitorView({
             <h2>{t("My teaching schedule")}</h2>
           </div>
         </div>
+        <ScheduleDaySelect value={scheduleDay} onChange={setSelectedScheduleDay} />
+        {highlightedClasses.length > 0 && !highlightedClasses.some((item) => item.day_of_week === scheduleDay) ? (
+          <p className="subtle mobile-schedule-empty">{t("No classes on this day.")}</p>
+        ) : null}
         {highlightedClasses.length === 0 ? (
           <p className="subtle">{t("noClassesAssigned")}</p>
         ) : (
-          <div className="class-highlight-grid">
+          <div className="class-highlight-grid teacher-schedule-grid">
             {highlightedClasses.map((item) => (
-              <TeacherClassCard key={item.class_id} item={item} />
+              <TeacherClassCard key={item.class_id} item={item} selectedDay={scheduleDay} />
             ))}
           </div>
         )}
@@ -498,14 +505,6 @@ export default function TeacherMonitorView({
             >
 	              {t("resetLocation")}
             </button>
-            <button
-              type="button"
-              className="table-action-button table-action-button-muted"
-              disabled={attendanceBusy}
-              onClick={() => setIsAttendancePanelOpen(false)}
-            >
-	              {t("cancel")}
-            </button>
           </div>
           </form>
         </FloatingPanel>
@@ -517,6 +516,7 @@ export default function TeacherMonitorView({
 	          title={t("createLeaveRequestTitle")}
           titleId="teacher-leave-request-title"
           onClose={() => setIsCreatePanelOpen(false)}
+          closeDisabled={pendingAction === "create-leave-request"}
         >
                 <form className="floating-panel-form" onSubmit={handleCreateLeaveRequest}>
                   <label className="field">
@@ -591,14 +591,6 @@ export default function TeacherMonitorView({
                       }
                     >
 	                      {pendingAction === "create-leave-request" ? t("creating") : t("createRequest")}
-                    </button>
-                    <button
-                      type="button"
-                      className="table-action-button table-action-button-muted"
-                      disabled={pendingAction === "create-leave-request"}
-                      onClick={() => setIsCreatePanelOpen(false)}
-                    >
-	                      {t("close")}
                     </button>
                   </div>
                 </form>

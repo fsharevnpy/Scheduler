@@ -1,3 +1,8 @@
+.schedule-day-select,
+.mobile-schedule-empty {
+  display: none;
+}
+
 @media (max-width: 960px) {
   .page-shell {
     grid-template-columns: 1fr;
@@ -122,6 +127,76 @@
 
   .floating-panel-actions {
     flex-direction: column;
+  }
+
+  .floating-panel-head {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .floating-panel-head > div {
+    min-width: 0;
+  }
+
+  .floating-panel-head > button {
+    width: auto;
+    min-width: 64px;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+
+  .schedule-day-select {
+    display: grid;
+    margin-bottom: 14px;
+  }
+
+  #monitor-resources .section-title-row,
+  .class-center-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .class-center-pagination .table-pagination-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .schedule-day-select select {
+    min-height: 44px;
+    font-weight: 700;
+  }
+
+  .mobile-schedule-empty {
+    display: block;
+  }
+
+  .assignment-week-grid {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: visible;
+  }
+
+  .assignment-week-grid .class-week-column {
+    min-width: 0;
+  }
+
+  .assignment-week-grid .class-week-column[data-selected-day="false"],
+  .teacher-schedule-grid > [data-selected-day="false"] {
+    display: none;
+  }
+
+  .assignment-week-grid .class-week-list {
+    grid-auto-rows: auto;
+  }
+
+  .assignment-week-grid .class-week-empty {
+    padding: 24px 0;
+  }
+
+  .assignment-week-item .class-time-button {
+    min-height: 44px;
+    font-size: 1.05rem;
+    font-weight: 700;
   }
 
   .floating-panel-summary-row,
