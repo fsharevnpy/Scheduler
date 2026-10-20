@@ -7,12 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import app_router, auth_router
 from api.routes.attendance import ensure_attendance_table
 from db import SessionLocal
+from services.class_assignments import ensure_class_capacity_column
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         ensure_attendance_table(db)
+        ensure_class_capacity_column(db)
     yield
 
 

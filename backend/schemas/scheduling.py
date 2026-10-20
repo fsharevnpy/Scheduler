@@ -74,6 +74,7 @@ class ClassCreate(BaseModel):
     start_time: time
     end_time: time
     teacher_id: Optional[str] = None
+    max_teachers: int = Field(default=2, strict=True, gt=0, le=2147483647)
 
 
 class ClassUpdate(BaseModel):
@@ -83,6 +84,7 @@ class ClassUpdate(BaseModel):
     end_time: Optional[time] = None
     teacher_id: Optional[str] = None
     status: Optional[str] = None
+    max_teachers: int = Field(default=2, strict=True, gt=0, le=2147483647)
 
 
 class LeaveRequestCreate(BaseModel):

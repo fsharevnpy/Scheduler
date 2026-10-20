@@ -7,7 +7,10 @@ from core.permissions import ROLE_DEVELOPER, ROLE_MANAGER, ROLE_TEACHER, get_cur
 from db import get_db
 from schemas.auth import CurrentUser
 from schemas.scheduling import ClassCreate, ClassUpdate
-from services.class_assignments import ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table
+from services.class_assignments import (
+    ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table,
+    class_teacher_count, reserved_temporary_teacher_count,
+)
 
 
 router = APIRouter()
@@ -106,7 +109,7 @@ def get_classes(
             JOIN teachers t ON t.teacher_id = da.teacher_id
             GROUP BY da.class_id
         )
-        SELECT c.class_id, c.day_of_week, c.center_id, c.start_time, c.end_time,
+        SELECT c.class_id, c.day_of_week, c.center_id, c.start_time, c.end_time, c.max_teachers,
                COALESCE((assignment_summary.teacher_ids)[1], c.teacher_id) AS teacher_id,
                COALESCE(assignment_summary.teacher_ids, ARRAY[]::VARCHAR[]) AS teacher_ids,
                COALESCE(assignment_summary.teacher_labels, ARRAY[]::TEXT[]) AS teacher_labels,
@@ -185,11 +188,11 @@ def create_class(
         text("""
             INSERT INTO classes (
                 class_id, day_of_week, center_id, start_time, end_time,
-                teacher_id, status
+                teacher_id, status, max_teachers
             )
             VALUES (
                 :class_id, :day_of_week, :center_id, :start_time, :end_time,
-                :teacher_id, :status
+                :teacher_id, :status, :max_teachers
             )
         """),
         data,
@@ -204,7 +207,7 @@ def create_class(
             {"class_id": class_id, "teacher_id": payload.teacher_id},
         )
     db.commit()
-    return {"message": "class created", "class_id": class_id}
+    return {"message": "class created", "class_id": class_id, "max_teachers": payload.max_teachers}
 
 
 @router.put("/classes/{class_id}")
@@ -216,7 +219,7 @@ def update_class(
 ):
     ensure_class_teachers_table(db)
     existing = db.execute(
-        text("SELECT start_time, end_time FROM classes WHERE class_id = :class_id"),
+        text("SELECT start_time, end_time, max_teachers FROM classes WHERE class_id = :class_id FOR UPDATE"),
         {"class_id": class_id},
     ).mappings().first()
 
@@ -226,6 +229,13 @@ def update_class(
     data = payload.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(status_code=400, detail="no fields provided")
+
+    if "max_teachers" in data or "teacher_id" in data:
+        ensure_class_teacher_reassignment_overrides_table(db)
+        assigned_count = (int(data["teacher_id"] is not None) if "teacher_id" in data
+                          else class_teacher_count(db, class_id))
+        if assigned_count + reserved_temporary_teacher_count(db, class_id) > data.get("max_teachers", existing["max_teachers"]):
+            raise HTTPException(status_code=400, detail="remove assigned teachers before reducing the teacher limit")
 
     if "status" in data and data["status"] not in VALID_CLASS_STATUS:
         raise HTTPException(status_code=400, detail="invalid class status")

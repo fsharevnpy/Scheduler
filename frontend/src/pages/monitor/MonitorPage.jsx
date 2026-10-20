@@ -551,6 +551,7 @@ export default function MonitorPage({ auth }) {
     });
     setState((current) => ({ ...current, classes: [...current.classes, {
       ...payload, class_id: created.class_id, status: payload.teacher_id ? "ASSIGNED" : "OPEN",
+      max_teachers: created.max_teachers ?? 2,
       start_time: `${payload.start_time}:00`, end_time: `${payload.end_time}:00`,
       teacher_ids: payload.teacher_id ? [payload.teacher_id] : [],
       teacher_count: payload.teacher_id ? 1 : 0,
@@ -566,6 +567,16 @@ export default function MonitorPage({ auth }) {
       leaveRequests: current.leaveRequests.filter((item) => item.class_id !== classId),
       unreadManagerEvents: current.unreadManagerEvents.filter((item) => item.class_id !== classId),
       attendanceRecords: current.attendanceRecords.map((item) => item.class_id === classId ? { ...item, class_id: null } : item),
+    }));
+  }
+
+  async function updateClassCapacity(classId, maxTeachers) {
+    await requestJson(`${auth.apiBase}/classes/${classId}`, {
+      method: "PUT", headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ max_teachers: maxTeachers }),
+    });
+    setState((current) => ({
+      ...current, classes: current.classes.map((item) => item.class_id === classId ? { ...item, max_teachers: maxTeachers } : item),
     }));
   }
 
@@ -1061,6 +1072,7 @@ export default function MonitorPage({ auth }) {
             onCreateTeacherScoreEvent={createTeacherScoreEvent}
             onCreateManualAttendance={createManualAttendance}
             onUpdateClassTime={updateClassTime}
+            onUpdateClassCapacity={updateClassCapacity}
             onCreateClass={createClass}
             onDeleteClass={deleteClass}
           />

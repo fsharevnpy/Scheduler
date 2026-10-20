@@ -76,6 +76,10 @@ Key fields:
 
 Stores scheduled classes.
 
+`max_teachers` is a non-null positive integer with default 2. The backend adds it to
+existing databases at startup and after a full backup restore, without changing assignments.
+Normal class reads do not run this migration. Restart the backend after an external restore.
+
 Key fields:
 - `class_id`
 - `day_of_week`
@@ -83,6 +87,7 @@ Key fields:
 - `start_time`
 - `end_time`
 - `teacher_id`
+- `max_teachers`
 - `status`
 
 Current statuses:

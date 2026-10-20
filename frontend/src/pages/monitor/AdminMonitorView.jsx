@@ -7,6 +7,7 @@ import AsyncContent from "../../components/AsyncContent.jsx";
 import SectionNavigation from "./SectionNavigation.jsx";
 import ScheduleDaySelect from "./ScheduleDaySelect.jsx";
 import ClassActionPanel from "./ClassActionPanel.jsx";
+import ClassCapacityPanel from "./ClassCapacityPanel.jsx";
 import AttendanceStudents, { AttendanceStudentsFields, SessionStudentsFields } from "./AttendanceStudents.jsx";
 import { prepareCheckoutStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
@@ -81,7 +82,7 @@ function getClassTeacherModes(classItem) {
   return teacherIds.map((_, index) => modes[index] || "PERMANENT");
 }
 
-function renderTeacherNames(t, label, teacherIds = [], teacherModes = [], originalTeacherIds = [], onSelect = null) {
+function renderTeacherNames(t, label, teacherIds = [], teacherModes = [], originalTeacherIds = [], onSelect = null, datedAssignments = []) {
   if (!label || label === "-") {
     return <span>-</span>;
   }
@@ -91,38 +92,40 @@ function renderTeacherNames(t, label, teacherIds = [], teacherModes = [], origin
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return (
-    <span className="class-teacher-list">
-      {teacherNames.map((item, index) => {
-        const teacherId = teacherIds[index] || "";
-        const teacherMode = teacherModes[index] || "PERMANENT";
-        const originalTeacherId = originalTeacherIds[index] || teacherId;
-        const isTemporary = teacherMode === "TEMPORARY";
-        const className = `class-teacher-button${isTemporary ? " temporary" : ""}`;
-        const plainClassName = `class-teacher-name${isTemporary ? " temporary" : ""}`;
+  const teacherItems = teacherNames.map((item, index) => {
+    const teacherId = teacherIds[index] || "";
+    const teacherMode = teacherModes[index] || "PERMANENT";
+    const originalTeacherId = originalTeacherIds[index] || teacherId;
+    const isTemporary = teacherMode === "TEMPORARY";
+    if (isTemporary && datedAssignments.some((assignment) =>
+      assignment.teacher_id === teacherId && assignment.original_teacher_id === originalTeacherId)) {
+      return null;
+    }
+    const className = `class-teacher-button${isTemporary ? " temporary" : ""}`;
+    const plainClassName = `class-teacher-name${isTemporary ? " temporary" : ""}`;
 
-        if (!onSelect || !teacherId) {
-          return (
-            <span className={plainClassName} key={`${teacherId}-${item}`}>
-              {item}
-            </span>
-          );
-        }
+    if (!onSelect || !teacherId) {
+      return (
+        <span className={plainClassName} key={`${teacherId}-${item}`}>
+          {item}
+        </span>
+      );
+    }
 
-        return (
-          <button
-            type="button"
-            className={className}
-            key={`${teacherId}-${item}`}
-            onClick={() => onSelect(teacherId, item, teacherMode, originalTeacherId)}
-            title={isTemporary ? t("Temporary assignment for today") : t("Permanent assignment")}
-          >
-            {item}
-          </button>
-        );
-      })}
-    </span>
-  );
+    return (
+      <button
+        type="button"
+        className={className}
+        key={`${teacherId}-${item}`}
+        onClick={() => onSelect(teacherId, item, teacherMode, originalTeacherId)}
+        title={isTemporary ? t("Temporary assignment for today") : t("Permanent assignment")}
+      >
+        {item}
+      </button>
+    );
+  }).filter(Boolean);
+
+  return teacherItems.length ? <span className="class-teacher-list">{teacherItems}</span> : null;
 }
 
 
@@ -157,6 +160,7 @@ export default function AdminMonitorView({
   onCreateTeacherScoreEvent,
   onCreateManualAttendance,
   onUpdateClassTime,
+  onUpdateClassCapacity,
   onCreateClass,
   onDeleteClass,
 }) {
@@ -192,6 +196,7 @@ export default function AdminMonitorView({
   const [isScoreHistoryVisible, setIsScoreHistoryVisible] = useState(false);
   const [resourceView, setResourceView] = useState("teachers");
   const [classAction, setClassAction] = useState(null);
+  const [selectedClassCapacity, setSelectedClassCapacity] = useState(null);
   const [requestView, setRequestView] = useState("leave");
   const [attendanceView, setAttendanceView] = useState("current");
   const [attendanceDatePage, setAttendanceDatePage] = useState(1);
@@ -309,7 +314,7 @@ export default function AdminMonitorView({
   const selectedClassTeacherCount = selectedSuggestionClass
     ? selectedSuggestionClass.teacher_count || selectedSuggestionClass.teacher_ids?.length || (selectedSuggestionClass.teacher_id ? 1 : 0)
     : 0;
-  const selectedClassAvailableTeacherSlots = Math.max(0, 2 - selectedClassTeacherCount);
+  const selectedClassAvailableTeacherSlots = Math.max(0, (selectedSuggestionClass?.max_teachers ?? 2) - selectedClassTeacherCount);
   const selectedTeacherAssignedClasses = selectedTeacherDetail
     ? classes.filter((item) =>
         item.teacher_ids?.length > 0
@@ -1037,7 +1042,7 @@ export default function AdminMonitorView({
               </div>
               <div>
                 <p className="subtle">{t("Teachers")}</p>
-                <strong>{selectedClassTime.teacher_count || selectedClassTime.teacher_ids?.length || 0}/2</strong>
+                <strong>{selectedClassTime.teacher_count || selectedClassTime.teacher_ids?.length || 0}/{selectedClassTime.max_teachers ?? 2}</strong>
               </div>
             </div>
 
@@ -1254,13 +1259,18 @@ export default function AdminMonitorView({
                       ) : (
                         dayClasses.map((item) => {
                           const teacherCount = item.teacher_count || item.teacher_ids?.length || (item.teacher_id ? 1 : 0);
-                          const canAssignMoreTeachers = teacherCount < 2 && item.status !== "CANCELLED";
+                          const canAssignMoreTeachers = teacherCount < (item.max_teachers ?? 2) && item.status !== "CANCELLED";
 
                           return (
                             <article className="class-week-item assignment-week-item" key={item.class_id}>
                               <div className="class-week-item-head">
                                 <StatusPill value={item.status} />
-                                <span className="subtle">{teacherCount}/2</span>
+                                <button type="button" className="class-teacher-limit-button"
+                                  aria-label={t("Edit teacher limit for {id}", { id: item.class_id })}
+                                  title={t("Maximum teachers")}
+                                  onClick={() => setSelectedClassCapacity(item)}>
+                                  {teacherCount}/{item.max_teachers ?? 2}
+                                </button>
                               </div>
                               <div className="class-time-actions">
                               <button
@@ -1277,12 +1287,13 @@ export default function AdminMonitorView({
                               </div>
                               {renderTeacherNames(t, item.teacher_label, item.teacher_ids, getClassTeacherModes(item), item.original_teacher_ids, (teacherId, teacherName, assignmentMode, originalTeacherId) =>
                                 openClassTeacherPanel(item, teacherId, teacherName, assignmentMode, originalTeacherId),
+                                (item.temporary_assignments || []).filter((assignment) => assignment.effective_date === todayKey),
                               )}
                               {(item.temporary_assignments || []).map((assignment) => (
                                 <button type="button" className="class-teacher-button temporary"
                                   key={`${assignment.original_teacher_id}-${assignment.effective_date}`}
                                   onClick={() => openClassTeacherPanel(item, assignment.teacher_id, assignment.teacher_name, "TEMPORARY", assignment.original_teacher_id, assignment.effective_date)}>
-                                  {assignment.teacher_name} · {t("Teaching replacement date")} {formatAttendanceDate(assignment.effective_date)}
+                                  {assignment.teacher_name} ({formatAttendanceDate(assignment.effective_date)})
                                 </button>
                               ))}
                               {canAssignMoreTeachers ? (
@@ -1451,6 +1462,8 @@ export default function AdminMonitorView({
 
       {classAction ? <ClassActionPanel context={classAction} teachers={sortedTeachers}
         onCreate={onCreateClass} onDelete={onDeleteClass} onClose={() => setClassAction(null)} /> : null}
+      {selectedClassCapacity ? <ClassCapacityPanel item={selectedClassCapacity} onSave={onUpdateClassCapacity}
+        onClose={() => setSelectedClassCapacity(null)} /> : null}
 
       {selectedClassTeacher ? (
         <FloatingPanel

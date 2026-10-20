@@ -90,6 +90,17 @@ role and weekday API values can be verified independently of their translated la
 - Every weekday heading has a `+` button. The create dialog fixes the selected center/day;
   enter start/end time and optionally a teacher. The weekly recurrence is explicit.
 - Click a class's time to edit it, or its teacher name to manage assignment as before.
+- Temporary teachers appear as `Name (DD/MM/YYYY)`, once per dated assignment;
+  today's matching temporary assignment is not repeated as a separate undated name.
+- Click the `assigned/maximum` teacher count (for example `1/2`) to edit that class's
+  maximum number of teachers. The dialog shows center, weekday and time, with one Close
+  button and one Save action. New/existing classes default to 2. Save failures preserve input;
+  closing and duplicate submissions are blocked while saving. Lowering below assigned teachers,
+  including reserved temporary assignments, requires removing teachers first.
+  The actual monitor/API mutation can be checked without a database at
+  `/tests/monitor-loading-browser.html?role=manager&capacityFixture`; its Monday class starts
+  at `2/2`. Raise to 3 and verify `2/3` and the assignment action, then try lowering to 1.
+  Requests and JSON bodies are captured in `globalThis.monitorLoadRequests`.
 - Each class has a `−` button that only opens a confirmation with center, weekday, time
   and teachers. Close or clicking the backdrop never deletes the class.
 - Only the explicit Delete class button sends DELETE. While saving, confirmation,

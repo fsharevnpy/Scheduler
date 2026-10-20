@@ -51,6 +51,13 @@ Notes:
 | `POST` | `/classes` | `developer`, `manager` | Create a class |
 | `PUT` | `/classes/{class_id}` | `developer`, `manager` | Update a class |
 
+`GET /classes` includes `max_teachers`. Creation accepts this field (default 2);
+`PUT /classes/{class_id}` accepts `{"max_teachers": 3}` without changing times or assignments.
+The value must be a strict positive integer within PostgreSQL INT range; null, fractions,
+strings and booleans return 422. Omitting it in PUT preserves the saved limit.
+Limits below allocated/reserved teacher slots return 400 with an explicit remove-teachers-first
+error. Additional assignments use the saved limit, not a fixed two-teacher cap.
+
 Notes:
 - `teacher` only sees classes where `classes.teacher_id == current_user.teacher_id`.
 - `developer` and `manager` see all classes.

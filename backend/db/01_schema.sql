@@ -78,6 +78,7 @@ CREATE TABLE classes (
     end_time TIME NOT NULL,
     teacher_id VARCHAR(20) REFERENCES teachers(teacher_id),
     status VARCHAR(30) NOT NULL,
+    max_teachers INT NOT NULL DEFAULT 2 CHECK (max_teachers > 0),
     CHECK (start_time < end_time),
     CHECK (day_of_week IN ('T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN')),
     CHECK (status IN ('OPEN', 'ASSIGNED', 'CANCELLED', 'NEED_REPLACEMENT'))

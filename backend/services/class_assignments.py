@@ -2,6 +2,25 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
+def ensure_class_capacity_column(db: Session) -> None:
+    db.execute(text("""
+        ALTER TABLE classes ADD COLUMN IF NOT EXISTS max_teachers
+            INT NOT NULL DEFAULT 2 CHECK (max_teachers > 0)
+    """))
+    db.commit()
+
+
+def reserved_temporary_teacher_count(db: Session, class_id: str) -> int:
+    return db.execute(text("""
+        SELECT COALESCE(MAX(n), 0) FROM (
+            SELECT COUNT(*) AS n FROM class_teacher_reassignment_overrides
+            WHERE class_id = :class_id AND original_teacher_id = replacement_teacher_id
+              AND expires_on >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+            GROUP BY effective_date
+        ) slots
+    """), {"class_id": class_id}).scalar_one()
+
+
 def ensure_class_teachers_table(db: Session) -> None:
     db.execute(
         text("""

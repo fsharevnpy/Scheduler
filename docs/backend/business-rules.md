@@ -64,6 +64,13 @@
   - `NEED_REPLACEMENT`
 - `center_id` must exist before a class can be created or updated.
 - If `teacher_id` is provided, that teacher must exist.
+- Each class has a positive integer `max_teachers`, defaulting to 2 for existing and new classes.
+- Managers/developers can edit this limit, but cannot set it below the permanent teacher count
+  plus the largest number of additional temporary teachers reserved for any current/future
+  teaching date. No teachers are removed automatically; remove assignments before reducing the limit.
+- Permanent additions reserve room for these dated assignments; temporary additions check the
+  requested date. Replacing an existing teacher remains allowed when the class is full.
+- Capacity updates and additions lock the same class row until commit to prevent overbooking.
 - `teacher` users can read classes, but only their own classes.
 
 ## Leave Request Rules

@@ -210,6 +210,10 @@ function Fixture() {
             setManagerClasses((current) => current.map((item) => item.class_id === classId ? { ...item, ...payload } : item));
             return true;
           }}
+          onUpdateClassCapacity={async (classId, maxTeachers) => {
+            await classDemoAction("capacity", { classId, max_teachers: maxTeachers });
+            setManagerClasses((current) => current.map((item) => item.class_id === classId ? { ...item, max_teachers: maxTeachers } : item));
+          }}
         />
       </section> : null}
       {!managerOnly ? <section id="teacher">

@@ -11,6 +11,7 @@ from schemas.auth import CurrentUser
 from schemas.scheduling import AssignReplacementPayload
 from services.class_assignments import (
     class_teacher_count,
+    reserved_temporary_teacher_count,
     ensure_class_teacher_reassignment_overrides_table,
     ensure_class_teachers_table,
 )
@@ -40,7 +41,8 @@ def get_replacement_suggestions(
                 c.day_of_week,
                 c.center_id,
                 c.start_time,
-                c.end_time
+                c.end_time,
+                c.max_teachers
             FROM classes c
             WHERE c.class_id = :class_id
         """),
@@ -50,7 +52,7 @@ def get_replacement_suggestions(
     if not target_class:
         raise HTTPException(status_code=404, detail="class not found")
 
-    if class_teacher_count(db, class_id) >= 2 and not replace_teacher_id:
+    if class_teacher_count(db, class_id) >= target_class["max_teachers"] and not replace_teacher_id:
         return []
 
     elo_range = db.execute(
@@ -284,7 +286,8 @@ def assign_replacement(
                 c.center_id,
                 c.start_time,
                 c.end_time,
-                c.status
+                c.status,
+                c.max_teachers
             FROM classes c
             WHERE c.class_id = :class_id
         """),
@@ -301,8 +304,8 @@ def assign_replacement(
             WHERE class_id=:id AND effective_date=:day
               AND original_teacher_id=replacement_teacher_id
         """), {"id": class_id, "day": teaching_date}).scalar_one()
-        if class_teacher_count(db, class_id) + temporary_count >= 2:
-            raise HTTPException(status_code=400, detail="class already has maximum 2 teachers")
+        if class_teacher_count(db, class_id) + temporary_count >= target_class["max_teachers"]:
+            raise HTTPException(status_code=400, detail="class has reached its teacher limit")
         conflict = db.execute(text("""
             SELECT 1 FROM class_teacher_reassignment_overrides o JOIN classes c USING (class_id)
             WHERE o.replacement_teacher_id=:teacher AND o.effective_date=:day
@@ -314,17 +317,10 @@ def assign_replacement(
 
     existing_assignment_count = class_teacher_count(db, class_id)
     if not teaching_date:
-        reserved = db.execute(text("""
-            SELECT COALESCE(MAX(n), 0) FROM (
-                SELECT COUNT(*) AS n FROM class_teacher_reassignment_overrides
-                WHERE class_id=:id AND original_teacher_id=replacement_teacher_id
-                  AND effective_date >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
-                GROUP BY effective_date
-            ) slots
-        """), {"id": class_id}).scalar_one()
+        reserved = reserved_temporary_teacher_count(db, class_id)
         existing_assignment_count += reserved
-    if existing_assignment_count >= 2:
-        raise HTTPException(status_code=400, detail="class already has maximum 2 teachers")
+    if existing_assignment_count >= target_class["max_teachers"]:
+        raise HTTPException(status_code=400, detail="class has reached its teacher limit")
 
     already_assigned = db.execute(
         text("""

@@ -12,7 +12,7 @@ class TemporaryDatesTests(unittest.TestCase):
     def test_suggestion_temporary_assignment_does_not_create_permanent_row(self):
         db = MagicMock()
         db.execute.return_value.mappings.return_value.first.side_effect = [
-            {"class_id": "C1", "day_of_week": "T7", "center_id": "CS1", "start_time": "08:00", "end_time": "09:30", "status": "OPEN"},
+            {"class_id": "C1", "day_of_week": "T7", "center_id": "CS1", "start_time": "08:00", "end_time": "09:30", "status": "OPEN", "max_teachers": 2},
             {"teacher_id": "T2", "name": "Teacher", "active": True, "max_slots_per_day": 4},
         ]
         db.execute.return_value.first.return_value = None

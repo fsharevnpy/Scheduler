@@ -13,6 +13,7 @@ from core.permissions import ROLE_DEVELOPER, require_roles
 from db import get_db
 from schemas.auth import CurrentUser
 from api.routes.attendance import ensure_attendance_table
+from services.class_assignments import ensure_class_capacity_column
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -142,6 +143,7 @@ async def restore_full_backup(filename: str, current_user: CurrentUser = Depends
         db.commit()
 
         ensure_attendance_table(db)
+        ensure_class_capacity_column(db)
 
         # Cleanup
         import shutil
