@@ -66,6 +66,8 @@ function eventRow(key, checkIn, checkOut) {
     center_id: record.session_center_id,
     checked_at: checkIn?.checked_at || null,
     check_out_at: checkOut?.checked_at || null,
+    student_names: checkOut?.student_names ?? null,
+    student_count: checkOut?.student_names?.length ?? null,
     nearest_center_name: record.nearest_center_name,
     status: checkIn?.status || checkOut?.status || "-",
     checkout_location_status: checkOut?.status || "-",
@@ -198,6 +200,8 @@ export function buildCurrentAttendanceRows({ records, classes, teachers = [], no
         nearest_center_name: checkIn?.nearest_center_name || checkOut?.nearest_center_name || item.center_label || item.center_id,
         checked_at: checkIn?.checked_at || null,
         check_out_at: checkOut?.check_out_at || null,
+        student_names: checkOut?.student_names ?? null,
+        student_count: checkOut?.student_names?.length ?? null,
         status: checkIn?.status || checkOut?.status || "-",
         checkout_location_status: checkOut?.checkout_location_status || "-",
         attendance_status: checkIn

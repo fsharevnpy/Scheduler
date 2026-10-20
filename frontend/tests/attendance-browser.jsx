@@ -53,7 +53,8 @@ if (new URLSearchParams(location.search).has("reportFixture")) {
         confirmed_sessions: 1, warning_sessions: 1, invalid_sessions: 0, unverified_events: 0, confirmed_minutes: 90 }],
       sessions: [{ teacher_id: "T2", date: "2024-02-29", class_id: "C1", center: "CS1", block_size: 2,
         start_time: "07:00:00", end_time: "08:30:00", checked_at: "2024-02-29T07:05:00+07:00",
-        check_out_at: "2024-02-29T11:00:00+07:00", result: "WARNING", warnings: ["LATE"], notes: [] }],
+        check_out_at: "2024-02-29T11:00:00+07:00", result: "WARNING", warnings: ["LATE"], notes: [],
+        student_count: 2, student_names: ["Demo An", "Demo Bình"] }],
     });
   };
   if (import.meta.hot) import.meta.hot.dispose(() => { globalThis.fetch = originalFetch; });
@@ -82,23 +83,44 @@ function FixtureHeader() {
 
 function Fixture() {
   const [rows, setRows] = useState(() => Array.from({ length: 21 }, (_, index) => ({ id: `row-${index}`, name: `Entry ${index}` })));
+  const [attendance, setAttendance] = useState(records);
+  const [fixtureStatus, setFixtureStatus] = useState(status);
+
+  async function checkout(payload) {
+    globalThis.checkoutStudentPayload = payload;
+    if (globalThis.failCheckoutFixture) {
+      setFixtureStatus({ kind: "error", message: "Report request failed" });
+      return false;
+    }
+    setFixtureStatus(status);
+    setAttendance((current) => [...current, {
+      ...checkIn, record_id: `student-out-${current.length}`, event_type: "CHECK_OUT",
+      checked_at: new Date().toISOString(), attendance_status: "COMPLETED",
+      student_count: payload.studentCount, student_names: payload.studentNames,
+    }]);
+    return true;
+  }
+
   return (
     <LanguageProvider>
       <main className="dashboard-shell"><div className="dashboard-card dashboard-card-wide">
       <FixtureHeader />
       <section id="admin">
         <AdminMonitorView
-          actionStatus={status} attendanceRecords={records} classes={classes}
+          actionStatus={fixtureStatus} attendanceRecords={attendance} classes={classes}
           apiBase="/api" token="fixture"
-          teachers={[{ teacher_id: "T2", name: "New Assignee" }]} centers={[]}
+          teachers={[{ teacher_id: "T2", name: "New Assignee" }]} centers={[{ center_id: "CS1", name: "Demo Center" }]}
           leaveRequests={[]} managerUsers={[]} replacementQueue={[]}
           replacementSuggestions={{}} resetRequests={[]} role="manager" teacherScores={[]}
+          onCreateManualAttendance={async (payload) => { globalThis.manualStudentPayload = payload; return true; }}
         />
       </section>
       <section id="teacher">
         <TeacherMonitorView
-          teacherId="T1" highlightedClasses={[]} attendanceRecords={records}
-          leaveRequests={[]} unassignedCount={0} actionStatus={status}
+          teacherId="T1" highlightedClasses={[]} attendanceRecords={attendance}
+          leaveRequests={[]} unassignedCount={0} actionStatus={fixtureStatus}
+          onCheckOutAttendance={checkout}
+          onCheckInAttendance={async (payload) => { globalThis.checkinFixturePayload = payload; return true; }}
         />
       </section>
       <section id="pagination">

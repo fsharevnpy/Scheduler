@@ -20,7 +20,7 @@ from core.permissions import (
 )
 from db import get_db
 from schemas.auth import CurrentUser
-from schemas.scheduling import AttendanceCheckInPayload, ManualAttendancePayload
+from schemas.scheduling import AttendanceCheckInPayload, AttendanceCheckOutPayload, ManualAttendancePayload
 from services.class_assignments import ensure_class_teacher_reassignment_overrides_table, ensure_class_teachers_table
 from services.attendance_reports import build_attendance_report, build_report_workbook, local_datetime
 
@@ -132,6 +132,10 @@ def ensure_attendance_table(db: Session) -> None:
         ALTER TABLE attendance_records
         ADD COLUMN IF NOT EXISTS session_block JSONB,
         ADD COLUMN IF NOT EXISTS check_in_record_id UUID
+    """))
+    db.execute(text("""
+        ALTER TABLE attendance_records
+        ADD COLUMN IF NOT EXISTS student_names JSONB
     """))
     db.execute(
         text("""
@@ -492,6 +496,14 @@ def link_checkout(db: Session, record, check_in):
     return result
 
 
+def save_checkout_students(db: Session, record, names: list[str]):
+    db.execute(text("""
+        UPDATE attendance_records SET student_names = CAST(:student_names AS JSONB)
+        WHERE record_id = :record_id AND event_type = 'CHECK_OUT'
+    """), {"student_names": json.dumps(names, ensure_ascii=False), "record_id": record["record_id"]})
+    return {**dict(record), "student_names": names, "student_count": len(names)}
+
+
 def resolve_checkout_session(db, check_in, teacher_id, center_id, checked_at):
     block = check_in.get("session_block") if check_in else None
     if block:
@@ -562,7 +574,9 @@ def get_attendance_records(
             ar.session_start_time,
             ar.session_end_time,
             ar.session_block,
-            ar.check_in_record_id
+            ar.check_in_record_id,
+            ar.student_names,
+            jsonb_array_length(ar.student_names) AS student_count
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
     """
@@ -726,7 +740,7 @@ def check_in_attendance(
 
 @router.post("/attendance-records/check-out")
 def check_out_attendance(
-    payload: AttendanceCheckInPayload,
+    payload: AttendanceCheckOutPayload,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -807,6 +821,7 @@ def check_out_attendance(
         },
     ).mappings().first()
     record = snapshot_checkout(db, record, session_match, check_in)
+    record = save_checkout_students(db, record, payload.student_names)
     db.commit()
 
     return {
@@ -919,6 +934,9 @@ def create_manual_attendance(
         },
     ).mappings().first()
     record = snapshot_checkout(db, record, session_match, check_in) if payload.event_type == "CHECK_OUT" else snapshot_attendance_session(db, record)
+    if payload.event_type == "CHECK_OUT":
+        assert payload.student_names is not None
+        record = save_checkout_students(db, record, payload.student_names)
     db.commit()
 
     return {

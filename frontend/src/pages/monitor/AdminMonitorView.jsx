@@ -4,6 +4,8 @@ import UserAvatar from "../../components/UserAvatar.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
 import BackupManagement from "./BackupManagement.jsx";
 import AttendanceReportPanel from "./AttendanceReportPanel.jsx";
+import AttendanceStudents, { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
+import { studentNameSlots, validateAttendanceStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import DataTable from "./DataTable.jsx";
@@ -188,6 +190,9 @@ export default function AdminMonitorView({
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
   const [isAttendanceExportPanelOpen, setIsAttendanceExportPanelOpen] = useState(false);
+  const [manualStudentCount, setManualStudentCount] = useState("");
+  const [manualStudentNames, setManualStudentNames] = useState([]);
+  const [manualStudentError, setManualStudentError] = useState("");
 
 
 
@@ -448,6 +453,9 @@ export default function AdminMonitorView({
   }
 
   function openManualAttendancePanel() {
+    setManualStudentCount("");
+    setManualStudentNames([]);
+    setManualStudentError("");
     setManualAttendanceForm({
       event_type: "CHECK_IN",
       teacher_id: teachers[0]?.teacher_id || "",
@@ -468,12 +476,19 @@ export default function AdminMonitorView({
     if (!manualAttendanceForm.teacher_id || !manualAttendanceForm.center_id || !manualAttendanceForm.checked_date || !manualAttendanceForm.checked_time) {
       return;
     }
+    const studentNames = studentNameSlots(manualStudentCount, manualStudentNames).map((name) => name.trim());
+    const error = manualAttendanceForm.event_type === "CHECK_OUT"
+      ? validateAttendanceStudents(manualStudentCount, studentNames) : "";
+    setManualStudentError(error);
+    if (error) return;
 
     const success = await onCreateManualAttendance({
       teacherId: manualAttendanceForm.teacher_id,
       centerId: manualAttendanceForm.center_id,
       checkedAt: new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00+07:00`).toISOString(),
       eventType: manualAttendanceForm.event_type,
+      studentCount: Number(manualStudentCount),
+      studentNames,
     });
 
     if (success) {
@@ -752,6 +767,7 @@ export default function AdminMonitorView({
               render: (row) => formatAttendanceTime(row.checked_at),
             },
             { key: "check_out_at", label: t("Checkout"), render: (row) => formatAttendanceTime(row.check_out_at) },
+            { key: "student_names", label: t("Students taught"), render: (row) => <AttendanceStudents names={row.student_names} /> },
             {
               key: "nearest_center_name",
               label: t("Location"),
@@ -911,6 +927,13 @@ export default function AdminMonitorView({
               </label>
             </div>
 
+            {manualAttendanceForm.event_type === "CHECK_OUT" ? (
+              <AttendanceStudentsFields count={manualStudentCount} names={manualStudentNames}
+                onCountChange={setManualStudentCount} onNamesChange={setManualStudentNames}
+                disabled={pendingAction === "manual-attendance"} />
+            ) : null}
+            {manualStudentError && manualAttendanceForm.event_type === "CHECK_OUT" ? <p className="status error" role="alert">{t(manualStudentError)}</p> : null}
+            {actionStatus.kind === "error" ? <p className="status error" role="alert">{t(actionStatus.message)}</p> : null}
             <div className="floating-panel-summary">
               <div className="floating-panel-summary-row">
                 <span>{t("Status")}</span>
@@ -1798,6 +1821,7 @@ export default function AdminMonitorView({
                         <StatusPill value={item.checkout_status || "-"} />
                         <span className="subtle">{formatAttendanceTime(item.check_out_at)}</span>
                       </div>
+                      <AttendanceStudents names={item.student_names} />
                     </div>
                   </article>
                 ))}

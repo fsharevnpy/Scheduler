@@ -1,4 +1,22 @@
 export const managerVietnamese = {
+  "Students taught": "Học viên đã dạy",
+  "Number of students": "Số bé đã dạy",
+  "Student names": "Tên từng học viên",
+  "Student {number}": "Bé {number}",
+  "Full name": "Họ và tên",
+  "Next student": "Bé tiếp theo",
+  "Done entering names": "Xong",
+  "Enter each name in its own field. No line breaks needed.": "Mỗi bé một ô tên riêng, không cần xuống dòng.",
+  "Names entered: {count}": "Đã nhập {count} tên",
+  "Enter students once for the whole visit, including consecutive classes.": "Nhập một danh sách cho cả buổi/ca đôi. Số bé phải lớn hơn 0 và có đủ tên từng bé.",
+  "Shared list for the whole visit": "Danh sách chung cho cả buổi/ca đôi",
+  "Students not recorded": "Chưa ghi nhận",
+  "{count} students — view names": "{count} bé — xem tên",
+  "Enter a whole number of students greater than zero.": "Nhập số bé là số nguyên lớn hơn 0.",
+  "Enter exactly one name for each student counted.": "Điền đủ các ô tên theo số bé đã khai báo.",
+  "Each student name must contain 1 to 150 characters on one line.": "Điền đủ các ô tên, mỗi tên từ 1 đến 150 ký tự và không chứa ký tự điều khiển.",
+  "Reading location...": "Đang lấy vị trí...",
+  "The student list exceeds the report cell text limit.": "Danh sách tên vượt giới hạn 32.767 ký tự của một ô báo cáo.",
   "Every day, a better move.": "Mỗi ngày, một nước đi tiến bộ.",
   "Dashboard sections": "Các mục quản lý",
   "Teachers & classes": "Giáo viên & ca dạy",
@@ -154,6 +172,7 @@ export const managerVietnamese = {
 
 export const managerEnglish = Object.fromEntries(Object.keys(managerVietnamese).map((key) => [key, key]));
 Object.assign(managerEnglish, {
+  "Students not recorded": "Not recorded",
   "Export Excel": "Statistics & reports",
   INVALID_SHIFT: "Saved shift has an invalid time range",
   "Report policy": "Each row is one attendance visit. The session count shows how many teaching sessions it includes.",

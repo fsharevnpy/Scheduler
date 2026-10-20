@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Literal, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TeacherUpdate(BaseModel):
@@ -154,11 +154,51 @@ class AttendanceCheckInPayload(BaseModel):
         return value
 
 
+class AttendanceStudentsPayload(BaseModel):
+    student_count: int = Field(strict=True, gt=0)
+    student_names: list[str]
+
+    @field_validator("student_names")
+    @classmethod
+    def validate_student_names(cls, names: list[str]) -> list[str]:
+        names = [name.strip() for name in names]
+        if any(not name or len(name) > 150 or any(ord(char) < 32 or ord(char) == 127 for char in name) for name in names):
+            raise ValueError("each student name must contain 1 to 150 characters on one line")
+        return names
+
+    @model_validator(mode="after")
+    def validate_student_count(self) -> "AttendanceStudentsPayload":
+        if len(self.student_names) != self.student_count:
+            raise ValueError("student count must match the number of names")
+        if len("\n".join(self.student_names)) > 32767:
+            raise ValueError("student list exceeds the report cell text limit")
+        return self
+
+
+class AttendanceCheckOutPayload(AttendanceCheckInPayload, AttendanceStudentsPayload):
+    pass
+
+
 class ManualAttendancePayload(BaseModel):
     teacher_id: str
     center_id: str
     checked_at: datetime
     event_type: Literal["CHECK_IN", "CHECK_OUT"] = "CHECK_IN"
+    student_count: Optional[int] = Field(default=None, strict=True, gt=0)
+    student_names: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def validate_students(self) -> "ManualAttendancePayload":
+        if self.event_type == "CHECK_OUT":
+            if self.student_count is None or self.student_names is None:
+                raise ValueError("student count and names are required at checkout")
+            students = AttendanceStudentsPayload(
+                student_count=self.student_count, student_names=self.student_names,
+            )
+            self.student_names = students.student_names
+        elif self.student_count is not None or self.student_names is not None:
+            raise ValueError("student information is recorded at checkout only")
+        return self
 
     @field_validator("teacher_id", "center_id")
     @classmethod

@@ -515,6 +515,40 @@
 }
 
 .report-empty-state h3 { color: var(--ink); font-size: 1.05rem; }
+.attendance-students-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #faf5eb;
+}
+.attendance-students-fields legend { padding: 0 6px; font-weight: 700; color: var(--accent-dark); }
+.attendance-students-fields p { margin: 0; font-size: 0.88rem; line-height: 1.5; }
+.attendance-student-input-row { display: flex; align-items: end; gap: 8px; }
+.attendance-student-input-row .field { flex: 1; min-width: 0; }
+.attendance-student-input-row input { min-width: 0; font-size: 16px; }
+.student-next-button {
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffefa;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+@media (max-width: 400px) {
+  .attendance-student-input-row { flex-wrap: wrap; }
+  .attendance-student-input-row .field { flex-basis: 100%; }
+}
+.attendance-students { min-width: 170px; max-width: 320px; white-space: normal; }
+.attendance-students summary { cursor: pointer; color: var(--accent-dark); font-weight: 600; }
+.attendance-students p { margin: 10px 0; font-size: 0.8rem; }
+.attendance-students ol { margin: 8px 0; padding-left: 24px; overflow-wrap: anywhere; }
+.attendance-students li + li { margin-top: 6px; }
 .report-empty-state p { margin-bottom: 0; line-height: 1.6; }
 .chess-login-motto { margin: 8px 0 20px; font-size: 0.9rem; color: var(--accent-dark); }
 

@@ -23,6 +23,8 @@ COPY = {
         "UNMATCHED": "No matched class", "INVALID_ORDER": "Checkout precedes check-in",
         "INVALID_SHIFT": "Saved shift has an invalid time range",
         "MANUAL": "Manually recorded", "UNLINKED": "No saved check-in/checkout link",
+        "student_count": "Students in visit", "student_names": "Student names (whole visit)",
+        "students_unknown": "Not recorded",
         "empty": "No recorded attendance in this period.",
         "policy": "Each saved class counts separately, including consecutive classes sharing one check-in/out. Late/early or incomplete sessions require review and are not included in confirmed totals. No absence is inferred from the current schedule.",
         "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
@@ -40,6 +42,8 @@ COPY = {
         "UNMATCHED": "Không khớp ca dạy", "INVALID_ORDER": "Giờ ra trước giờ vào",
         "INVALID_SHIFT": "Khoảng giờ ca đã lưu không hợp lệ",
         "MANUAL": "Ghi nhận thủ công", "UNLINKED": "Chưa lưu liên kết giữa giờ vào và giờ ra",
+        "student_count": "Số bé trong buổi", "student_names": "Tên học viên (cả buổi)",
+        "students_unknown": "Chưa ghi nhận",
         "empty": "Không có chấm công trong khoảng thời gian này.",
         "policy": "Mỗi ca đã lưu được tính riêng, kể cả các ca liên tục dùng chung một lần vào/ra. Ca trễ, về sớm hoặc thiếu chấm công cần xem xét, chưa cộng vào số ca đủ điều kiện. Không suy ra vắng từ lịch hiện tại.",
         "days": ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"],
@@ -199,6 +203,8 @@ def build_attendance_report(teachers, records, start_date, end_date):
                 "start_time": str(start) if start else None, "end_time": str(end) if end else None,
                 "checked_at": entered.isoformat() if entered else None,
                 "check_out_at": exited.isoformat() if exited else None,
+                "student_names": check_out.get("student_names") if check_out else None,
+                "student_count": len(check_out["student_names"]) if check_out and check_out.get("student_names") is not None else None,
                 "result": result, "warnings": warnings, "notes": notes, "minutes": minutes,
                 "block_size": len(shifts), "source": inferred or "SAVED",
                 "event_pair": (str(check_in["record_id"]) if check_in else None,
@@ -331,7 +337,7 @@ def build_report_workbook(report, language):
         for center, center_rows in centers.items():
             tab_name = f"{teacher['teacher_name']} - {center}"
             result = sheet(tab_name, f"{teacher['teacher_name']} - {center}",
-                           [copy[key] for key in ("date", "weekday", "center", "class", "shift", "in", "out", "block", "result", "notes")])
+                           [copy[key] for key in ("date", "weekday", "center", "class", "shift", "in", "out", "block", "result", "notes", "student_count", "student_names")])
             for row in center_rows:
                 shift = f"{row['start_time'][:5]} - {row['end_time'][:5]}" if row["start_time"] and row["end_time"] else "-"
                 result.append([
@@ -339,9 +345,11 @@ def build_report_workbook(report, language):
                     local_datetime(row["checked_at"]).strftime("%H:%M") if row["checked_at"] else "-",
                     local_datetime(row["check_out_at"]).strftime("%H:%M") if row["check_out_at"] else "-",
                     row["block_size"], copy[row["result"]], "; ".join(copy[code] for code in row["warnings"] + row["notes"]),
+                    row["student_count"] if row["student_count"] is not None else copy["students_unknown"],
+                    "\n".join(row["student_names"]) if row["student_names"] is not None else copy["students_unknown"],
                 ])
                 result.cell(result.max_row, 9).fill = PatternFill("solid", fgColor="D9EAD3" if row["result"] == "CONFIRMED" else "FFF2CC")
-            finish(result, [15, 17, 24, 28, 22, 14, 14, 20, 22, 65])
+            finish(result, [15, 17, 24, 28, 22, 14, 14, 20, 22, 65, 20, 45])
             total = sum(row["block_size"] for row in center_rows if row["checked_at"] and row["check_out_at"])
             result.append(["Tổng số ca đã dạy (đủ vào/ra)" if language == "vi" else "Total sessions (checked in/out)", None, None, None, None, None, None, total])
             result.merge_cells(start_row=result.max_row, start_column=1, end_row=result.max_row, end_column=7)

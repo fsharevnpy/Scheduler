@@ -170,7 +170,8 @@ Validation:
 # From frontend:
 npm test
 npm run build
-# From backend (with its requirements installed):
+# From backend (install test requirements in its virtual environment first):
+python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -p "test_attendance*.py"
 ```
 
@@ -180,6 +181,55 @@ forward: each date must contain exactly one row, including the unmatched event.
 The teacher's History must contain three rows with both check-in and checkout on
 the latest historical row. On the pagination fixture, move to page 2 and refresh
 rows: it must stay on page 2. This fixture is not included in the production build.
+
+## Students recorded at checkout
+
+- Before recording checkout, a teacher enters a positive whole **number of students**
+  and a matching list of names, one separate input per student. Zero students, missing names
+  and a count/list mismatch are rejected before requesting location and again by the API.
+  Names are trimmed, limited to 150 characters each, and cannot contain control
+  characters. Children with identical names are retained as separate entries.
+  The joined list is limited to Excel's 32,767-character cell limit so exports do
+  not silently truncate names.
+- Changing the count creates numbered name inputs. A **Next student** button and
+  the keyboard's Next/Enter action move focus without submitting the checkout.
+  The last field's Done action dismisses the keyboard; checkout still needs explicit
+  confirmation. Reducing the count excludes extra names from submission but retains
+  them in the current form draft if the count is increased again.
+- One list covers the **whole attendance visit**, including a double/consecutive
+  shift block. It is not a separate roster per class and is not a unique-student
+  total across days. Existing session-count and attendance-status rules are unchanged.
+- `POST /attendance-records/check-out` requires `student_count` (integer) and
+  `student_names` (array of strings), alongside the existing location fields.
+  `POST /attendance-records/manual` requires the same fields for `CHECK_OUT`;
+  check-in still does not require student details.
+- The validated list is saved on the checkout record in nullable
+  `attendance_records.student_names` (JSONB) in the same transaction as the checkout.
+  The count is derived from the saved list, avoiding two conflicting stored counts.
+  The normal schema initializer adds the column to existing databases; new database
+  initialization includes it too.
+- `GET /attendance-records` returns the list and its count. Teacher access remains
+  scoped to that teacher's own account; reports and manual records remain restricted
+  to managers/developers.
+- Current/history tables, the manager's teacher detail panel and report visit details
+  show a clickable student count that expands to the names. A saved double shift can
+  show the same list on its individual class rows, labeled as shared for the visit.
+- JSON report `sessions` and per-class `details` contain `student_names` and
+  `student_count`. Excel teacher/center detail sheets append **Students in visit** and
+  **Student names (whole visit)**. Each visit is exported once; names are plain text,
+  never formulas. No student totals are inferred or multiplied by the block size.
+- Old records return `null` and display a localized **Not recorded**, not zero.
+  Names are user data and are never
+  translated. UI labels and Excel column headings follow English/Vietnamese selection.
+- While location/save is pending, checkout inputs and confirmation are disabled.
+  A failed save retains the entered names for retry; successful completion clears them.
+- Deploy backend and frontend together and refresh installed/browser clients.
+  Old clients without student fields will receive an explicit 422 response at checkout;
+  no database volume reset or historical backfill is needed.
+- The browser fixture supports checkout callbacks with synthetic names:
+  `globalThis.checkoutStudentPayload`, `globalThis.manualStudentPayload` and
+  `globalThis.failCheckoutFixture` support validation and failed-save retry checks.
+  Geolocation must be stubbed during fixture testing; it does not write to a real DB.
 
 ## Teacher attendance statistics and monthly reports
 

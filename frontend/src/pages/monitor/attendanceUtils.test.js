@@ -185,3 +185,35 @@ test("an explicit checkout link also works with an older individual snapshot", (
   assert.equal(rows.length, 1);
   assert.equal(rows[0].check_out_at, checkOut.checked_at);
 });
+
+test("student names follow the linked checkout across a saved double shift", () => {
+  const names = ["Bé An", "Bé Bình"];
+  const records = [blockIn, { ...blockOut, student_names: names }];
+  for (const rows of [
+    buildAttendanceHistoryRows(records),
+    buildCurrentAttendanceRows({ records, classes: [], now: new Date(blockOut.checked_at) }),
+  ]) {
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((row) => row.student_count === 2));
+    assert.ok(rows.every((row) => row.student_names === names));
+  }
+});
+
+test("students are never copied from another teacher or an earlier unpaired checkout", () => {
+  const rows = buildAttendanceHistoryRows([blockIn, { ...blockOut, teacher_id: "T2", student_names: ["Other"] }]);
+  assert.ok(rows.filter((row) => row.teacher_id === "T1").every((row) => row.student_names === null));
+  const backwards = buildAttendanceHistoryRows([checkOut, { ...checkIn, checked_at: "2026-10-19T04:00:00Z" }]);
+  assert.ok(backwards.every((row) => row.student_count === null));
+  assert.equal(buildAttendanceHistoryRows([checkIn, checkOut])[0].student_names, null);
+});
+
+test("current consecutive classes share the checkout list without replacing it with checkin data", () => {
+  const names = ["An", "Binh"];
+  const rows = buildCurrentAttendanceRows({
+    records: [{ ...checkIn, student_names: ["Ignored"] }, { ...checkOut, class_id: "C2", checked_at: "2026-10-19T04:00:00Z", student_names: names }],
+    classes: [scheduledClass, { ...scheduledClass, class_id: "C2", start_time: "10:00:00", end_time: "11:00:00" }],
+    now: new Date("2026-10-19T05:00:00Z"),
+  });
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.student_count === 2 && row.student_names === names));
+});

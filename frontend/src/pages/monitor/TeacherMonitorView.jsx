@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
+import AttendanceStudents, { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
+import { studentNameSlots, validateAttendanceStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
@@ -65,13 +67,20 @@ export default function TeacherMonitorView({
   const [selectedManagerCode, setSelectedManagerCode] = useState("");
   const [reason, setReason] = useState("");
   const [attendanceError, setAttendanceError] = useState("");
+  const [studentCount, setStudentCount] = useState("");
+  const [studentNames, setStudentNames] = useState([]);
+  const [isReadingLocation, setIsReadingLocation] = useState(false);
+  const attendanceRequest = useRef(0);
   const [attendanceView, setAttendanceView] = useState("current");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentDate(new Date()), 30000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      attendanceRequest.current += 1;
+    };
   }, []);
 
   const activeLeaveClassIds = useMemo(
@@ -115,6 +124,7 @@ export default function TeacherMonitorView({
   const isCheckoutPanel = attendancePanelAction === "checkout";
   const attendancePendingKey = isCheckoutPanel ? "attendance-check-out" : "attendance-check-in";
   const attendanceActionLabel = isCheckoutPanel ? t("checkOut") : t("checkIn");
+  const attendanceBusy = isReadingLocation || pendingAction === attendancePendingKey;
 
   async function handleCreateLeaveRequest(event) {
     event.preventDefault();
@@ -142,27 +152,48 @@ export default function TeacherMonitorView({
     }
   }
 
-  function handleConfirmAttendance() {
+  function handleConfirmAttendance(event) {
+    event.preventDefault();
+    if (attendanceBusy) return;
+    const submittedNames = studentNameSlots(studentCount, studentNames).map((name) => name.trim());
+    const error = isCheckoutPanel ? validateAttendanceStudents(studentCount, submittedNames) : "";
+    if (error) {
+      setAttendanceError(error);
+      return;
+    }
     if (!navigator.geolocation) {
       setAttendanceError(t("locationNotSupported"));
       return;
     }
 
     setAttendanceError("");
+    setIsReadingLocation(true);
+    const requestId = ++attendanceRequest.current;
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const attendanceAction = isCheckoutPanel ? onCheckOutAttendance : onCheckInAttendance;
-        const success = await attendanceAction({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
-
-        if (success) {
-          setIsAttendancePanelOpen(false);
+        if (requestId !== attendanceRequest.current) return;
+        try {
+          const attendanceAction = isCheckoutPanel ? onCheckOutAttendance : onCheckInAttendance;
+          const success = await attendanceAction({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            ...(isCheckoutPanel ? { studentCount: Number(studentCount), studentNames: submittedNames } : {}),
+          });
+          if (success && requestId === attendanceRequest.current) {
+            setIsAttendancePanelOpen(false);
+            setStudentCount("");
+            setStudentNames([]);
+          }
+        } catch (cause) {
+          if (requestId === attendanceRequest.current) setAttendanceError(cause.message);
+        } finally {
+          if (requestId === attendanceRequest.current) setIsReadingLocation(false);
         }
       },
       (error) => {
+        if (requestId !== attendanceRequest.current) return;
+        setIsReadingLocation(false);
         setAttendanceError(error.message || t("locationReadFailed"));
       },
       {
@@ -302,7 +333,7 @@ export default function TeacherMonitorView({
         <div className={`status ${actionStatus.kind}`.trim()} aria-live="polite">
           {actionStatus.message}
         </div>
-        {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+        {attendanceError ? <div className="status error">{t(attendanceError)}</div> : null}
         {attendanceView !== "current" ? <p className="subtle">{t("attendanceHistoryHelp")}</p> : null}
 
         <DataTable
@@ -322,6 +353,7 @@ export default function TeacherMonitorView({
             },
             { key: "checked_at", label: t("checkIn"), render: (row) => formatAttendanceTime(row.checked_at) },
             { key: "check_out_at", label: t("checkOut"), render: (row) => formatAttendanceTime(row.check_out_at) },
+            { key: "student_names", label: t("Students taught"), render: (row) => <AttendanceStudents names={row.student_names} /> },
             {
               key: "nearest_center_name",
               label: t("location"),
@@ -477,28 +509,33 @@ export default function TeacherMonitorView({
 	          title={t("confirmAttendance", { action: attendanceActionLabel })}
           titleId="attendance-confirm-title"
           onClose={() => setIsAttendancePanelOpen(false)}
+          closeDisabled={attendanceBusy}
         >
+          <form onSubmit={handleConfirmAttendance}>
           <div className="floating-panel-reason-box">
             <p>
 	              {t("attendanceConfirmCopy")}
             </p>
           </div>
-          {attendanceError ? <div className="status error">{attendanceError}</div> : null}
+          {isCheckoutPanel ? (
+            <AttendanceStudentsFields count={studentCount} names={studentNames}
+              onCountChange={setStudentCount} onNamesChange={setStudentNames} disabled={attendanceBusy} />
+          ) : null}
+          {attendanceError ? <div className="status error" role="alert">{t(attendanceError)}</div> : null}
 
           <div className="floating-panel-actions">
             {actionStatus.kind === "error" ? <div className="status error" role="alert">{t(actionStatus.message)}</div> : null}
             <button
-              type="button"
+              type="submit"
               className="table-action-button"
-              disabled={pendingAction === attendancePendingKey}
-              onClick={handleConfirmAttendance}
+              disabled={attendanceBusy}
             >
-	              {pendingAction === attendancePendingKey ? t("recording") : t("confirmAttendance", { action: attendanceActionLabel })}
+	              {pendingAction === attendancePendingKey ? t("recording") : isReadingLocation ? t("Reading location...") : t("confirmAttendance", { action: attendanceActionLabel })}
             </button>
             <button
               type="button"
               className="table-action-button table-action-button-muted"
-              disabled={pendingAction === attendancePendingKey}
+              disabled={attendanceBusy}
               onClick={handleResetLocationAccess}
             >
 	              {t("resetLocation")}
@@ -506,12 +543,13 @@ export default function TeacherMonitorView({
             <button
               type="button"
               className="table-action-button table-action-button-muted"
-              disabled={pendingAction === attendancePendingKey}
+              disabled={attendanceBusy}
               onClick={() => setIsAttendancePanelOpen(false)}
             >
 	              {t("cancel")}
             </button>
           </div>
+          </form>
         </FloatingPanel>
       ) : null}
 

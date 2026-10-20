@@ -4,6 +4,7 @@ import { requestJson } from "../../lib/http.js";
 import FloatingPanel from "./FloatingPanel.jsx";
 import DataTable from "./DataTable.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
+import AttendanceStudents from "./AttendanceStudents.jsx";
 import { formatAttendanceDate, formatAttendanceTime, formatAttendanceWeekday, getAttendanceDateKey } from "./attendanceUtils.js";
 
 export function monthRange(month) {
@@ -153,6 +154,7 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
                   { key: "checked_at", label: t("Check-in"), render: (row) => formatAttendanceTime(row.checked_at) },
                   { key: "check_out_at", label: t("Checkout"), render: (row) => formatAttendanceTime(row.check_out_at) },
                   { key: "block_size", label: language === "vi" ? "Số ca trong buổi" : "Sessions in block" },
+                  { key: "student_names", label: t("Students taught"), render: (row) => <AttendanceStudents names={row.student_names} /> },
                   { key: "result", label: t("Result"), render: (row) => t(row.result) },
                   { key: "notes", label: t("Notes"), render: (row) => [...row.warnings, ...row.notes].map((code) => t(code)).join("; ") },
                 ]} />

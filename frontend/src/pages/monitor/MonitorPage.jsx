@@ -464,7 +464,7 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function checkOutAttendance({ latitude, longitude, accuracy }) {
+  async function checkOutAttendance({ latitude, longitude, accuracy, studentCount, studentNames }) {
     return runAction(
       "attendance-check-out",
       () =>
@@ -475,6 +475,8 @@ export default function MonitorPage({ auth }) {
             latitude,
             longitude,
             accuracy_meters: accuracy ?? null,
+            student_count: studentCount,
+            student_names: studentNames,
           }),
         }),
       message("Checkout recorded."),
@@ -487,7 +489,7 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function createManualAttendance({ teacherId, centerId, checkedAt, eventType }) {
+  async function createManualAttendance({ teacherId, centerId, checkedAt, eventType, studentCount, studentNames }) {
     return runAction(
       "manual-attendance",
       () =>
@@ -499,6 +501,7 @@ export default function MonitorPage({ auth }) {
             center_id: centerId,
             checked_at: checkedAt,
             event_type: eventType,
+            ...(eventType === "CHECK_OUT" ? { student_count: studentCount, student_names: studentNames } : {}),
           }),
         }),
       message("Manual attendance recorded."),
