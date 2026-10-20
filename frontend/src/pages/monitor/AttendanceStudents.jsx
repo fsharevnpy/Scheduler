@@ -20,7 +20,6 @@ export function AttendanceStudentsFields({ count, names, onCountChange, onNamesC
   return (
     <fieldset className="attendance-students-fields" disabled={disabled}>
       <legend>{t("Students taught")}</legend>
-      <p className="subtle">{t("Enter students once for the whole visit, including consecutive classes.")}</p>
       <label className="field">
         <span>{t("Number of students")}</span>
         <input type="number" inputMode="numeric" min="1" max={MAX_STUDENT_COUNT} step="1" required value={count}

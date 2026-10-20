@@ -5,7 +5,6 @@ export const managerVietnamese = {
   "Student {number}": "Bé {number}",
   "Full name": "Họ và tên",
   "Names entered: {count}": "Đã nhập {count} tên",
-  "Enter students once for the whole visit, including consecutive classes.": "Nhập một danh sách cho cả buổi/ca đôi. Số bé phải lớn hơn 0 và có đủ tên từng bé.",
   "Shared list for the whole visit": "Danh sách chung cho cả buổi/ca đôi",
   "Students not recorded": "Chưa ghi nhận",
   "{count} students — view names": "{count} bé — xem tên",
