@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,8 +17,13 @@ class AttendanceHistoryTests(unittest.TestCase):
     def fetch(self, **kwargs):
         options = dict(limit=500, before_checked_at=None, before_record_id=None)
         options.update(kwargs)
-        with patch("api.routes.attendance.ensure_attendance_table"):
-            return get_attendance_records(current_user=self.user, db=self.db, **options)
+        return get_attendance_records(current_user=self.user, db=self.db, **options)
+
+    def test_loading_a_page_is_read_only_and_uses_one_query(self):
+        self.fetch()
+        self.db.execute.assert_called_once()
+        self.assertTrue(str(self.db.execute.call_args.args[0]).strip().startswith("SELECT"))
+        self.db.commit.assert_not_called()
 
     def test_teacher_scope_and_stable_cursor_are_both_applied(self):
         timestamp = datetime(2026, 10, 19, 2, tzinfo=timezone.utc)

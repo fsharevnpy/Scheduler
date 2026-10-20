@@ -175,7 +175,32 @@ class AttendanceStudentsPayload(BaseModel):
         return self
 
 
-class AttendanceCheckOutPayload(AttendanceCheckInPayload, AttendanceStudentsPayload):
+class SessionStudentsPayload(AttendanceStudentsPayload):
+    class_id: str = Field(min_length=1)
+
+
+class CheckoutStudentsPayload(BaseModel):
+    student_count: Optional[int] = Field(default=None, strict=True, gt=0)
+    student_names: Optional[list[str]] = None
+    session_students: Optional[list[SessionStudentsPayload]] = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_rosters(self) -> "CheckoutStudentsPayload":
+        if self.session_students is not None:
+            if self.student_count is not None or self.student_names is not None:
+                raise ValueError("use either session students or a single student list")
+            ids = [item.class_id for item in self.session_students]
+            if len(set(ids)) != len(ids):
+                raise ValueError("each teaching session must have one student list")
+        else:
+            if self.student_count is None or self.student_names is None:
+                raise ValueError("student count and names are required at checkout")
+            students = AttendanceStudentsPayload(student_count=self.student_count, student_names=self.student_names)
+            self.student_names = students.student_names
+        return self
+
+
+class AttendanceCheckOutPayload(AttendanceCheckInPayload, CheckoutStudentsPayload):
     pass
 
 
@@ -186,17 +211,17 @@ class ManualAttendancePayload(BaseModel):
     event_type: Literal["CHECK_IN", "CHECK_OUT"] = "CHECK_IN"
     student_count: Optional[int] = Field(default=None, strict=True, gt=0)
     student_names: Optional[list[str]] = None
+    session_students: Optional[list[SessionStudentsPayload]] = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_students(self) -> "ManualAttendancePayload":
         if self.event_type == "CHECK_OUT":
-            if self.student_count is None or self.student_names is None:
-                raise ValueError("student count and names are required at checkout")
-            students = AttendanceStudentsPayload(
+            students = CheckoutStudentsPayload(
                 student_count=self.student_count, student_names=self.student_names,
+                session_students=self.session_students,
             )
             self.student_names = students.student_names
-        elif self.student_count is not None or self.student_names is not None:
+        elif self.student_count is not None or self.student_names is not None or self.session_students is not None:
             raise ValueError("student information is recorded at checkout only")
         return self
 

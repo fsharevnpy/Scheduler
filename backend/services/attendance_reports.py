@@ -23,7 +23,7 @@ COPY = {
         "UNMATCHED": "No matched class", "INVALID_ORDER": "Checkout precedes check-in",
         "INVALID_SHIFT": "Saved shift has an invalid time range",
         "MANUAL": "Manually recorded", "UNLINKED": "No saved check-in/checkout link",
-        "student_count": "Students in visit", "student_names": "Student names (whole visit)",
+        "student_count": "Number of students", "student_names": "Student names",
         "students_unknown": "Not recorded",
         "empty": "No recorded attendance in this period.",
         "policy": "Each saved class counts separately, including consecutive classes sharing one check-in/out. Late/early or incomplete sessions require review and are not included in confirmed totals. No absence is inferred from the current schedule.",
@@ -42,7 +42,7 @@ COPY = {
         "UNMATCHED": "Không khớp ca dạy", "INVALID_ORDER": "Giờ ra trước giờ vào",
         "INVALID_SHIFT": "Khoảng giờ ca đã lưu không hợp lệ",
         "MANUAL": "Ghi nhận thủ công", "UNLINKED": "Chưa lưu liên kết giữa giờ vào và giờ ra",
-        "student_count": "Số bé trong buổi", "student_names": "Tên học viên (cả buổi)",
+        "student_count": "Số học viên", "student_names": "Tên học viên",
         "students_unknown": "Chưa ghi nhận",
         "empty": "Không có chấm công trong khoảng thời gian này.",
         "policy": "Mỗi ca đã lưu được tính riêng, kể cả các ca liên tục dùng chung một lần vào/ra. Ca trễ, về sớm hoặc thiếu chấm công cần xem xét, chưa cộng vào số ca đủ điều kiện. Không suy ra vắng từ lịch hiện tại.",
@@ -149,6 +149,9 @@ def build_attendance_report(teachers, records, start_date, end_date):
         if not shifts:
             shifts = [{"class_id": None, "start_time": None, "end_time": None}]
         for shift in shifts:
+            session_students = check_out.get("session_students") if check_out else None
+            names = (next((item["student_names"] for item in session_students if item["class_id"] == shift["class_id"]), None)
+                     if session_students is not None else check_out.get("student_names") if check_out else None)
             warnings = []
             notes = []
             inferred = record.get("legacy_inferred")
@@ -203,8 +206,9 @@ def build_attendance_report(teachers, records, start_date, end_date):
                 "start_time": str(start) if start else None, "end_time": str(end) if end else None,
                 "checked_at": entered.isoformat() if entered else None,
                 "check_out_at": exited.isoformat() if exited else None,
-                "student_names": check_out.get("student_names") if check_out else None,
-                "student_count": len(check_out["student_names"]) if check_out and check_out.get("student_names") is not None else None,
+                "student_names": names,
+                "student_count": len(names) if names is not None else None,
+                "separate_students": session_students is not None,
                 "result": result, "warnings": warnings, "notes": notes, "minutes": minutes,
                 "block_size": len(shifts), "source": inferred or "SAVED",
                 "event_pair": (str(check_in["record_id"]) if check_in else None,
@@ -268,7 +272,13 @@ def build_attendance_report(teachers, records, start_date, end_date):
         key = (row["teacher_id"], row["date"], row["event_pair"])
         if key not in visits:
             visits[key] = {**row, "class_ids": [], "warnings": [], "notes": [], "block_size": 0}
+            if row["separate_students"]:
+                visits[key].update(session_students=[], student_names=None, student_count=None)
         visit = visits[key]
+        if row["separate_students"]:
+            visit["session_students"].append({field: row[field] for field in (
+                "class_id", "start_time", "end_time", "student_names", "student_count",
+            )})
         if row["class_id"]:
             visit["class_ids"].append(row["class_id"])
             visit["block_size"] += 1
@@ -335,10 +345,14 @@ def build_report_workbook(report, language):
         for row in rows:
             centers[row["center"] or ("Chưa xác định cơ sở" if language == "vi" else "Unknown center")].append(row)
         for center, center_rows in centers.items():
+            export_rows = [
+                {**row, **session, "block_size": 1} if session else row
+                for row in center_rows for session in (row.get("session_students") or [None])
+            ]
             tab_name = f"{teacher['teacher_name']} - {center}"
             result = sheet(tab_name, f"{teacher['teacher_name']} - {center}",
                            [copy[key] for key in ("date", "weekday", "center", "class", "shift", "in", "out", "block", "result", "notes", "student_count", "student_names")])
-            for row in center_rows:
+            for row in export_rows:
                 shift = f"{row['start_time'][:5]} - {row['end_time'][:5]}" if row["start_time"] and row["end_time"] else "-"
                 result.append([
                     row["date"], copy["days"][row["weekday"]], row["center"] or "-", row["class_id"] or "-", shift,

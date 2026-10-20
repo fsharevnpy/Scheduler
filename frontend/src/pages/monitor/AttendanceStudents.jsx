@@ -1,8 +1,9 @@
 import { useRef } from "react";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { MAX_STUDENT_COUNT, studentNameSlots } from "../../lib/attendanceStudents.js";
+import { formatTimeValue } from "./monitorUtils.js";
 
-export function AttendanceStudentsFields({ count, names, onCountChange, onNamesChange, disabled }) {
+export function AttendanceStudentsFields({ count, names, onCountChange, onNamesChange, disabled, title }) {
   const { t } = useLanguage();
   const inputs = useRef([]);
   const slots = studentNameSlots(count, names);
@@ -19,7 +20,7 @@ export function AttendanceStudentsFields({ count, names, onCountChange, onNamesC
 
   return (
     <fieldset className="attendance-students-fields" disabled={disabled}>
-      <legend>{t("Students taught")}</legend>
+      <legend>{title || t("Students taught")}</legend>
       <label className="field">
         <span>{t("Number of students")}</span>
         <input type="number" inputMode="numeric" min="1" max={MAX_STUDENT_COUNT} step="1" required value={count}
@@ -50,13 +51,29 @@ export function AttendanceStudentsFields({ count, names, onCountChange, onNamesC
   );
 }
 
-export default function AttendanceStudents({ names }) {
+export function SessionStudentsFields({ block, drafts, onChange, disabled }) {
   const { t } = useLanguage();
+  return block.map((shift, index) => {
+    const draft = drafts[shift.class_id] || { count: "", names: [] };
+    const update = (field, value) => onChange((current) => ({
+      ...current, [shift.class_id]: { ...(current[shift.class_id] || draft), [field]: value },
+    }));
+    return <AttendanceStudentsFields key={shift.class_id} count={draft.count} names={draft.names}
+      title={`${t("Session {number}", { number: index + 1 })} · ${formatTimeValue(shift.start_time)} – ${formatTimeValue(shift.end_time)}`}
+      onCountChange={(value) => update("count", value)} onNamesChange={(value) => update("names", value)} disabled={disabled} />;
+  });
+}
+
+export default function AttendanceStudents({ names, sessions }) {
+  const { t } = useLanguage();
+  if (sessions?.length) return <div>{sessions.map((session, index) => <div key={session.class_id}>
+    <strong>{t("Session {number}", { number: index + 1 })} · {formatTimeValue(session.start_time)} – {formatTimeValue(session.end_time)}</strong>
+    <AttendanceStudents names={session.student_names} />
+  </div>)}</div>;
   if (names == null) return <span className="subtle">{t("Students not recorded")}</span>;
   return (
     <details className="attendance-students">
       <summary>{t("{count} students — view names", { count: names.length })}</summary>
-      <p className="subtle">{t("Shared list for the whole visit")}</p>
       <ol>{names.map((name, index) => <li key={index}>{name}</li>)}</ol>
     </details>
   );

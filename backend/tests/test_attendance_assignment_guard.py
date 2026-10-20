@@ -65,7 +65,7 @@ class AssignmentGuardTests(unittest.TestCase):
             db = MagicMock()
             db.execute.return_value.mappings.return_value.first.return_value = None
             user = SimpleNamespace(user_code="test", teacher_id="GV-test")
-            payload = SimpleNamespace(latitude=10, longitude=106, accuracy_meters=5)
+            payload = SimpleNamespace(latitude=10, longitude=106, accuracy_meters=5, session_students=None)
             unmatched = {"class_id": None, "attendance_status": "UNMATCHED"}
             with patch.object(attendance, "ensure_attendance_table"), patch.object(attendance, "ensure_assignment_tables"), \
                  patch.object(attendance, "get_closest_center", return_value={"center_id": "CS1"}), \

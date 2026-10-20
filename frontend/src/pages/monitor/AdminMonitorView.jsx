@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
+import AsyncContent from "../../components/AsyncContent.jsx";
 import SectionNavigation from "./SectionNavigation.jsx";
-import BackupManagement from "./BackupManagement.jsx";
-import AttendanceReportPanel from "./AttendanceReportPanel.jsx";
-import AttendanceStudents, { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
-import { studentNameSlots, validateAttendanceStudents } from "../../lib/attendanceStudents.js";
+import ClassActionPanel from "./ClassActionPanel.jsx";
+import AttendanceStudents, { AttendanceStudentsFields, SessionStudentsFields } from "./AttendanceStudents.jsx";
+import { prepareCheckoutStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { getRoleTitle } from "../../lib/roles.js";
 import DataTable from "./DataTable.jsx";
@@ -17,9 +17,12 @@ import { formatDateTimeValue, formatTimeDraft, formatTimeValue, formatValue } fr
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
   formatAttendanceTime, getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getAttendanceDateKeys,
+  getTeacherAttendanceAvailability,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
+const BackupManagement = lazy(() => import("./BackupManagement.jsx"));
+const AttendanceReportPanel = lazy(() => import("./AttendanceReportPanel.jsx"));
 const HISTORY_LEAVE_STATUSES = new Set(["CANCELLED", "REJECTED"]);
 const CLASS_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const REASSIGNMENT_MODES = [
@@ -153,6 +156,8 @@ export default function AdminMonitorView({
   onCreateTeacherScoreEvent,
   onCreateManualAttendance,
   onUpdateClassTime,
+  onCreateClass,
+  onDeleteClass,
 }) {
   const { t, language } = useLanguage();
   const [selectedLeaveRequest, setSelectedLeaveRequest] = useState(null);
@@ -185,6 +190,7 @@ export default function AdminMonitorView({
   const [isScoreEventsLoading, setIsScoreEventsLoading] = useState(false);
   const [isScoreHistoryVisible, setIsScoreHistoryVisible] = useState(false);
   const [resourceView, setResourceView] = useState("teachers");
+  const [classAction, setClassAction] = useState(null);
   const [requestView, setRequestView] = useState("leave");
   const [attendanceView, setAttendanceView] = useState("current");
   const [attendanceDatePage, setAttendanceDatePage] = useState(1);
@@ -193,8 +199,10 @@ export default function AdminMonitorView({
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("attendance");
   const [hasOpenedReports, setHasOpenedReports] = useState(false);
+  const [hasOpenedSystem, setHasOpenedSystem] = useState(false);
   const [manualStudentCount, setManualStudentCount] = useState("");
   const [manualStudentNames, setManualStudentNames] = useState([]);
+  const [manualSessionDrafts, setManualSessionDrafts] = useState({});
   const [manualStudentError, setManualStudentError] = useState("");
 
 
@@ -212,6 +220,20 @@ export default function AdminMonitorView({
     end_time: "",
   });
   const [currentDate, setCurrentDate] = useState(new Date());
+  const manualCheckedAt = new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00+07:00`);
+  const manualBlock = Number.isNaN(manualCheckedAt.getTime()) ? [] : getTeacherAttendanceAvailability({
+    records: attendanceRecords, classes: [], teacherId: manualAttendanceForm.teacher_id, now: manualCheckedAt,
+  }).openCheckIn?.session_block || [];
+
+  useEffect(() => {
+    setManualSessionDrafts({});
+    setManualStudentCount("");
+    setManualStudentNames([]);
+  }, [manualAttendanceForm.teacher_id, manualAttendanceForm.center_id, manualAttendanceForm.checked_date, manualAttendanceForm.checked_time]);
+
+  useEffect(() => {
+    if (activeSection === "system") setHasOpenedSystem(true);
+  }, [activeSection]);
 
   useEffect(() => {
     if (!selectedLeaveRequest) {
@@ -242,7 +264,9 @@ export default function AdminMonitorView({
     }
     groups[key].classes.push(item);
     return groups;
-  }, {});
+  }, Object.fromEntries(centers.map((center) => [center.center_id, {
+    centerId: center.center_id, label: `${center.name} (${center.center_id})`, classes: [],
+  }])));
   const assignmentCenterEntries = Object.values(assignmentsByCenter).sort((left, right) => left.centerId.localeCompare(right.centerId));
   const assignmentCenterPageCount = Math.max(1, assignmentCenterEntries.length);
   const currentAssignmentCenterEntry =
@@ -260,8 +284,8 @@ export default function AdminMonitorView({
   const todayKey = getAttendanceDateKey(currentDate);
   const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
   const todayAttendanceRows = useMemo(
-    () => buildCurrentAttendanceRows({ records: attendanceRecords, classes, teachers, now: currentDate }),
-    [attendanceRecords, classes, teachers, currentDate],
+    () => buildCurrentAttendanceRows({ historyRows: historicalAttendanceRows, classes, teachers, now: currentDate }),
+    [historicalAttendanceRows, classes, teachers, currentDate],
   );
   const attendanceDateKeys = getAttendanceDateKeys(historicalAttendanceRows, attendanceView, todayKey);
   const attendanceDatePageCount = Math.max(1, attendanceDateKeys.length);
@@ -463,6 +487,7 @@ export default function AdminMonitorView({
   function openManualAttendancePanel() {
     setManualStudentCount("");
     setManualStudentNames([]);
+    setManualSessionDrafts({});
     setManualStudentError("");
     setManualAttendanceForm({
       event_type: "CHECK_IN",
@@ -487,9 +512,9 @@ export default function AdminMonitorView({
     if (!manualAttendanceForm.teacher_id || !manualAttendanceForm.center_id || !manualAttendanceForm.checked_date || !manualAttendanceForm.checked_time) {
       return;
     }
-    const studentNames = studentNameSlots(manualStudentCount, manualStudentNames).map((name) => name.trim());
+    const students = prepareCheckoutStudents(manualBlock, manualSessionDrafts, manualStudentCount, manualStudentNames);
     const error = manualAttendanceForm.event_type === "CHECK_OUT"
-      ? validateAttendanceStudents(manualStudentCount, studentNames) : "";
+      ? students.error : "";
     setManualStudentError(error);
     if (error) return;
 
@@ -498,8 +523,7 @@ export default function AdminMonitorView({
       centerId: manualAttendanceForm.center_id,
       checkedAt: new Date(`${manualAttendanceForm.checked_date}T${manualAttendanceForm.checked_time}:00+07:00`).toISOString(),
       eventType: manualAttendanceForm.event_type,
-      studentCount: Number(manualStudentCount),
-      studentNames,
+      ...(manualAttendanceForm.event_type === "CHECK_OUT" ? students.payload : {}),
     });
 
     if (success) {
@@ -698,7 +722,7 @@ export default function AdminMonitorView({
 
       {role === "developer" ? (
         <section id="monitor-system" className="manager-section" role="tabpanel" aria-labelledby="monitor-tab-system" hidden={activeSection !== "system"} tabIndex={0}>
-          <BackupManagement apiBase={apiBase} token={token} />
+          {hasOpenedSystem ? <AsyncContent><BackupManagement apiBase={apiBase} token={token} /></AsyncContent> : null}
           <DataTable
             title={t("Managers")}
             columns={[
@@ -952,9 +976,12 @@ export default function AdminMonitorView({
             </div>
 
             {manualAttendanceForm.event_type === "CHECK_OUT" ? (
-              <AttendanceStudentsFields count={manualStudentCount} names={manualStudentNames}
-                onCountChange={setManualStudentCount} onNamesChange={setManualStudentNames}
-                disabled={pendingAction === "manual-attendance"} />
+              manualBlock.length > 1
+                ? <SessionStudentsFields block={manualBlock} drafts={manualSessionDrafts} onChange={setManualSessionDrafts}
+                    disabled={pendingAction === "manual-attendance"} />
+                : <AttendanceStudentsFields count={manualStudentCount} names={manualStudentNames}
+                    onCountChange={setManualStudentCount} onNamesChange={setManualStudentNames}
+                    disabled={pendingAction === "manual-attendance"} />
             ) : null}
             {manualStudentError && manualAttendanceForm.event_type === "CHECK_OUT" ? <p className="status error" role="alert">{t(manualStudentError)}</p> : null}
             {actionStatus.kind === "error" ? <p className="status error" role="alert">{t(actionStatus.message)}</p> : null}
@@ -992,7 +1019,7 @@ export default function AdminMonitorView({
       ) : null}
 
       <section id="monitor-reports" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="monitor-tab-reports" hidden={activeSection !== "reports"} tabIndex={0}>
-        {hasOpenedReports ? <AttendanceReportPanel apiBase={apiBase} token={token} teachers={teachers} /> : null}
+        {hasOpenedReports ? <AsyncContent><AttendanceReportPanel apiBase={apiBase} token={token} teachers={teachers} /></AsyncContent> : null}
       </section>
 
       {selectedClassTime ? (
@@ -1197,8 +1224,8 @@ export default function AdminMonitorView({
           embedded
           pageSize={10}
         />
-        ) : replacementQueue.length === 0 ? (
-          <p className="subtle">{t("No classes found.")}</p>
+        ) : assignmentCenterEntries.length === 0 ? (
+          <p className="subtle">{t("No centers available.")}</p>
         ) : (
           <div className="center-class-group">
             <div className="center-class-head">
@@ -1218,7 +1245,13 @@ export default function AdminMonitorView({
 
                 return (
                   <div className="class-week-column" role="cell" key={`${currentAssignmentCenterLabel}-${day}`}>
-                    <div className="class-week-day">{formatAttendanceDayCode(day, language)}</div>
+                    <div className="class-week-day class-week-day-actions">
+                      <span>{formatAttendanceDayCode(day, language)}</span>
+                      <button type="button" className="class-symbol-button"
+                        aria-label={t("Add class on {day}", { day: formatAttendanceDayCode(day, language) })}
+                        title={t("Create class")}
+                        onClick={() => setClassAction({ centerId: currentAssignmentCenterEntry.centerId, centerLabel: currentAssignmentCenterLabel, day })}>+</button>
+                    </div>
                     <div className="class-week-list">
                       {dayClasses.length === 0 ? (
                         <span className="class-week-empty">{t("No classes")}</span>
@@ -1233,6 +1266,7 @@ export default function AdminMonitorView({
                                 <StatusPill value={item.status} />
                                 <span className="subtle">{teacherCount}/2</span>
                               </div>
+                              <div className="class-time-actions">
                               <button
                                 type="button"
                                 className="class-time-button"
@@ -1241,6 +1275,10 @@ export default function AdminMonitorView({
                               >
                                 {formatTimeValue(item.start_time)} - {formatTimeValue(item.end_time)}
                               </button>
+                                <button type="button" className="class-symbol-button class-symbol-delete"
+                                  aria-label={t("Delete class {id}?", { id: item.class_id })} title={t("Delete class")}
+                                  onClick={() => setClassAction({ centerId: item.center_id, centerLabel: currentAssignmentCenterLabel, day: item.day_of_week, item })}>−</button>
+                              </div>
                               {renderTeacherNames(t, item.teacher_label, item.teacher_ids, getClassTeacherModes(item), item.original_teacher_ids, (teacherId, teacherName, assignmentMode, originalTeacherId) =>
                                 openClassTeacherPanel(item, teacherId, teacherName, assignmentMode, originalTeacherId),
                               )}
@@ -1414,6 +1452,9 @@ export default function AdminMonitorView({
           />
         )}
       </section>
+
+      {classAction ? <ClassActionPanel context={classAction} teachers={sortedTeachers}
+        onCreate={onCreateClass} onDelete={onDeleteClass} onClose={() => setClassAction(null)} /> : null}
 
       {selectedClassTeacher ? (
         <FloatingPanel

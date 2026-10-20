@@ -61,6 +61,76 @@ Forgot password flow:
 
 Route: `/register`
 
+The entire registration screen follows the selected English/Vietnamese language:
+account fields and roles, teaching preferences, weekday labels and action messages. Successful action messages
+retain their values and retranslate when the language changes. API role/day values
+remain unchanged. Loading errors are shown above the account form.
+Registration no longer contains class creation, deletion or time editing.
+
+Centers are currently read-only in this app (`GET /centers`). Managers/developers
+can create, edit and delete **classes** at existing centers, but there is no
+center creation/deletion UI or POST/DELETE center endpoint.
+
+Database-free localization check: `/tests/register-browser.html` uses simulated data
+and writes only in memory. Test both languages for staff/teacher creation, preference
+selection. Switch language
+after success and verify the message updates without changing entered names/IDs.
+Set `globalThis.registerDemoError = "forbidden to create this role"` to exercise
+an API error, then clear it. `globalThis.registerDemoRequests` captures payloads so
+role and weekday API values can be verified independently of their translated labels.
+
+### Managing classes in the monitor
+
+- In Teachers & teaching schedule, select Classes to use the weekly grid for each center.
+- Every weekday heading has a `+` button. The create dialog fixes the selected center/day;
+  enter start/end time and optionally a teacher. The weekly recurrence is explicit.
+- Click a class's time to edit it, or its teacher name to manage assignment as before.
+- Each class has a `−` button that only opens a confirmation with center, weekday, time
+  and teachers. Cancel, Close or clicking the backdrop never deletes the class.
+- Only the explicit Delete class button sends DELETE. While saving, confirmation,
+  cancellation and closing are disabled; failures remain visible in the dialog.
+- Existing backend deletion semantics are unchanged: linked leave requests are deleted,
+  attendance records remain with their class foreign key cleared and saved snapshots retained.
+  The confirmation explicitly warns about linked leave requests.
+- Empty centers still display all seven weekday headings so the first class can be created.
+- Demo: `/tests/attendance-browser.html?reportFixture&view=manager&classFixture`.
+  Test creation in the empty second center, cancel/backdrop/confirm deletion, failure/retry
+  (`globalThis.classDemoError`) and double-click protection (`globalThis.classDemoDelay`).
+
+### Loading performance
+
+- Login does not download protected page code. Monitor loads only the current role's
+  view, in parallel with its API requests; reports and developer backups load on first
+  opening and remain mounted afterward to preserve their state.
+- Lazy views display a translated loading indicator. A failed chunk/render displays
+  an explicit error and a Reload button instead of leaving a blank screen.
+- Leaving the monitor or cancelling session restoration aborts outstanding fetches.
+  An initial monitor request failure cancels sibling requests and surfaces the error.
+- Current attendance reuses the already-computed history rows, rather than rebuilding
+  the full history again on each clock tick. Pairing, saved snapshots and pagination
+  are unchanged. The monitor still loads **all** attendance pages; no arbitrary
+  200/500-record cap or partial-history success is introduced.
+- Production Nginx compresses text assets and caches Vite's content-hashed `/assets/`
+  files for one year. HTML is revalidated, and the service worker remains uncached,
+  so new releases can be discovered. API responses are not stored by this configuration.
+- Attendance schema upgrades now run before the backend accepts requests, and again
+  after a full restore through the admin API. Normal attendance reads no longer execute
+  CREATE/ALTER/UPDATE or commit schema transactions. Cursor indexes cover both global
+  and per-user `(checked_at, record_id)` pagination.
+- Deployment requires rebuilding backend/frontend and restarting the backend. Startup
+  will fail explicitly if schema initialization fails; inspect its logs rather than
+  serving an incomplete schema. Large databases may need extra time for first-time
+  index creation. After an external/manual database restore, restart the backend before
+  resuming use. No database reset or volume deletion is required.
+- Database-free loading regression fixture:
+  `/tests/monitor-loading-browser.html?role=teacher&delay=300`. Use `role=developer`
+  for the manager view, `fail=/centers` for failure cancellation, `fail=module`
+  for a rejected lazy view (translated error and Reload button), and
+  `globalThis.unmountMonitorDemo()` for navigation cancellation. Inspect
+  `globalThis.monitorLoadRequests` and browser resource entries. The fixture uses
+  StrictMode and 501 events to verify cancellation, role-specific code loading,
+  and complete multi-page history without touching a real API.
+
 Allowed roles:
 - `developer`
 - `manager`
@@ -221,35 +291,34 @@ rows: it must stay on page 2. This fixture is not included in the production bui
   The last field's Done action dismisses the keyboard; checkout still needs explicit
   confirmation. Reducing the count excludes extra names from submission but retains
   them in the current form draft if the count is increased again.
-- One list covers the **whole attendance visit**, including a double/consecutive
-  shift block. It is not a separate roster per class and is not a unique-student
-  total across days. Existing session-count and attendance-status rules are unchanged.
-- `POST /attendance-records/check-out` requires `student_count` (integer) and
-  `student_names` (array of strings), alongside the existing location fields.
-  `POST /attendance-records/manual` requires the same fields for `CHECK_OUT`;
-  check-in still does not require student details.
-- The validated list is saved on the checkout record in nullable
-  `attendance_records.student_names` (JSONB) in the same transaction as the checkout.
-  The count is derived from the saved list, avoiding two conflicting stored counts.
-  The normal schema initializer adds the column to existing databases; new database
-  initialization includes it too.
+- A single shift keeps one count and name list. A double/consecutive shift shows
+  separate count/name fields for each saved class, labeled by session number and
+  teaching time. There is no copy button and still only one checkout confirmation.
+- `POST /attendance-records/check-out` accepts `student_count` and `student_names`
+  for a single shift, or `session_students` containing `{class_id, student_count,
+  student_names}` for each class in a saved block. Shared and per-session inputs
+  cannot be mixed; missing, duplicate or foreign class IDs are rejected.
+  `POST /attendance-records/manual` uses the same contract for `CHECK_OUT`.
+  Check-in still does not require student details.
+- Single lists stay in `attendance_records.student_names`; separate lists are saved
+  in nullable `session_students` (JSONB) in the same transaction as the one checkout.
+  The schema initializer adds the column; existing records are not rewritten.
 - `GET /attendance-records` returns the list and its count. Teacher access remains
   scoped to that teacher's own account; reports and manual records remain restricted
   to managers/developers.
-- Current/history tables, the manager's teacher detail panel and report visit details
-  show a clickable student count that expands to the names. A saved double shift can
-  show the same list on its individual class rows, labeled as shared for the visit.
-- JSON report `sessions` and per-class `details` contain `student_names` and
-  `student_count`. Excel teacher/center detail sheets append **Students in visit** and
-  **Student names (whole visit)**. Each visit is exported once; names are plain text,
-  never formulas. No student totals are inferred or multiplied by the block size.
+- Current/history rows and manager teacher details show each class's own list.
+  JSON report `sessions` groups the separate lists with their teaching times;
+  per-class `details` contains the matching `student_names` and `student_count`.
+  Excel exports these new split rosters on separate class rows with **Number of
+  students** and **Student names**. Names remain plain text, never formulas.
+  Attendance totals and the single check-in/out linkage are unchanged.
 - Old records return `null` and display a localized **Not recorded**, not zero.
   Names are user data and are never
   translated. UI labels and Excel column headings follow English/Vietnamese selection.
 - While location/save is pending, checkout inputs and confirmation are disabled.
   A failed save retains the entered names for retry; successful completion clears them.
 - Deploy backend and frontend together and refresh installed/browser clients.
-  Old clients without student fields will receive an explicit 422 response at checkout;
+  Old clients submitting a shared list for a saved double shift receive an explicit error;
   no database volume reset or historical backfill is needed.
 - The browser fixture supports checkout callbacks with synthetic names:
   `globalThis.checkoutStudentPayload`, `globalThis.manualStudentPayload` and

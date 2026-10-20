@@ -71,7 +71,10 @@ if (new URLSearchParams(location.search).has("reportFixture")) {
       sessions: [{ teacher_id: "T2", date: "2024-02-29", class_id: "C1", center: "CS1", block_size: 2,
         start_time: "07:00:00", end_time: "08:30:00", checked_at: "2024-02-29T07:05:00+07:00",
         check_out_at: "2024-02-29T11:00:00+07:00", result: "WARNING", warnings: ["LATE"], notes: [],
-        student_count: 2, student_names: ["Demo An", "Demo Bình"] }],
+        student_count: null, student_names: null, session_students: [
+          { class_id: "C1", start_time: "07:00:00", end_time: "08:30:00", student_count: 2, student_names: ["Demo An", "Demo Bình"] },
+          { class_id: "C2", start_time: "08:30:00", end_time: "11:00:00", student_count: 1, student_names: ["Demo Chi"] },
+        ] }],
     });
   };
   if (import.meta.hot) import.meta.hot.dispose(() => { globalThis.fetch = originalFetch; });
@@ -122,18 +125,32 @@ function Fixture() {
   const [rows, setRows] = useState(() => Array.from({ length: 21 }, (_, index) => ({ id: `row-${index}`, name: `Entry ${index}` })));
   const [attendance, setAttendance] = useState(() => [
     ...records,
-    ...(teacherOnly && ["teaching", "reassigned"].includes(scenario) ? [demoCheckIn] : []),
+    ...((teacherOnly && ["teaching", "reassigned"].includes(scenario)) || new URLSearchParams(location.search).has("studentFixture") ? [demoCheckIn] : []),
     ...(teacherOnly && new URLSearchParams(location.search).has("historyFixture")
       ? Array.from({ length: 12 }, (_, index) => ({ ...checkIn, record_id: `history-${index}`, checked_at: `${day(index + 4)}T09:00:00+07:00` })) : []),
   ]);
   const [teacherLeaveRequests, setTeacherLeaveRequests] = useState([]);
+  const classFixture = new URLSearchParams(location.search).has("classFixture");
+  const [managerClasses, setManagerClasses] = useState(classes);
+  const classRows = managerClasses.map((item) => ({
+    ...item, center_label: item.center_id === "CS2" ? "Empty Center (CS2)" : "Demo Center (CS1)",
+    teacher_label: item.teacher_ids?.length ? "New Assignee" : "-", status: item.teacher_ids?.length ? "ASSIGNED" : "OPEN",
+  }));
+
+  async function classDemoAction(action, payload) {
+    globalThis.classDemoRequests = [...(globalThis.classDemoRequests || []), { action, payload }];
+    await new Promise((resolve) => setTimeout(resolve, globalThis.classDemoDelay || 0));
+    if (globalThis.classDemoError) throw new Error(globalThis.classDemoError);
+  }
   const [managerTeachers, setManagerTeachers] = useState(() =>
     new URLSearchParams(location.search).has("teacherSortFixture")
       ? Array.from({ length: 14 }, (_, index) => ({
         teacher_id: `T${index + 1}`, user_code: `TC${String(index + 1).padStart(5, "0")}`,
         name: `Demo Teacher ${String(index + 1).padStart(2, "0")}`, active: index % 2 === 1,
       }))
-      : [{ teacher_id: "T2", name: "New Assignee", active: true }],
+      : new URLSearchParams(location.search).has("studentFixture")
+        ? [{ teacher_id: "T1", name: "Demo Teacher", active: true }]
+        : [{ teacher_id: "T2", name: "New Assignee", active: true }],
   );
   const [fixtureStatus, setFixtureStatus] = useState(status);
 
@@ -159,6 +176,7 @@ function Fixture() {
       check_in_record_id: openCheckIn?.record_id, class_id: lastShift.class_id,
       session_class_id: lastShift.class_id, session_center_id: "CS1", session_start_time: lastShift.start_time, session_end_time: lastShift.end_time,
       student_count: payload.studentCount, student_names: payload.studentNames,
+      session_students: payload.sessionStudents,
     }]);
     return true;
   }
@@ -169,14 +187,27 @@ function Fixture() {
       <FixtureHeader teacherOnly={teacherOnly} />
       {!teacherOnly ? <section id="admin">
         <AdminMonitorView
-          actionStatus={fixtureStatus} attendanceRecords={attendance} classes={classes}
+          actionStatus={fixtureStatus} attendanceRecords={attendance} classes={classFixture ? classRows : classes}
           apiBase="/api" token="fixture"
-          teachers={managerTeachers} centers={[{ center_id: "CS1", name: "Demo Center" }]}
-          leaveRequests={[]} managerUsers={[]} replacementQueue={[]}
+          teachers={managerTeachers} centers={[{ center_id: "CS1", name: "Demo Center" }, ...(classFixture ? [{ center_id: "CS2", name: "Empty Center" }] : [])]}
+          leaveRequests={[]} managerUsers={[]} replacementQueue={classFixture ? classRows : []}
           replacementSuggestions={{}} resetRequests={[]} role={role} teacherScores={[]}
           onCreateManualAttendance={async (payload) => { globalThis.manualStudentPayload = payload; return true; }}
           onUpdateTeacherActive={async (teacherId, active) => {
             setManagerTeachers((current) => current.map((item) => item.teacher_id === teacherId ? { ...item, active } : item));
+            return true;
+          }}
+          onCreateClass={async (payload) => {
+            await classDemoAction("create", payload);
+            setManagerClasses((current) => [...current, { ...payload, class_id: `DEMO-${Date.now()}`, teacher_ids: payload.teacher_id ? [payload.teacher_id] : [] }]);
+          }}
+          onDeleteClass={async (classId) => {
+            await classDemoAction("delete", classId);
+            setManagerClasses((current) => current.filter((item) => item.class_id !== classId));
+          }}
+          onUpdateClassTime={async (classId, payload) => {
+            await classDemoAction("update", { classId, ...payload });
+            setManagerClasses((current) => current.map((item) => item.class_id === classId ? { ...item, ...payload } : item));
             return true;
           }}
         />

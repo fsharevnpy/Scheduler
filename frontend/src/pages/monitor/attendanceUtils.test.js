@@ -20,6 +20,38 @@ const scheduledClass = {
   start_time: "09:00:00", end_time: "10:00:00", teacher_ids: ["T1"],
 };
 
+test("each class in a saved double shift shows only its own checkout students", () => {
+  const block = [scheduledClass, { ...scheduledClass, class_id: "C2", start_time: "10:00:00", end_time: "11:00:00" }];
+  const records = [
+    { ...checkIn, session_block: block },
+    { ...checkOut, checked_at: "2026-10-19T04:00:00Z", check_in_record_id: checkIn.record_id,
+      session_students: [
+        { class_id: "C1", student_count: 2, student_names: ["An", "Bình"] },
+        { class_id: "C2", student_count: 1, student_names: ["Chi"] },
+      ] },
+  ];
+  for (const rows of [
+    buildAttendanceHistoryRows(records),
+    buildCurrentAttendanceRows({ records, classes: block, now: new Date("2026-10-19T04:00:00Z") }),
+  ]) {
+    assert.deepEqual(rows.find((row) => row.class_id === "C1").student_names, ["An", "Bình"]);
+    assert.deepEqual(rows.find((row) => row.class_id === "C2").student_names, ["Chi"]);
+    assert.equal(rows.find((row) => row.class_id === "C2").student_count, 1);
+    assert.equal(new Set(rows.map((row) => row.check_out_at)).size, 1);
+  }
+});
+test("current attendance reuses prepared history without reading raw records again", () => {
+  const records = [checkIn, checkOut, { ...checkIn, record_id: "old", checked_at: "2026-10-18T02:00:00Z" }];
+  const historyRows = buildAttendanceHistoryRows(records);
+  const options = { classes: [scheduledClass], now: new Date("2026-10-19T04:00:00Z") };
+  const expected = buildCurrentAttendanceRows({ ...options, records });
+  const actual = buildCurrentAttendanceRows({
+    ...options, historyRows,
+    records: { [Symbol.iterator]() { throw new Error("Raw history must not be rebuilt"); } },
+  });
+  assert.deepEqual(actual, expected);
+});
+
 test("teacher check-in availability follows Vietnam date and the exact session end", () => {
   const availability = (now, classes = [scheduledClass]) => getTeacherAttendanceAvailability({
     records: [], classes, teacherId: "T1", now: new Date(now),

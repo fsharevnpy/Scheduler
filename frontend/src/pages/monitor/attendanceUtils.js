@@ -56,6 +56,10 @@ function latest(records) {
 
 function eventRow(key, checkIn, checkOut) {
   const record = checkIn || checkOut;
+  const classId = record.session_class_id || record.class_id;
+  const names = checkOut?.session_students
+    ? checkOut.session_students.find((item) => item.class_id === classId)?.student_names ?? null
+    : checkOut?.student_names ?? null;
   return {
     id: key,
     attendance_date: getAttendanceDateKey(record.checked_at),
@@ -66,8 +70,8 @@ function eventRow(key, checkIn, checkOut) {
     center_id: record.session_center_id,
     checked_at: checkIn?.checked_at || null,
     check_out_at: checkOut?.checked_at || null,
-    student_names: checkOut?.student_names ?? null,
-    student_count: checkOut?.student_names?.length ?? null,
+    student_names: names,
+    student_count: names?.length ?? null,
     nearest_center_name: record.nearest_center_name,
     status: checkIn?.status || checkOut?.status || "-",
     checkout_location_status: checkOut?.status || "-",
@@ -110,6 +114,10 @@ export function buildAttendanceHistoryRows(records) {
       const leftEarly = checkOut && new Date(checkOut.checked_at) < new Date(`${date}T${shift.end_time}+07:00`);
       rows.push({
         ...row, class_id: shift.class_id, center_id: shift.center_id,
+        ...(checkOut?.session_students ? {
+          student_names: checkOut.session_students.find((item) => item.class_id === shift.class_id)?.student_names ?? null,
+          student_count: checkOut.session_students.find((item) => item.class_id === shift.class_id)?.student_names.length ?? null,
+        } : {}),
         nearest_center_name: shift.center_name || row.nearest_center_name,
         start_time: shift.start_time, end_time: shift.end_time,
         attendance_status: enteredLate ? "LATE" : index === 0 ? checkIn.attendance_status : "COVERED",
@@ -181,10 +189,10 @@ export function getTeacherAttendanceAvailability({ records, classes, teacherId, 
   return { todayClasses, availableClasses, openCheckIn, nextSessionBlock };
 }
 
-export function buildCurrentAttendanceRows({ records, classes, teachers = [], now = new Date(), teacherId }) {
+export function buildCurrentAttendanceRows({ records, historyRows, classes, teachers = [], now = new Date(), teacherId }) {
   const today = getAttendanceDateKey(now);
   const day = getAttendanceDayCode(today);
-  const history = buildAttendanceHistoryRows(records).filter((row) => row.attendance_date === today);
+  const history = (historyRows ?? buildAttendanceHistoryRows(records)).filter((row) => row.attendance_date === today);
   const byKey = new Map(history.map((row) => [row.id, row]));
   const teachersById = new Map(teachers.map((teacher) => [teacher.teacher_id, teacher]));
   const scheduled = [];
@@ -223,8 +231,8 @@ export function buildCurrentAttendanceRows({ records, classes, teachers = [], no
         nearest_center_name: checkIn?.nearest_center_name || checkOut?.nearest_center_name || item.center_label || item.center_id,
         checked_at: checkIn?.checked_at || null,
         check_out_at: checkOut?.check_out_at || null,
-        student_names: checkOut?.student_names ?? null,
-        student_count: checkOut?.student_names?.length ?? null,
+        student_names: direct?.check_out_at ? direct.student_names : checkOut?.student_names ?? null,
+        student_count: direct?.check_out_at ? direct.student_count : checkOut?.student_names?.length ?? null,
         status: checkIn?.status || checkOut?.status || "-",
         checkout_location_status: checkOut?.checkout_location_status || "-",
         attendance_status: checkIn

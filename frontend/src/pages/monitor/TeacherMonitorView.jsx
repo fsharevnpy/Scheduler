@@ -6,8 +6,8 @@ import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
 import TeacherAttendanceRecords from "./TeacherAttendanceRecords.jsx";
 import SectionNavigation from "./SectionNavigation.jsx";
-import { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
-import { studentNameSlots, validateAttendanceStudents } from "../../lib/attendanceStudents.js";
+import { AttendanceStudentsFields, SessionStudentsFields } from "./AttendanceStudents.jsx";
+import { prepareCheckoutStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
@@ -70,6 +70,7 @@ export default function TeacherMonitorView({
   const [attendanceError, setAttendanceError] = useState("");
   const [studentCount, setStudentCount] = useState("");
   const [studentNames, setStudentNames] = useState([]);
+  const [sessionStudentDrafts, setSessionStudentDrafts] = useState({});
   const [isReadingLocation, setIsReadingLocation] = useState(false);
   const attendanceRequest = useRef(0);
   const [activeSection, setActiveSection] = useState("today");
@@ -114,8 +115,8 @@ export default function TeacherMonitorView({
   const todayKey = getAttendanceDateKey(currentDate);
   const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
   const todayAttendanceRows = useMemo(
-    () => buildCurrentAttendanceRows({ records: attendanceRecords, classes: highlightedClasses, now: currentDate, teacherId }),
-    [attendanceRecords, currentDate, highlightedClasses, teacherId],
+    () => buildCurrentAttendanceRows({ historyRows: historicalAttendanceRows, classes: highlightedClasses, now: currentDate, teacherId }),
+    [historicalAttendanceRows, currentDate, highlightedClasses, teacherId],
   );
   const visibleAttendanceRecords = useMemo(
     () => historicalAttendanceRows.filter((row) => attendanceView === "all" || row.attendance_date < todayKey),
@@ -178,8 +179,8 @@ export default function TeacherMonitorView({
       setAttendanceError(isCheckoutPanel ? "no open check-in found for today" : "no assigned teaching session available for attendance");
       return;
     }
-    const submittedNames = studentNameSlots(studentCount, studentNames).map((name) => name.trim());
-    const error = isCheckoutPanel ? validateAttendanceStudents(studentCount, submittedNames) : "";
+    const students = prepareCheckoutStudents(openCheckIn?.session_block, sessionStudentDrafts, studentCount, studentNames);
+    const error = isCheckoutPanel ? students.error : "";
     if (error) {
       setAttendanceError(error);
       return;
@@ -201,12 +202,13 @@ export default function TeacherMonitorView({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
-            ...(isCheckoutPanel ? { studentCount: Number(studentCount), studentNames: submittedNames } : {}),
+            ...(isCheckoutPanel ? students.payload : {}),
           });
           if (success && requestId === attendanceRequest.current) {
             setIsAttendancePanelOpen(false);
             setStudentCount("");
             setStudentNames([]);
+            setSessionStudentDrafts({});
           }
         } catch (cause) {
           if (requestId === attendanceRequest.current) setAttendanceError(cause.message);
@@ -470,14 +472,12 @@ export default function TeacherMonitorView({
           closeDisabled={attendanceBusy}
         >
           <form onSubmit={handleConfirmAttendance}>
-          <div className="floating-panel-reason-box">
-            <p>
-	              {t("attendanceConfirmCopy")}
-            </p>
-          </div>
           {isCheckoutPanel ? (
-            <AttendanceStudentsFields count={studentCount} names={studentNames}
-              onCountChange={setStudentCount} onNamesChange={setStudentNames} disabled={attendanceBusy} />
+            openCheckIn?.session_block?.length > 1
+              ? <SessionStudentsFields block={openCheckIn.session_block} drafts={sessionStudentDrafts}
+                  onChange={setSessionStudentDrafts} disabled={attendanceBusy} />
+              : <AttendanceStudentsFields count={studentCount} names={studentNames}
+                  onCountChange={setStudentCount} onNamesChange={setStudentNames} disabled={attendanceBusy} />
           ) : null}
           {attendanceError ? <div className="status error" role="alert">{t(attendanceError)}</div> : null}
 

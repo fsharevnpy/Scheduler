@@ -405,6 +405,56 @@
   display: none;
 }
 
+.class-week-day-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.assignment-week-grid {
+  grid-template-columns: repeat(7, minmax(200px, 1fr));
+}
+
+.assignment-week-grid .class-week-list {
+  grid-template-rows: none;
+  grid-auto-rows: minmax(170px, auto);
+}
+
+.assignment-week-item .class-week-item-head span {
+  overflow-wrap: normal;
+}
+
+.class-time-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.class-symbol-button {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffaf0;
+  color: var(--accent-dark);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.class-symbol-delete {
+  margin-left: auto;
+  color: #a4352b;
+  background: #fff4f0;
+}
+
+.class-symbol-button:focus-visible {
+  outline: 3px solid #c49642;
+  outline-offset: 2px;
+}
+
 .teacher-today-overview h2 {
   margin: 0 0 12px;
   font-size: clamp(1.1rem, 2vw, 1.5rem);

@@ -1,12 +1,22 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api import app_router, auth_router
+from api.routes.attendance import ensure_attendance_table
+from db import SessionLocal
 
 
-app = FastAPI(title="Scheduler API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with SessionLocal() as db:
+        ensure_attendance_table(db)
+    yield
+
+
+app = FastAPI(title="Scheduler API", lifespan=lifespan)
 
 cors_origins = os.getenv(
     "CORS_ORIGINS",

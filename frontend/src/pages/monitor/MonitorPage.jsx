@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, useEffect, useMemo, useState } from "react";
 
 import LanguageToggle from "../../components/LanguageToggle.jsx";
 import ChessHeader from "../../components/ChessHeader.jsx";
 import NotificationBell from "../../components/NotificationBell.jsx";
 import AccountMenu from "../../components/AccountMenu.jsx";
+import AsyncContent from "../../components/AsyncContent.jsx";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { requestJson } from "../../lib/http.js";
 import { loadAttendanceRecords } from "../../lib/attendance.js";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
-import AdminMonitorView from "./AdminMonitorView.jsx";
-import TeacherMonitorView from "./TeacherMonitorView.jsx";
 import { formatDateTimeValue } from "./monitorUtils.js";
+
+const loadAdminView = () => import("./AdminMonitorView.jsx");
+const loadTeacherView = () => import("./TeacherMonitorView.jsx");
+const AdminMonitorView = lazy(loadAdminView);
+const TeacherMonitorView = lazy(loadTeacherView);
 
 function message(key, values) {
   return { key, values };
@@ -61,6 +65,7 @@ export default function MonitorPage({ auth }) {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    const requestOptions = { headers, signal: controller.signal };
 
     async function loadData() {
       setState((current) => {
@@ -82,31 +87,32 @@ export default function MonitorPage({ auth }) {
 
       try {
         const requests = [
-          requestJson(`${auth.apiBase}/centers`, { headers }),
-          requestJson(`${auth.apiBase}/classes`, { headers }),
-          requestJson(`${auth.apiBase}/leave-requests`, { headers }),
-          loadAttendanceRecords(auth.apiBase, { headers, signal: controller.signal }),
-          requestJson(`${auth.apiBase}/teacher-scores`, { headers }),
+          requestJson(`${auth.apiBase}/centers`, requestOptions),
+          requestJson(`${auth.apiBase}/classes`, requestOptions),
+          requestJson(`${auth.apiBase}/leave-requests`, requestOptions),
+          loadAttendanceRecords(auth.apiBase, requestOptions),
+          requestJson(`${auth.apiBase}/teacher-scores`, requestOptions),
         ];
 
         if (user.role === "manager" || user.role === "developer") {
-          requests.push(requestJson(`${auth.apiBase}/teachers`, { headers }));
-          requests.push(requestJson(`${auth.apiBase}/password-reset-requests`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/teachers`, requestOptions));
+          requests.push(requestJson(`${auth.apiBase}/password-reset-requests`, requestOptions));
         }
 
         if (user.role === "teacher") {
-          requests.push(requestJson(`${auth.apiBase}/teacher-events/unread`, { headers }));
-          requests.push(requestJson(`${auth.apiBase}/leave-request-managers`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/teacher-events/unread`, requestOptions));
+          requests.push(requestJson(`${auth.apiBase}/leave-request-managers`, requestOptions));
         }
 
         if (user.role === "manager") {
-          requests.push(requestJson(`${auth.apiBase}/manager-events/unread`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/manager-events/unread`, requestOptions));
         }
 
         if (user.role === "developer") {
-          requests.push(requestJson(`${auth.apiBase}/users`, { headers }));
+          requests.push(requestJson(`${auth.apiBase}/users`, requestOptions));
         }
 
+        requests.push(user.role === "teacher" ? loadTeacherView() : loadAdminView());
         const results = await Promise.all(requests);
         const [centers, classes, leaveRequests, attendanceRecords, teacherScores] = results;
         let resultIndex = 5;
@@ -153,6 +159,7 @@ export default function MonitorPage({ auth }) {
           });
         }
       } catch (error) {
+        controller.abort();
         if (!cancelled) {
           setState({
             isLoading: false,
@@ -461,7 +468,7 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function checkOutAttendance({ latitude, longitude, accuracy, studentCount, studentNames }) {
+  async function checkOutAttendance({ latitude, longitude, accuracy, studentCount, studentNames, sessionStudents }) {
     return runAction(
       "attendance-check-out",
       () =>
@@ -474,6 +481,7 @@ export default function MonitorPage({ auth }) {
             accuracy_meters: accuracy ?? null,
             student_count: studentCount,
             student_names: studentNames,
+            session_students: sessionStudents,
           }),
         }),
       message("Checkout recorded."),
@@ -486,7 +494,7 @@ export default function MonitorPage({ auth }) {
     );
   }
 
-  async function createManualAttendance({ teacherId, centerId, checkedAt, eventType, studentCount, studentNames }) {
+  async function createManualAttendance({ teacherId, centerId, checkedAt, eventType, studentCount, studentNames, sessionStudents }) {
     return runAction(
       "manual-attendance",
       () =>
@@ -498,7 +506,7 @@ export default function MonitorPage({ auth }) {
             center_id: centerId,
             checked_at: checkedAt,
             event_type: eventType,
-            ...(eventType === "CHECK_OUT" ? { student_count: studentCount, student_names: studentNames } : {}),
+            ...(eventType === "CHECK_OUT" ? { student_count: studentCount, student_names: studentNames, session_students: sessionStudents } : {}),
           }),
         }),
       message("Manual attendance recorded."),
@@ -535,6 +543,30 @@ export default function MonitorPage({ auth }) {
         }));
       },
     );
+  }
+
+  async function createClass(payload) {
+    const created = await requestJson(`${auth.apiBase}/classes`, {
+      method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    setState((current) => ({ ...current, classes: [...current.classes, {
+      ...payload, class_id: created.class_id, status: payload.teacher_id ? "ASSIGNED" : "OPEN",
+      start_time: `${payload.start_time}:00`, end_time: `${payload.end_time}:00`,
+      teacher_ids: payload.teacher_id ? [payload.teacher_id] : [],
+      teacher_count: payload.teacher_id ? 1 : 0,
+      teacher_assignment_modes: payload.teacher_id ? ["PERMANENT"] : [],
+    }] }));
+  }
+
+  async function deleteClass(classId) {
+    await requestJson(`${auth.apiBase}/classes/${classId}`, { method: "DELETE", headers });
+    setState((current) => ({
+      ...current,
+      classes: current.classes.filter((item) => item.class_id !== classId),
+      leaveRequests: current.leaveRequests.filter((item) => item.class_id !== classId),
+      unreadManagerEvents: current.unreadManagerEvents.filter((item) => item.class_id !== classId),
+      attendanceRecords: current.attendanceRecords.map((item) => item.class_id === classId ? { ...item, class_id: null } : item),
+    }));
   }
 
   async function resetPasswordRequest(requestId) {
@@ -980,6 +1012,7 @@ export default function MonitorPage({ auth }) {
 
         {state.error ? <div className="status error">{state.error}</div> : null}
 
+        <AsyncContent>
         {state.isLoading ? (
           <div className="page-status compact">{t("loadingMonitorData")}</div>
         ) : user.role === "teacher" ? (
@@ -1028,8 +1061,11 @@ export default function MonitorPage({ auth }) {
             onCreateTeacherScoreEvent={createTeacherScoreEvent}
             onCreateManualAttendance={createManualAttendance}
             onUpdateClassTime={updateClassTime}
+            onCreateClass={createClass}
+            onDeleteClass={deleteClass}
           />
         )}
+        </AsyncContent>
       </section>
     </main>
   );

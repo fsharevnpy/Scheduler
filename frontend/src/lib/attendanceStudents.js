@@ -11,6 +11,7 @@ export function validateAttendanceStudents(count, names) {
   if (!Number.isSafeInteger(Number(count)) || Number(count) < 1) {
     return "Enter a whole number of students greater than zero.";
   }
+
   if (Number(count) > MAX_STUDENT_COUNT) {
     return "The student list exceeds the report cell text limit.";
   }
@@ -24,4 +25,20 @@ export function validateAttendanceStudents(count, names) {
     return "The student list exceeds the report cell text limit.";
   }
   return "";
+}
+
+export function prepareCheckoutStudents(block, drafts, count, names) {
+  if (block?.length > 1) {
+    const sessionStudents = block.map((shift) => {
+      const draft = drafts[shift.class_id] || { count: "", names: [] };
+      return {
+        class_id: shift.class_id, student_count: Number(draft.count),
+        student_names: studentNameSlots(draft.count, draft.names).map((name) => name.trim()),
+      };
+    });
+    const error = sessionStudents.map((item) => validateAttendanceStudents(item.student_count, item.student_names)).find(Boolean);
+    return { error: error || "", payload: { sessionStudents } };
+  }
+  const studentNames = studentNameSlots(count, names).map((name) => name.trim());
+  return { error: validateAttendanceStudents(count, studentNames), payload: { studentCount: Number(count), studentNames } };
 }

@@ -135,7 +135,8 @@ def ensure_attendance_table(db: Session) -> None:
     """))
     db.execute(text("""
         ALTER TABLE attendance_records
-        ADD COLUMN IF NOT EXISTS student_names JSONB
+        ADD COLUMN IF NOT EXISTS student_names JSONB,
+        ADD COLUMN IF NOT EXISTS session_students JSONB
     """))
     db.execute(
         text("""
@@ -156,6 +157,14 @@ def ensure_attendance_table(db: Session) -> None:
                 ON attendance_records(teacher_id, checked_at DESC)
         """)
     )
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_attendance_records_time_id
+            ON attendance_records(checked_at DESC, record_id DESC)
+    """))
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_attendance_records_user_time_id
+            ON attendance_records(user_code, checked_at DESC, record_id DESC)
+    """))
     db.commit()
 
 
@@ -496,12 +505,28 @@ def link_checkout(db: Session, record, check_in):
     return result
 
 
-def save_checkout_students(db: Session, record, names: list[str]):
+def validate_checkout_rosters(payload, check_in):
+    block = check_in.get("session_block") if check_in else None
+    rosters = payload.session_students
+    if rosters is not None:
+        if not block or {item.class_id for item in rosters} != {shift["class_id"] for shift in block}:
+            raise HTTPException(status_code=400, detail="student lists must match the checked-in teaching sessions")
+    elif block and len(block) > 1:
+        raise HTTPException(status_code=400, detail="enter students separately for each teaching session")
+
+
+def save_checkout_students(db: Session, record, payload):
+    names = payload.student_names
+    rosters = [item.model_dump() for item in payload.session_students] if payload.session_students is not None else None
     db.execute(text("""
-        UPDATE attendance_records SET student_names = CAST(:student_names AS JSONB)
+        UPDATE attendance_records SET student_names = CAST(:student_names AS JSONB),
+            session_students = CAST(:session_students AS JSONB)
         WHERE record_id = :record_id AND event_type = 'CHECK_OUT'
-    """), {"student_names": json.dumps(names, ensure_ascii=False), "record_id": record["record_id"]})
-    return {**dict(record), "student_names": names, "student_count": len(names)}
+    """), {"student_names": json.dumps(names, ensure_ascii=False) if names is not None else None,
+           "session_students": json.dumps(rosters, ensure_ascii=False) if rosters is not None else None,
+           "record_id": record["record_id"]})
+    return {**dict(record), "student_names": names, "student_count": len(names) if names is not None else None,
+            "session_students": rosters}
 
 
 def resolve_checkout_session(db, check_in, teacher_id, center_id, checked_at):
@@ -551,8 +576,6 @@ def get_attendance_records(
         raise HTTPException(status_code=400, detail="both attendance cursor fields are required")
     if before_checked_at is not None and before_checked_at.utcoffset() is None:
         raise HTTPException(status_code=400, detail="attendance cursor timestamp must include a timezone")
-    ensure_attendance_table(db)
-
     params = {"limit": limit}
     query = """
         SELECT
@@ -576,6 +599,7 @@ def get_attendance_records(
             ar.session_block,
             ar.check_in_record_id,
             ar.student_names,
+            ar.session_students,
             jsonb_array_length(ar.student_names) AS student_count
         FROM attendance_records ar
         JOIN users u ON u.user_code = ar.user_code
@@ -604,7 +628,6 @@ def load_attendance_report(db, start_date, end_date, teacher_id, language):
             "Chọn khoảng ngày hợp lệ, tối đa 366 ngày." if language == "vi"
             else "Select a valid date range of at most 366 days."
         ))
-    ensure_attendance_table(db)
     teachers = db.execute(text("""
         SELECT t.teacher_id, t.name AS teacher_name
         FROM teachers t
@@ -659,7 +682,6 @@ def check_in_attendance(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    ensure_attendance_table(db)
     ensure_assignment_tables(db)
 
     recent_check_in = db.execute(
@@ -744,7 +766,6 @@ def check_out_attendance(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    ensure_attendance_table(db)
     ensure_assignment_tables(db)
 
     recent_check_out = db.execute(
@@ -773,6 +794,7 @@ def check_out_attendance(
     check_in = find_open_check_in(db, current_user.user_code, record_checked_at)
     if not check_in:
         raise HTTPException(status_code=400, detail="no open check-in found for today")
+    validate_checkout_rosters(payload, check_in)
 
     record_id = str(uuid4())
     closest_center = get_closest_center(db, payload.latitude, payload.longitude)
@@ -821,7 +843,7 @@ def check_out_attendance(
         },
     ).mappings().first()
     record = snapshot_checkout(db, record, session_match, check_in)
-    record = save_checkout_students(db, record, payload.student_names)
+    record = save_checkout_students(db, record, payload)
     db.commit()
 
     return {
@@ -836,7 +858,6 @@ def create_manual_attendance(
     current_user: CurrentUser = Depends(require_roles(ROLE_DEVELOPER, ROLE_MANAGER)),
     db: Session = Depends(get_db),
 ):
-    ensure_attendance_table(db)
     ensure_assignment_tables(db)
 
     teacher = db.execute(
@@ -870,6 +891,8 @@ def create_manual_attendance(
 
     record_id = str(uuid4())
     check_in = find_open_check_in(db, teacher["user_code"], payload.checked_at) if payload.event_type == "CHECK_OUT" else None
+    if payload.event_type == "CHECK_OUT":
+        validate_checkout_rosters(payload, check_in)
     session_match = (
         resolve_checkout_session(db, check_in, teacher["teacher_id"], center["center_id"], payload.checked_at)
         if payload.event_type == "CHECK_OUT"
@@ -935,8 +958,7 @@ def create_manual_attendance(
     ).mappings().first()
     record = snapshot_checkout(db, record, session_match, check_in) if payload.event_type == "CHECK_OUT" else snapshot_attendance_session(db, record)
     if payload.event_type == "CHECK_OUT":
-        assert payload.student_names is not None
-        record = save_checkout_students(db, record, payload.student_names)
+        record = save_checkout_students(db, record, payload)
     db.commit()
 
     return {

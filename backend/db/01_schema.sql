@@ -155,7 +155,8 @@ CREATE TABLE attendance_records (
     accuracy_meters NUMERIC(10,2),
     status VARCHAR(10) NOT NULL DEFAULT 'INVALID',
     nearest_center_name VARCHAR(100),
-    student_names JSONB
+    student_names JSONB,
+    session_students JSONB
 );
 
 CREATE INDEX idx_attendance_records_user_time

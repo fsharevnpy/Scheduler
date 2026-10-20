@@ -1,6 +1,9 @@
+import { useLanguage } from "../../lib/i18n.jsx";
+import { getRoleTitle } from "../../lib/roles.js";
+import { formatAttendanceDayCode } from "../monitor/attendanceUtils.js";
+import { formatTimeValue } from "../monitor/monitorUtils.js";
+
 export default function UserCreateForm({
-  centers,
-  centersError,
   classes,
   form,
   isSubmitting,
@@ -12,20 +15,21 @@ export default function UserCreateForm({
   onRemovePreferenceRow,
   onSubmit,
 }) {
+  const { t, language } = useLanguage();
   return (
     <section className="dashboard-section">
       <div className="section-head">
         <div>
-          <p className="eyebrow">Create User</p>
-          <h2>New account form</h2>
+          <p className="eyebrow">{t("Create user")}</p>
+          <h2>{t("New account form")}</h2>
         </div>
       </div>
 
-      <form className="auth-form register-form" onSubmit={onSubmit}>
+      <form lang={language} className="auth-form register-form" onSubmit={onSubmit}>
         {form.role === "teacher" ? (
           <>
             <label className="field">
-              <span>Name</span>
+              <span>{t("Name")}</span>
               <input
                 value={form.name}
                 onChange={(event) => onFieldChange("name", event.target.value)}
@@ -35,7 +39,7 @@ export default function UserCreateForm({
             </label>
 
             <label className="field">
-              <span>Contact</span>
+              <span>{t("Phone")}</span>
               <input
                 value={form.contact}
                 onChange={(event) => onFieldChange("contact", event.target.value)}
@@ -45,7 +49,7 @@ export default function UserCreateForm({
             </label>
 
             <label className="field">
-              <span>Personal Email</span>
+              <span>{t("Personal email")}</span>
               <input
                 value={form.email}
                 onChange={(event) => onFieldChange("email", event.target.value)}
@@ -55,7 +59,7 @@ export default function UserCreateForm({
             </label>
 
             <label className="field">
-              <span>ELO</span>
+              <span>{t("ELO")}</span>
               <input
                 value={form.elo}
                 onChange={(event) => onFieldChange("elo", event.target.value)}
@@ -66,7 +70,7 @@ export default function UserCreateForm({
             </label>
 
             <label className="field">
-              <span>Max Slots Per Day</span>
+              <span>{t("Max Slots / Day")}</span>
               <input
                 value={form.max_slots_per_day}
                 onChange={(event) => onFieldChange("max_slots_per_day", event.target.value)}
@@ -78,35 +82,34 @@ export default function UserCreateForm({
 
             <div className="field">
               <div className="field-head">
-                <span>Preferences</span>
+                <span>{t("Teaching preferences")}</span>
                 <button type="button" className="inline-text-action" onClick={onAddPreferenceRow}>
-                  Add preference
+                  {t("Add preference")}
                 </button>
               </div>
-              <small className="field-help">Optional. Select from existing classes only.</small>
-              {centersError ? <small className="field-help">{centersError}</small> : null}
+              <small className="field-help">{t("Optional. Select from existing classes only.")}</small>
             </div>
 
             <div className="preference-list">
               {form.preferences.map((preference, index) => (
                 <div className="preference-card preference-card-class" key={`${index}-${preference.class_id}`}>
                   <label className="field">
-                    <span>Class</span>
+                    <span>{t("Class")}</span>
                     <select
                       value={preference.class_id}
                       onChange={(event) => onPreferenceChange(index, "class_id", event.target.value)}
                     >
-                      <option value="">Select class</option>
+                      <option value="">{t("Select class")}</option>
                       {classes.map((item) => (
                         <option key={item.class_id} value={item.class_id}>
-                          {item.class_id} - {item.day_of_week} - {item.center_id} - {item.start_time} to {item.end_time}
+                          {item.class_id} - {formatAttendanceDayCode(item.day_of_week, language)} - {item.center_id} - {formatTimeValue(item.start_time)} – {formatTimeValue(item.end_time)}
                         </option>
                       ))}
                     </select>
                   </label>
 
                   <button type="button" className="secondary-button preference-remove" onClick={() => onRemovePreferenceRow(index)}>
-                    Remove
+                    {t("Remove")}
                   </button>
                 </div>
               ))}
@@ -114,7 +117,7 @@ export default function UserCreateForm({
           </>
         ) : (
           <label className="field">
-            <span>Display Name</span>
+            <span>{t("Display Name")}</span>
             <input
               value={form.display_name}
               onChange={(event) => onFieldChange("display_name", event.target.value)}
@@ -125,23 +128,23 @@ export default function UserCreateForm({
         )}
 
         <label className="field">
-          <span>Role</span>
+          <span>{t("Role")}</span>
           <select value={form.role} onChange={(event) => onFieldChange("role", event.target.value)}>
             {roleOptions.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {getRoleTitle(role, t)}
               </option>
             ))}
           </select>
         </label>
 
         <button className="primary-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Creating..." : "Create user"}
+          {t(isSubmitting ? "Creating..." : "Create user")}
         </button>
       </form>
 
       <div className={`status ${status.kind}`.trim()} aria-live="polite">
-        {status.message}
+        {t(status.message, status.values)}
       </div>
     </section>
   );
