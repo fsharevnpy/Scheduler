@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import UserAvatar from "../../components/UserAvatar.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
+import SectionNavigation from "./SectionNavigation.jsx";
 import BackupManagement from "./BackupManagement.jsx";
 import AttendanceReportPanel from "./AttendanceReportPanel.jsx";
 import AttendanceStudents, { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
@@ -189,7 +191,8 @@ export default function AdminMonitorView({
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [assignmentCenterPage, setAssignmentCenterPage] = useState(1);
   const [isManualAttendancePanelOpen, setIsManualAttendancePanelOpen] = useState(false);
-  const [isAttendanceExportPanelOpen, setIsAttendanceExportPanelOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("attendance");
+  const [hasOpenedReports, setHasOpenedReports] = useState(false);
   const [manualStudentCount, setManualStudentCount] = useState("");
   const [manualStudentNames, setManualStudentNames] = useState([]);
   const [manualStudentError, setManualStudentError] = useState("");
@@ -247,7 +250,12 @@ export default function AdminMonitorView({
   const currentAssignmentCenterLabel = currentAssignmentCenterEntry?.label || "";
   const currentAssignmentClasses = currentAssignmentCenterEntry?.classes || [];
   const teachersById = new Map(teachers.map((item) => [item.teacher_id, item]));
+  const sortedTeachers = useMemo(
+    () => [...teachers].sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active))),
+    [teachers],
+  );
   const activeLeaveRequestCount = leaveRequests.filter((item) => ACTIVE_LEAVE_STATUSES.has(item.status)).length;
+  const pendingRequestCount = [...leaveRequests, ...resetRequests].filter((item) => item.status === "REQUESTED").length;
   const visibleLeaveRequests = filterLeaveRequestsByView(leaveRequests, leaveRequestView);
   const todayKey = getAttendanceDateKey(currentDate);
   const historicalAttendanceRows = useMemo(() => buildAttendanceHistoryRows(attendanceRecords), [attendanceRecords]);
@@ -466,7 +474,10 @@ export default function AdminMonitorView({
     setIsManualAttendancePanelOpen(true);
   }
 
-  function openAttendanceExportPanel() { setIsAttendanceExportPanelOpen(true); }
+  function selectSection(section) {
+    setActiveSection(section);
+    if (section === "reports") setHasOpenedReports(true);
+  }
 
 
 
@@ -646,7 +657,7 @@ export default function AdminMonitorView({
 
   return (
     <>
-      <section className="monitor-grid monitor-grid-summary">
+      <section className="monitor-grid monitor-grid-summary manager-summary">
         <article className="info-card">
           <ChessIcon className="chess-stat-icon" />
           <p className="eyebrow">{t("Teachers")}</p>
@@ -675,28 +686,44 @@ export default function AdminMonitorView({
           <p className="subtle">{t("Recorded attendance events from users.")}</p>
         </article>
 
-        {role === "developer" ? (
-          <article className="info-card">
-            <ChessIcon piece="king" className="chess-stat-icon" />
-            <p className="eyebrow">{t("Managers")}</p>
-            <h2>{managerUsers.length}</h2>
-            <p className="subtle">{t("Manager accounts visible to developer.")}</p>
-          </article>
-        ) : null}
       </section>
 
-      <nav className="monitor-navigation" aria-label={t("Dashboard sections")}>
-        <a href="#monitor-attendance"><ChessIcon piece="king" />{t("Attendance")}</a>
-        <a href="#monitor-resources"><ChessIcon piece="rook" />{t("Teachers & classes")}</a>
-        <a href="#monitor-requests"><ChessIcon piece="bishop" />{t("Requests")}</a>
-        <button type="button" onClick={openAttendanceExportPanel}><ChessIcon />{t("Reports")}</button>
-      </nav>
+      <SectionNavigation activeSection={activeSection} onChange={selectSection} sections={[
+        { id: "attendance", label: "Teacher attendance", piece: "king" },
+        { id: "resources", label: "Teachers & teaching schedule", piece: "rook" },
+        { id: "requests", label: "Teacher requests", piece: "bishop", count: pendingRequestCount },
+        { id: "reports", label: "Teaching reports", piece: "knight" },
+        ...(role === "developer" ? [{ id: "system", label: "System", piece: "rook" }] : []),
+      ]} />
 
       {role === "developer" ? (
-        <BackupManagement apiBase={apiBase} token={token} />
+        <section id="monitor-system" className="manager-section" role="tabpanel" aria-labelledby="monitor-tab-system" hidden={activeSection !== "system"} tabIndex={0}>
+          <BackupManagement apiBase={apiBase} token={token} />
+          <DataTable
+            title={t("Managers")}
+            columns={[
+              { key: "user_code", label: t("User Code") },
+              {
+                key: "display_name",
+                label: t("Display Name"),
+                render: (row) => (
+                  <div className="user-inline-cell">
+                    <UserAvatar apiBase={apiBase} imageUrl={row.profile_image_url}
+                      name={row.display_name} fallbackCode={row.user_code} size="small" />
+                    <span>{formatValue(row.display_name)}</span>
+                  </div>
+                ),
+              },
+              { key: "role", label: t("Role"), render: (row) => getRoleTitle(row.role, t) },
+              { key: "teacher_id", label: t("Teacher ID") },
+            ]}
+            rows={managerUsers}
+            emptyMessage={t("No manager accounts found.")}
+          />
+        </section>
       ) : null}
 
-      <section id="monitor-attendance" className="dashboard-section">
+      <section id="monitor-attendance" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="monitor-tab-attendance" hidden={activeSection !== "attendance"} tabIndex={0}>
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Attendance")}</p>
@@ -709,16 +736,18 @@ export default function AdminMonitorView({
                 aria-label={t("Create manual attendance event")}
                 title={t("Create manual attendance event")}
               ><span aria-hidden="true">+</span><span className="section-add-label">{t("Manual attendance")}</span></button>
-              <button
-                type="button"
-                className="table-action-button"
-                onClick={openAttendanceExportPanel}
-              >{t("Export Excel")}{" "}</button>
             </div>
             <p className="subtle">
+              {t(attendanceView === "current" ? "Today" : attendanceView === "history" ? "History" : "All")}{": "}
+              <strong>
+                {attendanceView === "current" ? todayLabel : selectedAttendanceDateLabel}
+                {" | "}
+                {formatAttendanceWeekday(attendanceView === "current" ? todayKey : selectedAttendanceDateKey, language)}
+              </strong>
+              {" | "}
               {attendanceView === "current"
-                ? t("Today: {date} | {day} | Rows: {count} (UTC+7)", { date: todayLabel, day: formatAttendanceWeekday(todayKey, language), count: todayAttendanceRows.length })
-                : t("{view}: {date} | Recorded sessions: {count} (UTC+7)", { view: t(attendanceView === "history" ? "History" : "All"), date: selectedAttendanceDateLabel, count: visibleAttendanceRecords.length })}
+                ? t("Rows: {count}", { count: todayAttendanceRows.length })
+                : t("Recorded sessions: {count}", { count: visibleAttendanceRecords.length })}
             </p>
           </div>
           <div className="section-toggle-group" role="tablist" aria-label={t("Attendance filter")}>
@@ -740,15 +769,10 @@ export default function AdminMonitorView({
           </div>
         </div>
 
-        {attendanceView !== "current" ? (
-          <p className="subtle">{t("Recorded events only. Older records without a saved shift show “-”; absence is not inferred from the current schedule.")}</p>
-        ) : null}
         <DataTable
           key={`${attendanceView}:${selectedAttendanceDateKey}`}
           title={t("Attendance records")}
           columns={[
-            { key: "date", label: t("Date"), render: (row) => formatAttendanceDate(row.attendance_date) },
-            { key: "weekday", label: t("Weekday"), render: (row) => formatAttendanceWeekday(row.attendance_date, language) },
             { key: "display_name", label: t("User") },
             { key: "user_code", label: t("User Code") },
             { key: "teacher_id", label: t("Teacher ID") },
@@ -967,7 +991,9 @@ export default function AdminMonitorView({
         </FloatingPanel>
       ) : null}
 
-      {isAttendanceExportPanelOpen ? <AttendanceReportPanel apiBase={apiBase} token={token} teachers={teachers} onClose={() => setIsAttendanceExportPanelOpen(false)} /> : null}
+      <section id="monitor-reports" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="monitor-tab-reports" hidden={activeSection !== "reports"} tabIndex={0}>
+        {hasOpenedReports ? <AttendanceReportPanel apiBase={apiBase} token={token} teachers={teachers} /> : null}
+      </section>
 
       {selectedClassTime ? (
         <FloatingPanel
@@ -1046,11 +1072,14 @@ export default function AdminMonitorView({
         </FloatingPanel>
       ) : null}
 
-      <section id="monitor-resources" className="dashboard-section">
+      <section id="monitor-resources" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="monitor-tab-resources" hidden={activeSection !== "resources"} tabIndex={0}>
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Resources")}</p>
-            <h2>{resourceView === "teachers" ? t("Teachers") : t("Classes by center")}</h2>
+            <div className="section-title-row">
+              <h2>{resourceView === "teachers" ? t("Teachers") : t("Classes by center")}</h2>
+              <Link className="table-action-button" to="/register">{t("openRegisterScreen")}</Link>
+            </div>
           </div>
           <div className="section-toggle-group" role="tablist" aria-label={t("Resource view")}>
             <button
@@ -1163,7 +1192,7 @@ export default function AdminMonitorView({
               ),
             },
           ]}
-          rows={teachers}
+          rows={sortedTeachers}
           emptyMessage={t("No teachers found.")}
           embedded
           pageSize={10}
@@ -1265,7 +1294,7 @@ export default function AdminMonitorView({
         )}
       </section>
 
-      <section id="monitor-requests" className="dashboard-section">
+      <section id="monitor-requests" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="monitor-tab-requests" hidden={activeSection !== "requests"} tabIndex={0}>
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("Requests")}</p>
@@ -1970,34 +1999,6 @@ export default function AdminMonitorView({
         {actionStatus.message}
       </div>
 
-      {role === "developer" ? (
-        <DataTable
-          title={t("Managers")}
-          columns={[
-            { key: "user_code", label: t("User Code") },
-            {
-              key: "display_name",
-              label: t("Display Name"),
-              render: (row) => (
-                <div className="user-inline-cell">
-                  <UserAvatar
-                    apiBase={apiBase}
-                    imageUrl={row.profile_image_url}
-                    name={row.display_name}
-                    fallbackCode={row.user_code}
-                    size="small"
-                  />
-                  <span>{formatValue(row.display_name)}</span>
-                </div>
-              ),
-            },
-            { key: "role", label: t("Role"), render: (row) => getRoleTitle(row.role, t) },
-            { key: "teacher_id", label: t("Teacher ID") },
-          ]}
-          rows={managerUsers}
-          emptyMessage={t("No manager accounts found.")}
-        />
-      ) : null}
     </>
   );
 }

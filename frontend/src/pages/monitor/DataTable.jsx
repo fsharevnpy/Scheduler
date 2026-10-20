@@ -40,6 +40,7 @@ export default function DataTable({
   colClasses = [],
   pageSize = null,
   resetPageOnRowsChange = true,
+  renderMobileCard = null,
 }) {
   const [page, setPage] = useState(1);
   const { t } = useLanguage();
@@ -76,7 +77,12 @@ export default function DataTable({
       {rows.length === 0 ? (
         <p className="subtle">{emptyMessage}</p>
       ) : (
-        <div className="table-wrap">
+        <div className={`table-wrap${renderMobileCard ? " has-mobile-cards" : ""}`}>
+          {renderMobileCard ? (
+            <div className="mobile-record-cards">
+              {visibleRows.map((row, index) => <div key={buildRowKey(row, index)}>{renderMobileCard(row)}</div>)}
+            </div>
+          ) : null}
           <table className={`data-table ${tableClassName}`.trim()}>
             {colClasses.length > 0 ? (
               <colgroup>

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { requestJson } from "../../lib/http.js";
-import FloatingPanel from "./FloatingPanel.jsx";
 import DataTable from "./DataTable.jsx";
 import ChessIcon from "../../components/ChessIcon.jsx";
 import AttendanceStudents from "./AttendanceStudents.jsx";
@@ -18,7 +17,7 @@ function previousMonth() {
   return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
 }
 
-export default function AttendanceReportPanel({ apiBase, token, teachers, onClose }) {
+export default function AttendanceReportPanel({ apiBase, token, teachers }) {
   const { t, language } = useLanguage();
   const [month, setMonth] = useState(previousMonth);
   const [filters, setFilters] = useState(() => ({ ...monthRange(previousMonth()), teacher_id: "" }));
@@ -85,7 +84,13 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
   }
 
   return (
-    <FloatingPanel className="attendance-report-panel" eyebrow={t("Attendance")} title={t("Export teacher report")} titleId="attendance-report-title" onClose={onClose}>
+    <div className="attendance-report-panel">
+      <div className="section-head">
+        <div>
+          <p className="eyebrow">{t("Reports")}</p>
+          <h2>{t("Export teacher report")}</h2>
+        </div>
+      </div>
       <form lang={language} className="floating-panel-form report-filters" onSubmit={(event) => { event.preventDefault(); run(false); }}>
         <div className="floating-panel-grid">
           <label className="field"><span>{t("Teacher")}</span>
@@ -168,6 +173,6 @@ export default function AttendanceReportPanel({ apiBase, token, teachers, onClos
           <p>{t("Choose a teacher and period, then view statistics or download your report.")}</p>
         </div>
       ) : <p role="status" className="report-loading">{t("Loading...")}</p>}
-    </FloatingPanel>
+    </div>
   );
 }

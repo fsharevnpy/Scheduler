@@ -7,6 +7,20 @@
 - `/monitor`
 - `/profile-settings`
 
+## Manager navigation
+
+- Main navigation labels are Teacher attendance, Teachers & teaching schedule, Teacher requests and Teaching reports (Vietnamese: Chấm công giáo viên, Giáo viên & lịch dạy, Yêu cầu của giáo viên, Báo cáo giảng dạy). Teacher requests retains both leave and password-reset workflows.
+
+- `/monitor` opens on Attendance. The section tabs switch content in place, without hash links or scrolling to another section.
+- The manager attendance heading shows the selected date and localized weekday in bold, without a timezone suffix. These are not repeated as table columns. Date grouping still uses Vietnam time; report date/weekday columns are unchanged.
+- Teachers & classes contains account registration; Requests contains leave and password-reset workflows.
+- The teacher list places active teachers before inactive teachers, preserving the existing order within each group. Sorting happens before pagination and updates after a successful active-status change. For a mixed-status demo, append `&teacherSortFixture` to the manager fixture URL.
+- Reports is the single entry point for attendance statistics and Excel downloads, displayed inline rather than in a dialog.
+- Sections stay mounted so switching preserves date filters, table pagination and report results. Reports mounts on first use.
+- Arrow keys, Home and End navigate the section tabs. At widths up to 700px, all sections are visible in a two-column grid without horizontal swiping; the developer-only System tab spans the last row. Desktop keeps the horizontal tab strip.
+- The shared account menu groups profile settings, push notifications and logout for every role.
+- Developers additionally have a System tab for backups and the manager account list.
+
 ## Entry Flow
 
 ### Not authenticated
@@ -108,9 +122,9 @@ Visual layout:
   decorative knight. Operational copy remains localized in English/Vietnamese.
 - Summary cards use decorative chess-piece icons; their counts keep their existing
   meanings (attendance events are not relabeled as taught sessions).
-- A quick-navigation bar jumps to attendance, resources and requests; its reports
-  button opens the same reporting workflow as the attendance section.
-- Reports use a wider responsive dialog, a compact filter area, summary highlights
+- A tab strip switches between attendance, resources, requests and reports in place.
+  There are no section jump links or duplicate report buttons.
+- Reports use a dedicated inline section, a compact filter area, summary highlights
   and expandable teacher details. All report categories remain available in the table.
 - On small screens summary cards use two columns, report filters reflow, and wide
   tables scroll inside their containers rather than widening the page.
@@ -129,11 +143,22 @@ Suggested content:
 
 ### Teacher Monitor
 
-Suggested content:
-- my classes
-- my leave requests
-- create leave request
-- cancel my own leave request when allowed
+- A compact shared header keeps account settings/logout in the account menu.
+- A compact overview of monthly score, scheduled sessions today, leave requests and attendance events appears directly below the header, above today's session and check-in/out actions.
+- The featured session reads "Center - Single session/Double session", with teaching times on a separate line. Scheduled adjacent sessions at the same center are grouped for this display; an open visit uses its saved block. Blocks longer than two show their session count rather than an inaccurate double-session label.
+- Today's attendance, Attendance history, My teaching schedule and Leave Requests switch content in place. Their Vietnamese labels are "Chấm công hôm nay", "Lịch sử chấm công", "Lịch dạy của tôi" and "Đơn xin nghỉ". Mobile navigation shows all four full labels in a two-column grid.
+- Attendance uses paginated cards on screens up to 700px and tables on desktop, with the same records, statuses, student names and pagination.
+- History filters and pagination survive section changes. The overview labels attendance as events, not taught sessions, and no longer shows the system-wide unassigned-class count.
+- Check-in is disabled when there is no assigned class today whose end time has not passed. The existing backend EARLY policy is unchanged; this is not a new 30-minute-only check-in window.
+- Checkout is enabled for an open check-in today, including a saved double shift after the current assignment changes. It still requires the student roster and server-side validation.
+- The API remains authoritative: `POST /attendance-records/check-in` returns HTTP 400 with `no assigned teaching session available for attendance` before inserting an attendance record if no effective assignment matches the teacher, Vietnam weekday, nearest center and unexpired session.
+- The existing five-minute cooldown may return HTTP 429 first. Location outside the allowed radius remains a separately recorded invalid-location status for an otherwise matched session; it is not an assignment check.
+- HTTP regression tests exercise the real route and matching helper with a mocked database, asserting no attendance INSERT/commit on an unmatched request and successful saving on a match. This is not a live PostgreSQL integration test.
+- Teacher demo: `/tests/attendance-browser.html?reportFixture&view=teacher`.
+  Add `&scenario=unassigned` for no classes, `&scenario=teaching` for an open double shift,
+  or `&scenario=reassigned` for an open saved visit without a current assignment.
+  `&historyFixture` supplies more than one page of history. Demo geolocation and writes are simulated.
+- Create/cancel leave requests remain available in Leave; schedule cards localize weekday labels.
 
 ## Attendance history
 
@@ -233,7 +258,7 @@ rows: it must stay on page 2. This fixture is not included in the production bui
 
 ## Teacher attendance statistics and monthly reports
 
-- Managers and developers open **Statistics & reports** from the attendance section.
+- Managers and developers open the **Reports** tab.
   Teachers cannot access either report API.
 - Choose one teacher or all teachers, then a calendar month or a custom inclusive
   date range of up to 366 days. The default is the previous month in Vietnam time.
@@ -263,13 +288,21 @@ rows: it must stay on page 2. This fixture is not included in the production bui
 - Manager controls, status labels, weekdays, report labels and workbook headings
   follow the selected language. Names, identifiers and user-entered notes are not
   translated. Action confirmations are translated at render time when switching language.
-- Changing report filters or closing the panel cancels the pending request, preventing
-  old results from overwriting a new selection.
+- Changing report filters/language or leaving the monitor cancels the pending request,
+  preventing old results from overwriting a new selection. Switching monitor tabs keeps
+  the report mounted, including its filters, pending request and results.
 - For database-free report UI checks, open
   `/tests/attendance-browser.html?reportFixture`. It supplies test responses, including
   a mock download (not a real workbook). `globalThis.attendanceReportRequests` records
   preview/export filters; `globalThis.attendanceReportDelay` allows cancellation checks.
   Real workbook contents and double-shift calculations are covered by backend tests.
+- Append `&view=manager` for the manager-only demo, or `&view=developer` to include
+  the System tab. Check in both languages at 320, 390, 700 and 1440px:
+  - Only one main panel is visible, with no vertical jump or URL hash change on tab selection.
+  - Select an older attendance date, switch away and return: filters and pagination remain.
+  - Preview a report, switch away and return: period and results remain; Excel uses that period.
+  - All mobile navigation labels are visible without horizontal swiping. Arrow keys/Home/End still select tabs.
+  - Account settings open inside the viewport; Escape and an outside click close the menu.
 - Rebuild both services after updating the source:
 
   ```powershell

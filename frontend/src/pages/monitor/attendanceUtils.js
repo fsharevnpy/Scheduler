@@ -158,6 +158,29 @@ export function getAttendanceDateKeys(rows, view, todayKey) {
   return [...dates].sort().reverse();
 }
 
+export function getTeacherAttendanceAvailability({ records, classes, teacherId, now = new Date() }) {
+  const today = getAttendanceDateKey(now);
+  const todayClasses = classes.filter((item) => item.day_of_week === getAttendanceDayCode(today))
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)) || a.class_id.localeCompare(b.class_id));
+  const availableClasses = todayClasses.filter((item) =>
+    new Date(`${today}T${item.end_time}+07:00`).getTime() >= new Date(now).getTime());
+  const nextSessionBlock = availableClasses.length ? [availableClasses[0]] : [];
+  while (nextSessionBlock.length) {
+    const last = nextSessionBlock[nextSessionBlock.length - 1];
+    const next = todayClasses.find((item) => item.center_id === last.center_id
+      && item.start_time === last.end_time && !nextSessionBlock.includes(item));
+    if (!next) break;
+    nextSessionBlock.push(next);
+  }
+  const todayRecords = records.filter((record) => record.teacher_id === teacherId
+    && getAttendanceDateKey(record.checked_at) === today && new Date(record.checked_at) <= new Date(now));
+  const checkOuts = todayRecords.filter((record) => record.event_type === "CHECK_OUT");
+  const openCheckIn = latest(todayRecords.filter((record) => record.event_type === "CHECK_IN"
+    && !checkOuts.some((checkout) => checkout.check_in_record_id === record.record_id
+      || (!checkout.check_in_record_id && new Date(checkout.checked_at) > new Date(record.checked_at)))));
+  return { todayClasses, availableClasses, openCheckIn, nextSessionBlock };
+}
+
 export function buildCurrentAttendanceRows({ records, classes, teachers = [], now = new Date(), teacherId }) {
   const today = getAttendanceDateKey(now);
   const day = getAttendanceDayCode(today);

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, getAttendanceDateKey,
   getAttendanceDateKeys, getAttendanceDayCode, formatAttendanceDate, formatAttendanceTime,
-  formatAttendanceWeekday, formatAttendanceDayCode,
+  formatAttendanceWeekday, formatAttendanceDayCode, getTeacherAttendanceAvailability,
 } from "./attendanceUtils.js";
 
 const checkIn = {
@@ -19,6 +19,53 @@ const scheduledClass = {
   class_id: "C1", day_of_week: "T2", center_id: "CS1",
   start_time: "09:00:00", end_time: "10:00:00", teacher_ids: ["T1"],
 };
+
+test("teacher check-in availability follows Vietnam date and the exact session end", () => {
+  const availability = (now, classes = [scheduledClass]) => getTeacherAttendanceAvailability({
+    records: [], classes, teacherId: "T1", now: new Date(now),
+  });
+  assert.equal(availability("2026-10-19T01:00:00Z").availableClasses.length, 1);
+  assert.equal(availability("2026-10-19T03:00:00Z").availableClasses.length, 1);
+  assert.equal(availability("2026-10-19T03:00:01Z").availableClasses.length, 0);
+  assert.equal(availability("2026-10-19T18:00:00Z").todayClasses.length, 0);
+  assert.equal(availability("2026-10-19T01:00:00Z", []).availableClasses.length, 0);
+});
+
+test("teacher can still finish a saved visit after reassignment without a current class", () => {
+  const saved = { ...checkIn, session_block: [{ ...scheduledClass }, { ...scheduledClass, class_id: "C2", start_time: "10:00:00", end_time: "11:00:00" }] };
+  const result = getTeacherAttendanceAvailability({
+    records: [saved], classes: [], teacherId: "T1", now: new Date("2026-10-19T05:00:00Z"),
+  });
+  assert.equal(result.openCheckIn, saved);
+  assert.equal(result.availableClasses.length, 0);
+  assert.equal(result.openCheckIn.session_block.length, 2);
+});
+
+test("featured scheduled block joins adjacent sessions only at the same center", () => {
+  const next = { ...scheduledClass, class_id: "C2", start_time: "10:00:00", end_time: "11:00:00" };
+  const block = (classes) => getTeacherAttendanceAvailability({
+    records: [], classes, teacherId: "T1", now: new Date("2026-10-19T01:00:00Z"),
+  }).nextSessionBlock.map((item) => item.class_id);
+  assert.deepEqual(block([next, scheduledClass]), ["C1", "C2"]);
+  assert.deepEqual(block([{ ...next, center_id: "CS2" }, scheduledClass]), ["C1"]);
+  assert.deepEqual(block([{ ...next, start_time: "10:30:00" }, scheduledClass]), ["C1"]);
+  assert.deepEqual(block([scheduledClass]), ["C1"]);
+  assert.deepEqual(block([]), []);
+});
+
+test("teacher open-visit state respects linked and legacy checkouts, identity and date", () => {
+  const availability = (records) => getTeacherAttendanceAvailability({
+    records, classes: [], teacherId: "T1", now: new Date("2026-10-19T04:00:00Z"),
+  });
+  assert.equal(availability([checkIn, checkOut]).openCheckIn, null);
+  assert.equal(availability([checkIn, { ...checkOut, check_in_record_id: checkIn.record_id }]).openCheckIn, null);
+  assert.equal(availability([checkIn, { ...checkOut, check_in_record_id: "another-in" }]).openCheckIn, checkIn);
+  assert.equal(availability([checkIn, { ...checkOut, teacher_id: "T2" }]).openCheckIn, checkIn);
+  assert.equal(availability([{ ...checkIn, teacher_id: "T2" }]).openCheckIn, null);
+  assert.equal(availability([{ ...checkIn, checked_at: "2026-10-18T02:00:00Z" }]).openCheckIn, null);
+  assert.equal(availability([{ ...checkIn, checked_at: "2026-10-19T05:00:00Z" }]).openCheckIn, null);
+  assert.equal(availability([checkIn, { ...checkOut, checked_at: "2026-10-19T05:00:00Z" }]).openCheckIn, checkIn);
+});
 
 test("check-in and checkout form one stable row regardless of event order", () => {
   const rows = buildAttendanceHistoryRows([checkOut, checkIn, checkIn]);

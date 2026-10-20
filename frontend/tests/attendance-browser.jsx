@@ -1,14 +1,15 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import { LanguageProvider, useLanguage } from "../src/lib/i18n.jsx";
 import LanguageToggle from "../src/components/LanguageToggle.jsx";
 import ChessHeader from "../src/components/ChessHeader.jsx";
-import UserAvatar from "../src/components/UserAvatar.jsx";
 import NotificationBell from "../src/components/NotificationBell.jsx";
+import AccountMenu from "../src/components/AccountMenu.jsx";
 import AdminMonitorView from "../src/pages/monitor/AdminMonitorView.jsx";
 import TeacherMonitorView from "../src/pages/monitor/TeacherMonitorView.jsx";
 import DataTable from "../src/pages/monitor/DataTable.jsx";
-import { getAttendanceDateKey } from "../src/pages/monitor/attendanceUtils.js";
+import { getAttendanceDateKey, getAttendanceDayCode, formatAttendanceTime, getTeacherAttendanceAvailability } from "../src/pages/monitor/attendanceUtils.js";
 import "../src/styles/base.css";
 import "../src/styles/layout.css";
 import "../src/styles/forms.css";
@@ -77,36 +78,71 @@ if (new URLSearchParams(location.search).has("reportFixture")) {
 }
 
 function FixtureHeader({ teacherOnly }) {
-  const { t, language } = useLanguage();
   return (
-    <>
     <ChessHeader name="Chess Fighters" role={teacherOnly ? "teacher" : "manager"}>
       <div className="dashboard-actions">
         <NotificationBell notifications={[]} />
         <LanguageToggle />
-        <div className="account-chip">
-          <UserAvatar name="Chess Fighters" fallbackCode="CF" size="medium" />
-          <div className="account-chip-copy"><strong>{t(teacherOnly ? "teacher" : "operationsManager")}</strong><span>CF-DEMO</span></div>
-        </div>
-        <div className="dashboard-action-stack">
-          <button type="button" className="secondary-button">{t("logout")}</button>
-          <a className="inline-link" href="#teacher">{t("profileSettings")}</a>
-          {!teacherOnly ? <a className="inline-link" href="#admin">{t("openRegisterScreen")}</a> : null}
-        </div>
+        <AccountMenu auth={{
+          apiBase: "/api", token: "", user: { display_name: "Chess Fighters", user_code: "CF-DEMO", role: teacherOnly ? "teacher" : "manager", teacher_id: teacherOnly ? "T1" : null },
+          logout: () => { globalThis.fixtureLogout = true; },
+        }} />
       </div>
     </ChessHeader>
-    {teacherOnly ? <p className="subtle" role="status">{language === "vi"
-      ? "Bản thử nghiệm dành cho giáo viên. Vị trí được giả lập, dữ liệu không lưu vào hệ thống thật."
-      : "Teacher demo. Location is simulated; no data is saved to the live system."}</p> : null}
-    </>
   );
+}
+
+function FixtureNotice() {
+  const { language } = useLanguage();
+  return <p className="subtle" role="status">{language === "vi"
+    ? "Bản thử nghiệm dành cho giáo viên. Vị trí được giả lập, dữ liệu không lưu vào hệ thống thật."
+    : "Teacher demo. Location is simulated; no data is saved to the live system."}</p>;
 }
 
 function Fixture() {
   const teacherOnly = new URLSearchParams(location.search).get("view") === "teacher";
+  const managerOnly = ["manager", "developer"].includes(new URLSearchParams(location.search).get("view"));
+  const role = new URLSearchParams(location.search).get("view") === "developer" ? "developer" : "manager";
+  const scenario = new URLSearchParams(location.search).get("scenario") || "scheduled";
+  const hour = Math.min(Number(formatAttendanceTime(new Date()).slice(0, 2)), 20);
+  const clock = (value) => `${String(value).padStart(2, "0")}:00:00`;
+  const demoBlock = [
+    { class_id: "DEMO1", center_id: "CS1", start_time: clock(hour), end_time: clock(hour + 1) },
+    { class_id: "DEMO2", center_id: "CS1", start_time: clock(hour + 1), end_time: hour >= 20 ? "23:59:59" : clock(hour + 2) },
+  ].slice(0, scenario === "single" ? 1 : 2);
+  const teacherClasses = ["unassigned", "reassigned"].includes(scenario) ? [] : demoBlock.map((item) => ({
+    ...item, teacher_id: "T1", teacher_ids: ["T1"], status: "ASSIGNED",
+    day_of_week: getAttendanceDayCode(day(0)), center_label: "Demo Center (CS1)",
+  }));
+  const demoCheckIn = {
+    ...checkIn, record_id: "demo-in", class_id: "DEMO1", checked_at: new Date().toISOString(),
+    session_class_id: "DEMO1", session_center_id: "CS1", session_start_time: demoBlock[0].start_time,
+    session_end_time: demoBlock[0].end_time, session_block: demoBlock, nearest_center_name: "Demo Center",
+  };
   const [rows, setRows] = useState(() => Array.from({ length: 21 }, (_, index) => ({ id: `row-${index}`, name: `Entry ${index}` })));
-  const [attendance, setAttendance] = useState(records);
+  const [attendance, setAttendance] = useState(() => [
+    ...records,
+    ...(teacherOnly && ["teaching", "reassigned"].includes(scenario) ? [demoCheckIn] : []),
+    ...(teacherOnly && new URLSearchParams(location.search).has("historyFixture")
+      ? Array.from({ length: 12 }, (_, index) => ({ ...checkIn, record_id: `history-${index}`, checked_at: `${day(index + 4)}T09:00:00+07:00` })) : []),
+  ]);
+  const [teacherLeaveRequests, setTeacherLeaveRequests] = useState([]);
+  const [managerTeachers, setManagerTeachers] = useState(() =>
+    new URLSearchParams(location.search).has("teacherSortFixture")
+      ? Array.from({ length: 14 }, (_, index) => ({
+        teacher_id: `T${index + 1}`, user_code: `TC${String(index + 1).padStart(5, "0")}`,
+        name: `Demo Teacher ${String(index + 1).padStart(2, "0")}`, active: index % 2 === 1,
+      }))
+      : [{ teacher_id: "T2", name: "New Assignee", active: true }],
+  );
   const [fixtureStatus, setFixtureStatus] = useState(status);
+
+  async function checkin(payload) {
+    globalThis.checkinFixturePayload = payload;
+    setFixtureStatus(status);
+    setAttendance((current) => [...current, { ...demoCheckIn, record_id: `demo-in-${current.length}` }]);
+    return true;
+  }
 
   async function checkout(payload) {
     globalThis.checkoutStudentPayload = payload;
@@ -115,9 +151,13 @@ function Fixture() {
       return false;
     }
     setFixtureStatus(status);
+    const { openCheckIn } = getTeacherAttendanceAvailability({ records: attendance, classes: teacherClasses, teacherId: "T1" });
+    const lastShift = demoBlock[demoBlock.length - 1];
     setAttendance((current) => [...current, {
       ...checkIn, record_id: `student-out-${current.length}`, event_type: "CHECK_OUT",
       checked_at: new Date().toISOString(), attendance_status: "COMPLETED",
+      check_in_record_id: openCheckIn?.record_id, class_id: lastShift.class_id,
+      session_class_id: lastShift.class_id, session_center_id: "CS1", session_start_time: lastShift.start_time, session_end_time: lastShift.end_time,
       student_count: payload.studentCount, student_names: payload.studentNames,
     }]);
     return true;
@@ -131,21 +171,35 @@ function Fixture() {
         <AdminMonitorView
           actionStatus={fixtureStatus} attendanceRecords={attendance} classes={classes}
           apiBase="/api" token="fixture"
-          teachers={[{ teacher_id: "T2", name: "New Assignee" }]} centers={[{ center_id: "CS1", name: "Demo Center" }]}
+          teachers={managerTeachers} centers={[{ center_id: "CS1", name: "Demo Center" }]}
           leaveRequests={[]} managerUsers={[]} replacementQueue={[]}
-          replacementSuggestions={{}} resetRequests={[]} role="manager" teacherScores={[]}
+          replacementSuggestions={{}} resetRequests={[]} role={role} teacherScores={[]}
           onCreateManualAttendance={async (payload) => { globalThis.manualStudentPayload = payload; return true; }}
+          onUpdateTeacherActive={async (teacherId, active) => {
+            setManagerTeachers((current) => current.map((item) => item.teacher_id === teacherId ? { ...item, active } : item));
+            return true;
+          }}
         />
       </section> : null}
-      <section id="teacher">
+      {!managerOnly ? <section id="teacher">
         <TeacherMonitorView
-          teacherId="T1" highlightedClasses={[]} attendanceRecords={attendance}
-          leaveRequests={[]} unassignedCount={0} actionStatus={fixtureStatus}
+          teacherId="T1" highlightedClasses={teacherClasses} attendanceRecords={attendance}
+          leaveRequests={teacherLeaveRequests} actionStatus={fixtureStatus}
+          leaveRequestManagers={[{ user_code: "QL00001", display_name: "Demo Manager" }]}
           onCheckOutAttendance={checkout}
-          onCheckInAttendance={async (payload) => { globalThis.checkinFixturePayload = payload; return true; }}
+          onCheckInAttendance={checkin}
+          onCreateLeaveRequest={async (payload) => {
+            setTeacherLeaveRequests((current) => [...current, { request_id: `DEMO-LR-${current.length}`, class_id: payload.classId, reason: payload.reason, status: "REQUESTED" }]);
+            return true;
+          }}
+          onCancelLeaveRequest={async (id) => {
+            setTeacherLeaveRequests((current) => current.map((item) => item.request_id === id ? { ...item, status: "CANCELLED" } : item));
+            return true;
+          }}
         />
-      </section>
-      {!teacherOnly ? <section id="pagination">
+        {teacherOnly ? <FixtureNotice /> : null}
+      </section> : null}
+      {!teacherOnly && !managerOnly ? <section id="pagination">
         <button onClick={() => setRows((current) => current.map((row) => ({ ...row })))}>Refresh rows</button>
         <DataTable title="Pagination regression" columns={[{ key: "name", label: "Name" }]}
           rows={rows} pageSize={10} resetPageOnRowsChange={false} />
@@ -156,5 +210,5 @@ function Fixture() {
 }
 
 const root = createRoot(document.getElementById("root"));
-root.render(<Fixture />);
+root.render(<BrowserRouter><Fixture /></BrowserRouter>);
 if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());

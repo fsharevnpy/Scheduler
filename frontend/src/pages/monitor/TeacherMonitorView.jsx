@@ -4,13 +4,15 @@ import DataTable from "./DataTable.jsx";
 import FloatingPanel from "./FloatingPanel.jsx";
 import StatusPill from "./StatusPill.jsx";
 import TeacherClassCard from "./TeacherClassCard.jsx";
-import AttendanceStudents, { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
+import TeacherAttendanceRecords from "./TeacherAttendanceRecords.jsx";
+import SectionNavigation from "./SectionNavigation.jsx";
+import { AttendanceStudentsFields } from "./AttendanceStudents.jsx";
 import { studentNameSlots, validateAttendanceStudents } from "../../lib/attendanceStudents.js";
 import { useLanguage } from "../../lib/i18n.jsx";
 import { formatTimeValue, formatValue } from "./monitorUtils.js";
 import {
   buildAttendanceHistoryRows, buildCurrentAttendanceRows, formatAttendanceDate,
-  formatAttendanceTime, getAttendanceDateKey, formatAttendanceWeekday,
+  getAttendanceDateKey, formatAttendanceWeekday, formatAttendanceDayCode, getTeacherAttendanceAvailability,
 } from "./attendanceUtils.js";
 
 const ACTIVE_LEAVE_STATUSES = new Set(["REQUESTED", "APPROVED"]);
@@ -50,7 +52,6 @@ export default function TeacherMonitorView({
   attendanceRecords,
   leaveRequestManagers = [],
   leaveRequests,
-  unassignedCount,
   pendingAction,
   actionStatus,
   teacherScore,
@@ -71,7 +72,8 @@ export default function TeacherMonitorView({
   const [studentNames, setStudentNames] = useState([]);
   const [isReadingLocation, setIsReadingLocation] = useState(false);
   const attendanceRequest = useRef(0);
-  const [attendanceView, setAttendanceView] = useState("current");
+  const [activeSection, setActiveSection] = useState("today");
+  const [attendanceView, setAttendanceView] = useState("history");
   const [leaveRequestView, setLeaveRequestView] = useState("active");
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -82,6 +84,10 @@ export default function TeacherMonitorView({
       attendanceRequest.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    setCurrentDate(new Date());
+  }, [attendanceRecords]);
 
   const activeLeaveClassIds = useMemo(
     () =>
@@ -112,11 +118,24 @@ export default function TeacherMonitorView({
     [attendanceRecords, currentDate, highlightedClasses, teacherId],
   );
   const visibleAttendanceRecords = useMemo(
-    () => attendanceView === "current"
-      ? todayAttendanceRows
-      : historicalAttendanceRows.filter((row) => attendanceView === "all" || row.attendance_date < todayKey),
-    [attendanceView, todayAttendanceRows, historicalAttendanceRows, todayKey],
+    () => historicalAttendanceRows.filter((row) => attendanceView === "all" || row.attendance_date < todayKey),
+    [attendanceView, historicalAttendanceRows, todayKey],
   );
+  const { todayClasses, availableClasses, openCheckIn, nextSessionBlock } = useMemo(
+    () => getTeacherAttendanceAvailability({ records: attendanceRecords, classes: highlightedClasses, teacherId, now: currentDate }),
+    [attendanceRecords, highlightedClasses, teacherId, currentDate],
+  );
+  const currentBlock = openCheckIn ? openCheckIn.session_block : nextSessionBlock;
+  const featuredClass = currentBlock?.[0] || (openCheckIn && {
+    class_id: openCheckIn.session_class_id || openCheckIn.class_id,
+    center_id: openCheckIn.session_center_id,
+    start_time: openCheckIn.session_start_time,
+    end_time: openCheckIn.session_end_time,
+  }) || availableClasses[0] || todayClasses[todayClasses.length - 1];
+  const featuredEnd = currentBlock?.[currentBlock.length - 1]?.end_time || featuredClass?.end_time;
+  const checkInUnavailable = !availableClasses.length;
+  const checkOutUnavailable = !openCheckIn;
+  const anyAttendancePending = isReadingLocation || ["attendance-check-in", "attendance-check-out"].includes(pendingAction);
   const todayLabel = formatAttendanceDate(todayKey);
   const scoreValue = teacherScore?.score ?? 100;
   const scoreMax = teacherScore?.max_score ?? 110;
@@ -155,6 +174,10 @@ export default function TeacherMonitorView({
   function handleConfirmAttendance(event) {
     event.preventDefault();
     if (attendanceBusy) return;
+    if ((!isCheckoutPanel && checkInUnavailable) || (isCheckoutPanel && checkOutUnavailable)) {
+      setAttendanceError(isCheckoutPanel ? "no open check-in found for today" : "no assigned teaching session available for attendance");
+      return;
+    }
     const submittedNames = studentNameSlots(studentCount, studentNames).map((name) => name.trim());
     const error = isCheckoutPanel ? validateAttendanceStudents(studentCount, submittedNames) : "";
     if (error) {
@@ -233,43 +256,35 @@ export default function TeacherMonitorView({
 
   return (
     <>
-      <section className="monitor-grid monitor-grid-summary">
-        <article className="info-card teacher-summary-card">
-          <div className={`teacher-summary-metric teacher-score-metric teacher-score-${scoreBand}`}>
-            <p className="eyebrow">{t("monthlyScore")}</p>
-            <h2>{scoreValue}/{scoreMax}</h2>
-          </div>
-          <div className="teacher-summary-metric">
-            <p className="eyebrow">{t("unassigned")}</p>
-            <h2>{unassignedCount}</h2>
-          </div>
-          <div className="teacher-summary-metric">
-            <p className="eyebrow">{t("leaveRequests")}</p>
-            <h2>{activeLeaveRequestCount}</h2>
-          </div>
-          <div className="teacher-summary-metric">
-            <p className="eyebrow">{t("attendance")}</p>
-            <h2>{attendanceRecords.length}</h2>
-          </div>
-        </article>
+      <section className="teacher-secondary-summary" aria-label={t("Your overview")}>
+        <div className={`teacher-secondary-metric teacher-score-${scoreBand}`}><span>{t("monthlyScore")}</span><strong>{scoreValue}/{scoreMax}</strong></div>
+        <div className="teacher-secondary-metric"><span>{t("Scheduled sessions today")}</span><strong>{todayClasses.length}</strong></div>
+        <div className="teacher-secondary-metric"><span>{t("leaveRequests")}</span><strong>{activeLeaveRequestCount}</strong></div>
+        <div className="teacher-secondary-metric"><span>{t("Attendance events")}</span><strong>{attendanceRecords.length}</strong></div>
       </section>
 
-      <section className="dashboard-section">
-        <div className="section-head">
-          <div>
-            <p className="eyebrow">{t("attendance")}</p>
-            <h2>{t("attendanceRecords")}</h2>
-            <p className="subtle">
-              {t("todaySummary", { date: todayLabel, day: formatAttendanceWeekday(todayKey, language), count: todayAttendanceRows.length })}
-            </p>
+      <section className="dashboard-section teacher-today-overview" aria-labelledby="teacher-today-title">
+        <p className="eyebrow">{t("Today")}</p>
+        <h2 id="teacher-today-title">{formatAttendanceWeekday(todayKey, language)} | {todayLabel}</h2>
+        {featuredClass ? (
+          <div className="teacher-featured-session">
+            <strong>
+              {openCheckIn?.nearest_center_name || featuredClass.center_label || featuredClass.center_id || "-"}
+              {" — "}
+              {t(currentBlock?.length > 2 ? "{count} sessions" : currentBlock?.length === 2 ? "Double session" : "Single session", { count: currentBlock?.length })}
+            </strong>
+            <span>{featuredClass.start_time && featuredEnd
+              ? `${formatTimeValue(featuredClass.start_time)} - ${formatTimeValue(featuredEnd)}` : t("Shift time not recorded")}</span>
+            <span>{t(openCheckIn ? "Teaching in progress" : todayAttendanceRows.some((row) => row.check_out_at) ? "Last visit completed" : "Not checked in")}</span>
           </div>
-        </div>
+        ) : <p className="subtle">{t("No classes scheduled today.")}</p>}
 
         <div className="attendance-action-strip" aria-label={t("attendanceActions")}>
           <button
             type="button"
-            className="attendance-action-card attendance-action-card-primary"
-            disabled={pendingAction === "attendance-check-in"}
+            className={`attendance-action-card${openCheckIn ? "" : " attendance-action-card-primary"}`}
+            disabled={anyAttendancePending || checkInUnavailable}
+            aria-describedby={checkInUnavailable ? "teacher-checkin-help" : undefined}
             onClick={() => {
               setAttendanceError("");
               setAttendancePanelAction("check-in");
@@ -281,8 +296,9 @@ export default function TeacherMonitorView({
           </button>
           <button
             type="button"
-            className="attendance-action-card"
-            disabled={pendingAction === "attendance-check-out"}
+            className={`attendance-action-card${openCheckIn ? " attendance-action-card-primary" : ""}`}
+            disabled={anyAttendancePending || checkOutUnavailable}
+            aria-describedby={checkOutUnavailable ? "teacher-checkout-help" : undefined}
             onClick={() => {
               setAttendanceError("");
               setAttendancePanelAction("checkout");
@@ -294,35 +310,8 @@ export default function TeacherMonitorView({
           </button>
         </div>
 
-        <div className="attendance-records-head">
-          <div>
-            <p className="eyebrow">{t("records")}</p>
-            <h3>{t("attendanceRecords")}</h3>
-          </div>
-          <div className="section-toggle-group" role="tablist" aria-label={t("attendance")}>
-            <button
-              type="button"
-              className={`section-toggle-button ${attendanceView === "current" ? "active" : ""}`.trim()}
-              onClick={() => setAttendanceView("current")}
-            >
-              {t("current")}
-            </button>
-            <button
-              type="button"
-              className={`section-toggle-button ${attendanceView === "history" ? "active" : ""}`.trim()}
-              onClick={() => setAttendanceView("history")}
-            >
-              {t("history")}
-            </button>
-            <button
-              type="button"
-              className={`section-toggle-button ${attendanceView === "all" ? "active" : ""}`.trim()}
-              onClick={() => setAttendanceView("all")}
-            >
-              {t("all")}
-            </button>
-          </div>
-        </div>
+        {checkInUnavailable ? <p id="teacher-checkin-help" className="subtle">{t("No assigned session is available for check-in. Contact your manager if the schedule is incorrect.")}</p> : null}
+        {checkOutUnavailable ? <p id="teacher-checkout-help" className="subtle">{t("Check in before ending a teaching session.")}</p> : null}
 
         {!window.isSecureContext ? (
           <p className="status error">
@@ -334,68 +323,37 @@ export default function TeacherMonitorView({
           {actionStatus.message}
         </div>
         {attendanceError ? <div className="status error">{t(attendanceError)}</div> : null}
-        {attendanceView !== "current" ? <p className="subtle">{t("attendanceHistoryHelp")}</p> : null}
-
-        <DataTable
-          key={attendanceView}
-          title={t("attendanceRecords")}
-          columns={[
-            { key: "attendance_date", label: t("attendanceDate"), render: (row) => formatAttendanceDate(row.attendance_date) },
-            { key: "weekday", label: t("Weekday"), render: (row) => formatAttendanceWeekday(row.attendance_date, language) },
-            { key: "class_id", label: t("classId") },
-            {
-              key: "expected_shift",
-              label: t("expectedShift"),
-              render: (row) =>
-                row.start_time && row.end_time
-                  ? `${formatTimeValue(row.start_time)} - ${formatTimeValue(row.end_time)}`
-                  : "-",
-            },
-            { key: "checked_at", label: t("checkIn"), render: (row) => formatAttendanceTime(row.checked_at) },
-            { key: "check_out_at", label: t("checkOut"), render: (row) => formatAttendanceTime(row.check_out_at) },
-            { key: "student_names", label: t("Students taught"), render: (row) => <AttendanceStudents names={row.student_names} /> },
-            {
-              key: "nearest_center_name",
-              label: t("location"),
-              render: (row) =>
-                (!row.checked_at && !row.check_out_at) || row.status === "VALID" || row.status === "MANUAL" || row.status === "-"
-                  ? row.nearest_center_name || t("nearestCenter")
-                  : t("outsideValidArea"),
-            },
-            {
-              key: "status",
-              label: t("locationStatus"),
-              render: (row) => <StatusPill value={row.status === "-" ? "-" : row.status || "PENDING"} />,
-            },
-            {
-              key: "attendance_status",
-              label: t("attendanceStatus"),
-              render: (row) => <StatusPill value={row.attendance_status || "UNMATCHED"} />,
-            },
-            {
-              key: "checkout_status",
-              label: t("checkOut"),
-              render: (row) => <StatusPill value={row.checkout_status || "-"} />,
-            },
-            {
-              key: "checkout_location_status",
-              label: t("checkoutLocationStatus"),
-              render: (row) => <StatusPill value={row.checkout_location_status || "-"} />,
-            },
-          ]}
-          rows={visibleAttendanceRecords}
-          resetPageOnRowsChange={false}
-          emptyMessage={t("noAttendanceRecords")}
-          embedded
-          pageSize={10}
-        />
       </section>
 
-      <section className="dashboard-section">
+      <SectionNavigation prefix="teacher" label="Teacher sections" activeSection={activeSection} onChange={setActiveSection} sections={[
+        { id: "today", label: "Today's attendance", piece: "king" },
+        { id: "history", label: "Attendance history", piece: "bishop" },
+        { id: "schedule", label: "My teaching schedule", piece: "rook" },
+        { id: "leave", label: "Leave Requests", piece: "knight", count: leaveRequests.filter((item) => item.status === "REQUESTED").length },
+      ]} />
+
+      <section id="teacher-today" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="teacher-tab-today" hidden={activeSection !== "today"} tabIndex={0}>
+        <h2>{t("Today's attendance")}</h2>
+        <TeacherAttendanceRecords rows={todayAttendanceRows} />
+      </section>
+
+      <section id="teacher-history" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="teacher-tab-history" hidden={activeSection !== "history"} tabIndex={0}>
+        <div className="section-head">
+          <h2>{t("Attendance history")}</h2>
+          <div className="section-toggle-group" aria-label={t("Attendance filter")}>
+            {["history", "all"].map((view) => <button key={view} type="button" className={`section-toggle-button${attendanceView === view ? " active" : ""}`}
+              aria-pressed={attendanceView === view} onClick={() => setAttendanceView(view)}>{t(view)}</button>)}
+          </div>
+        </div>
+        <p className="subtle">{t("attendanceHistoryHelp")}</p>
+        <TeacherAttendanceRecords key={attendanceView} rows={visibleAttendanceRecords} />
+      </section>
+
+      <section id="teacher-schedule" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="teacher-tab-schedule" hidden={activeSection !== "schedule"} tabIndex={0}>
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("class")}</p>
-            <h2>{t("currentTeachingClasses")}</h2>
+            <h2>{t("My teaching schedule")}</h2>
           </div>
         </div>
         {highlightedClasses.length === 0 ? (
@@ -409,7 +367,7 @@ export default function TeacherMonitorView({
         )}
       </section>
 
-      <section className="dashboard-section">
+      <section id="teacher-leave" className="dashboard-section manager-section" role="tabpanel" aria-labelledby="teacher-tab-leave" hidden={activeSection !== "leave"} tabIndex={0}>
         <div className="section-head">
           <div>
             <p className="eyebrow">{t("myLeaveRequests")}</p>
@@ -467,11 +425,11 @@ export default function TeacherMonitorView({
         <DataTable
 	          title={t("myLeaveRequests")}
           columns={[
-	            { key: "request_id", label: "Request ID" },
+	            { key: "request_id", label: t("Request ID") },
 	            { key: "class_id", label: t("classId") },
 	            { key: "center_id", label: t("center") },
 	            { key: "assigned_manager_name", label: t("reviewManager") },
-	            { key: "class_day_of_week", label: t("classDay") },
+	            { key: "class_day_of_week", label: t("classDay"), render: (row) => formatAttendanceDayCode(row.class_day_of_week, language) },
 	            { key: "request_date", label: t("requestDate") },
 	            { key: "reason", label: t("reason") },
             {
@@ -570,7 +528,7 @@ export default function TeacherMonitorView({
                     >
                       {creatableClasses.map((item) => (
                         <option key={item.class_id} value={item.class_id}>
-                          {item.class_id} | {item.day_of_week} | {item.center_label}
+                          {item.class_id} | {formatAttendanceDayCode(item.day_of_week, language)} | {item.center_label}
                         </option>
                       ))}
                     </select>
@@ -595,7 +553,7 @@ export default function TeacherMonitorView({
                     <div className="floating-panel-summary">
                       <div className="floating-panel-summary-row">
 	                        <span>{t("classDay")}</span>
-                        <strong>{formatValue(selectedClass.day_of_week)}</strong>
+                        <strong>{formatAttendanceDayCode(selectedClass.day_of_week, language)}</strong>
                       </div>
                       <div className="floating-panel-summary-row">
 	                        <span>{t("expectedShift")}</span>

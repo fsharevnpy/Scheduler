@@ -1,13 +1,10 @@
-import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
 import LanguageToggle from "../../components/LanguageToggle.jsx";
 import ChessHeader from "../../components/ChessHeader.jsx";
 import NotificationBell from "../../components/NotificationBell.jsx";
-import UserAvatar from "../../components/UserAvatar.jsx";
-import WebPushControl from "../../components/WebPushControl.jsx";
+import AccountMenu from "../../components/AccountMenu.jsx";
 import { useLanguage } from "../../lib/i18n.jsx";
-import { getRoleTitle } from "../../lib/roles.js";
 import { requestJson } from "../../lib/http.js";
 import { loadAttendanceRecords } from "../../lib/attendance.js";
 import { buildManagerEventsWebSocketUrl, buildTeacherEventsWebSocketUrl } from "../../lib/teacherEvents.js";
@@ -887,7 +884,6 @@ export default function MonitorPage({ auth }) {
     }));
   }
 
-  const unassignedClasses = state.classes.filter((item) => item.status !== "ASSIGNED");
   const managerUsers = state.users.filter((item) => item.role === "manager");
   const centersById = new Map(state.centers.map((item) => [item.center_id, item]));
   const formatCenter = (centerId) => {
@@ -978,34 +974,7 @@ export default function MonitorPage({ auth }) {
               }
             />
             <LanguageToggle />
-            <WebPushControl auth={auth} />
-            <div className="account-chip">
-              <UserAvatar
-                apiBase={auth.apiBase}
-                imageUrl={user.profile_image_url}
-                name={user.display_name}
-                fallbackCode={user.user_code}
-                size="medium"
-              />
-              <div className="account-chip-copy">
-                <strong>{getRoleTitle(user.role, t)}</strong>
-                <span>{user.user_code}</span>
-                {user.role === "teacher" ? <span>{user.teacher_id || "-"}</span> : null}
-              </div>
-            </div>
-            <div className="dashboard-action-stack">
-              <button type="button" className="secondary-button" onClick={auth.logout}>
-                {t("logout")}
-              </button>
-              <Link className="inline-link" to="/profile-settings">
-                {t("profileSettings")}
-              </Link>
-              {(user.role === "developer" || user.role === "manager") && (
-                <Link className="inline-link" to="/register">
-                  {t("openRegisterScreen")}
-                </Link>
-              )}
-            </div>
+            <AccountMenu auth={auth} />
           </div>
         </ChessHeader>
 
@@ -1020,7 +989,6 @@ export default function MonitorPage({ auth }) {
             attendanceRecords={state.attendanceRecords}
             leaveRequestManagers={state.leaveRequestManagers}
             leaveRequests={leaveRequestsWithCenter}
-            unassignedCount={unassignedClasses.length}
             pendingAction={pendingAction}
             actionStatus={actionStatus}
             teacherScore={currentTeacherScore}

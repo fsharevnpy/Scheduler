@@ -279,7 +279,6 @@ const translations = {
     attendanceConfirmCopy: "This will record the current server time and your phone's location for this account.",
     attendanceRecords: "Attendance records",
     attendanceDate: "Date (UTC+7)",
-    attendanceHistoryHelp: "Recorded events only. Older records without a saved shift show a dash; absence is not inferred from the current schedule.",
     checkoutLocationStatus: "Checkout location status",
     attendanceStatus: "Check-in Status",
     cancelling: "Cancelling...",
